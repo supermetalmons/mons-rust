@@ -551,13 +551,119 @@ def item_intent_profile(item, active_color):
     return f"{side}_{role}_carry_{payload}"
 
 
-def move_intent_shape(record, move_fen):
-    locations = [
+def move_locations(move_fen):
+    return [
         location
         for token in str(move_fen or "").split(";")
         for location in [move_shape_location(token)]
         if location is not None
     ]
+
+
+def adjacent_locations(location):
+    i, j = location
+    return [(i - 1, j), (i + 1, j), (i, j - 1), (i, j + 1)]
+
+
+def mon_side(item, active_color):
+    if not item:
+        return "empty"
+    mon = item[:2]
+    if mon == "xx":
+        return "empty"
+    color = "white" if mon[:1].isupper() else "black"
+    return relative_color(color, active_color)
+
+
+def adjacency_count_bucket(value):
+    if value <= 0:
+        return "count0"
+    if value == 1:
+        return "count1"
+    return "count2plus"
+
+
+def pressure_focus(own_count, opp_count):
+    if own_count == 0 and opp_count == 0:
+        return "isolated"
+    if own_count > 0 and opp_count == 0:
+        return "supported"
+    if own_count == 0 and opp_count > 0:
+        return "exposed"
+    if own_count > opp_count:
+        return "supported_contested"
+    if own_count < opp_count:
+        return "pressured"
+    return "contested_even"
+
+
+def endpoint_pressure(board, location, active_color):
+    own_count = 0
+    opp_count = 0
+    for neighbor in adjacent_locations(location):
+        side = mon_side(board.get(neighbor), active_color)
+        if side == "own":
+            own_count += 1
+        elif side == "opp":
+            opp_count += 1
+    return {
+        "own_count": own_count,
+        "opp_count": opp_count,
+        "focus": pressure_focus(own_count, opp_count),
+    }
+
+
+def move_local_pressure_values(record, move_fen):
+    locations = move_locations(move_fen)
+    if not locations:
+        return None
+    board = game_board_tokens(record.get("board", ""))
+    active_color = active_color_name(record)
+    source = endpoint_pressure(board, locations[0], active_color)
+    target = endpoint_pressure(board, locations[-1], active_color)
+    return {
+        "source_focus": source["focus"],
+        "target_focus": target["focus"],
+        "target_own": target["own_count"],
+        "target_opp": target["opp_count"],
+        "flow": f"{move_shape_zone(locations[0])}->{move_shape_zone(locations[-1])}",
+    }
+
+
+def move_local_pressure_shape(values):
+    if not values:
+        return "none"
+    return (
+        f"source={values['source_focus']};"
+        f"target={values['target_focus']};"
+        f"flow={values['flow']}"
+    )
+
+
+def move_target_pressure_shape(values):
+    if not values:
+        return "none"
+    return (
+        f"target={values['target_focus']};"
+        f"own={adjacency_count_bucket(values['target_own'])};"
+        f"opp={adjacency_count_bucket(values['target_opp'])}"
+    )
+
+
+def move_target_pressure_delta(candidate_values, baseline_values, candidate_label):
+    if not candidate_values or not baseline_values:
+        return "missing"
+    candidate_pressure = candidate_values["target_opp"] - candidate_values["target_own"]
+    baseline_pressure = baseline_values["target_opp"] - baseline_values["target_own"]
+    if candidate_pressure == baseline_pressure:
+        return "same_target_pressure"
+    if candidate_pressure < baseline_pressure:
+        return f"{candidate_label}_less_pressured"
+    return f"{candidate_label}_more_pressured"
+
+
+def move_intent_shape(record, move_fen):
+    locations = move_locations(move_fen)
     if not locations:
         return "none"
     board = game_board_tokens(record.get("board", ""))
@@ -905,6 +1011,50 @@ def corpus_move_intent_axes(record, record_class):
     return axes
 
 
+def corpus_move_local_pressure_axes(record, record_class):
+    baseline_values = move_local_pressure_values(record, record.get("baseline_move", ""))
+    candidate_values = move_local_pressure_values(record, record.get("candidate_move", ""))
+    if not baseline_values and not candidate_values:
+        return []
+
+    baseline_intent = move_intent_shape(record, record.get("baseline_move", ""))
+    candidate_intent = move_intent_shape(record, record.get("candidate_move", ""))
+    baseline_target = move_target_pressure_shape(baseline_values)
+    candidate_target = move_target_pressure_shape(candidate_values)
+    axes = [
+        f"first_move_candidate_pressure {move_local_pressure_shape(candidate_values)}",
+        f"first_move_baseline_pressure {move_local_pressure_shape(baseline_values)}",
+        (
+            "first_move_candidate_target_pressure "
+            f"focus={intent_focus(candidate_intent)} {candidate_target}"
+        ),
+        (
+            "first_move_pressure_delta "
+            f"{move_target_pressure_delta(candidate_values, baseline_values, 'candidate')}"
+        ),
+    ]
+    if record_class not in {"candidate_better", "baseline_better"}:
+        return axes
+
+    if record_class == "baseline_better":
+        preferred_values = baseline_values
+        preferred_intent = baseline_intent
+    else:
+        preferred_values = candidate_values
+        preferred_intent = candidate_intent
+    axes.extend(
+        [
+            f"first_move_preferred_pressure {move_local_pressure_shape(preferred_values)}",
+            (
+                "first_move_preferred_target_pressure "
+                f"focus={intent_focus(preferred_intent)} "
+                f"{move_target_pressure_shape(preferred_values)}"
+            ),
+        ]
+    )
+    return axes
+
+
 def corpus_record_axes(record, record_class):
     axes = []
     if record_class == "baseline_better":
@@ -914,6 +1064,7 @@ def corpus_record_axes(record, record_class):
     axes.extend(split_axis_field(record.get("timing_continuation_axes", "")))
     axes.extend(corpus_move_shape_axes(record, record_class))
     axes.extend(corpus_move_intent_axes(record, record_class))
+    axes.extend(corpus_move_local_pressure_axes(record, record_class))
     axes.extend(source_board_axes(record))
     axes.extend(portfolio_support_axes(record))
     axes.extend(terminal_swing_axes(record, record_class))
@@ -1900,6 +2051,10 @@ def policy_axis_items(record, record_class):
     items.extend(
         (axis, "first_move_intent")
         for axis in corpus_move_intent_axes(record, record_class)
+    )
+    items.extend(
+        (axis, "first_move_local_pressure")
+        for axis in corpus_move_local_pressure_axes(record, record_class)
     )
     items.extend((axis, "source_board") for axis in source_board_axes(record))
     items.extend((axis, "portfolio_support") for axis in portfolio_support_axes(record))
