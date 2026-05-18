@@ -611,6 +611,146 @@ def move_intent_delta(candidate_intent, baseline_intent):
     return f"candidate_{candidate_focus}_baseline_{baseline_focus}"
 
 
+def candidate_color_name(record):
+    value = record.get("candidate_is_white", False)
+    if isinstance(value, bool):
+        return "white" if value else "black"
+    return "white" if str(value).lower() == "true" else "black"
+
+
+def game_score_pair(game_fen):
+    fields = str(game_fen or "").split()
+    if len(fields) not in {10, 11}:
+        return None
+    try:
+        return {"white": int(fields[0]), "black": int(fields[1])}
+    except ValueError:
+        return None
+
+
+def score_margin(game_fen, perspective_color):
+    scores = game_score_pair(game_fen)
+    if not scores or perspective_color not in {"white", "black"}:
+        return None
+    opponent = "black" if perspective_color == "white" else "white"
+    return scores[perspective_color] - scores[opponent]
+
+
+def margin_bucket(value):
+    if value is None:
+        return "missing"
+    if value >= 2:
+        return "lead2plus"
+    if value == 1:
+        return "lead1"
+    if value == 0:
+        return "even"
+    if value == -1:
+        return "trail1"
+    return "trail2plus"
+
+
+def swing_bucket(value):
+    if value is None:
+        return "missing"
+    if value >= 2:
+        return "plus2plus"
+    if value == 1:
+        return "plus1"
+    if value == 0:
+        return "same"
+    if value == -1:
+        return "minus1"
+    return "minus2plus"
+
+
+def item_carrier_side(item, perspective_color):
+    if not item:
+        return "empty"
+    mon = item[:2]
+    if mon == "xx":
+        return "free"
+    color = "white" if mon[:1].isupper() else "black"
+    return relative_color(color, perspective_color)
+
+
+def terminal_resource_scores(game_fen, perspective_color):
+    custody = 0
+    material = 0
+    for item in game_board_tokens(game_fen).values():
+        side = item_carrier_side(item, perspective_color)
+        payload = item[2:]
+        if side == "own":
+            material += 1
+        elif side == "opp":
+            material -= 1
+        if payload == "U":
+            if side == "own":
+                custody += 2
+            elif side == "opp":
+                custody -= 2
+        elif payload in {"M", "m"}:
+            if side == "own":
+                custody += 1
+            elif side == "opp":
+                custody -= 1
+    return {"custody": custody, "material": material}
+
+
+def terminal_swing_values(record):
+    perspective_color = candidate_color_name(record)
+    baseline_final = record.get("baseline_final", "")
+    candidate_final = record.get("candidate_final", "")
+    baseline_margin = score_margin(baseline_final, perspective_color)
+    candidate_margin = score_margin(candidate_final, perspective_color)
+    score_swing = None
+    if baseline_margin is not None and candidate_margin is not None:
+        score_swing = candidate_margin - baseline_margin
+    baseline_resources = terminal_resource_scores(baseline_final, perspective_color)
+    candidate_resources = terminal_resource_scores(candidate_final, perspective_color)
+    return {
+        "baseline_margin": baseline_margin,
+        "candidate_margin": candidate_margin,
+        "score_swing": score_swing,
+        "custody_swing": candidate_resources["custody"]
+        - baseline_resources["custody"],
+        "material_swing": candidate_resources["material"]
+        - baseline_resources["material"],
+    }
+
+
+def terminal_swing_axes(record, record_class):
+    values = terminal_swing_values(record)
+    axes = [
+        f"terminal_score_swing {swing_bucket(values['score_swing'])}",
+        f"terminal_candidate_margin {margin_bucket(values['candidate_margin'])}",
+        f"terminal_baseline_margin {margin_bucket(values['baseline_margin'])}",
+        (
+            "terminal_resource_swing "
+            f"custody={swing_bucket(values['custody_swing'])} "
+            f"material={swing_bucket(values['material_swing'])}"
+        ),
+    ]
+    if record_class not in {"candidate_better", "baseline_better"}:
+        return axes
+
+    preferred_margin = (
+        values["baseline_margin"]
+        if record_class == "baseline_better"
+        else values["candidate_margin"]
+    )
+    preferred_score_swing = (
+        None if values["score_swing"] is None else abs(values["score_swing"])
+    )
+    axes.extend(
+        [
+            f"terminal_preferred_margin {margin_bucket(preferred_margin)}",
+            f"terminal_preferred_score_gap {swing_bucket(preferred_score_swing)}",
+        ]
+    )
+    return axes
+
+
 def corpus_move_shape_axes(record, record_class):
     baseline_shape = move_input_shape(record.get("baseline_move", ""))
     candidate_shape = move_input_shape(record.get("candidate_move", ""))
@@ -675,6 +815,7 @@ def corpus_record_axes(record, record_class):
     axes.extend(split_axis_field(record.get("timing_continuation_axes", "")))
     axes.extend(corpus_move_shape_axes(record, record_class))
     axes.extend(corpus_move_intent_axes(record, record_class))
+    axes.extend(terminal_swing_axes(record, record_class))
     return axes or ["none"]
 
 
@@ -1022,6 +1163,10 @@ def cross_budget_fragmented_dimensions(row):
     return "|".join(dimensions)
 
 
+def future_only_axis(axis):
+    return str(axis or "").startswith("terminal_")
+
+
 def cross_budget_source_status(row):
     if int(row.get("candidate_better_joined_states", 0)) <= 0:
         return "no_candidate_signal"
@@ -1029,6 +1174,8 @@ def cross_budget_source_status(row):
         return "baseline_save_risk"
     if int(row.get("no_policy_joined_states", 0)) > 0:
         return "coverage_gap"
+    if future_only_axis(row.get("key", "")):
+        return "future_only_no_source"
     if row.get("fragmented_dimensions", ""):
         return "fragmented_no_source"
     if int(row.get("all_budget_repair_joined_states", 0)) > 0:
@@ -1049,6 +1196,7 @@ def cross_budget_source_permission(status):
         "baseline_save_risk",
         "coverage_gap",
         "fragmented_no_source",
+        "future_only_no_source",
         "singleton_candidate",
         "singleton_non_regressing",
     }:
@@ -1067,6 +1215,8 @@ def cross_budget_source_action(status):
         return "avoid_selector"
     if status == "coverage_gap":
         return "add_policy_or_root_feature"
+    if status == "future_only_no_source":
+        return "keep_outcome_diagnostic"
     if status in {"singleton_candidate", "singleton_non_regressing"}:
         return "widen_or_archive_singleton"
     return "try_next_slice"
@@ -1648,6 +1798,10 @@ def policy_axis_items(record, record_class):
     items.extend(
         (axis, "first_move_intent")
         for axis in corpus_move_intent_axes(record, record_class)
+    )
+    items.extend(
+        (axis, "terminal_outcome")
+        for axis in terminal_swing_axes(record, record_class)
     )
     return items or [("none", "missing")]
 
