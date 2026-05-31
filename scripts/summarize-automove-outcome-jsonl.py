@@ -204,6 +204,7 @@ ROOT_POOL_SIGNAL_FIELDS = [
     "post_lane_shape",
     "post_lane_shape_delta",
     "root_sequence",
+    "root_input_goal",
     "root_transition",
     "root_transition_effect",
     "worst_reply_transition",
@@ -651,6 +652,9 @@ ROOT_POOL_COMPOUND_SIGNAL_FIELDS = [
     ("family_root_sequence", ("family", "root_sequence")),
     ("progress_root_sequence", ("progress", "root_sequence")),
     ("path_root_sequence", ("path", "root_sequence")),
+    ("family_root_input_goal", ("family", "root_input_goal")),
+    ("progress_root_input_goal", ("progress", "root_input_goal")),
+    ("path_root_input_goal", ("path", "root_input_goal")),
     ("family_root_transition", ("family", "root_transition")),
     ("progress_root_transition_effect", ("progress", "root_transition_effect")),
     ("path_root_transition_effect", ("path", "root_transition_effect")),
@@ -832,6 +836,7 @@ ROOT_POOL_DELTA_CATEGORICAL_FIELDS = [
     "post_lane_shape",
     "post_lane_shape_delta",
     "root_sequence",
+    "root_input_goal",
     "root_transition",
     "root_transition_effect",
     "worst_reply_transition",
@@ -2832,6 +2837,8 @@ def root_pool_signal_field_family(field):
     field = str(field or "")
     if "root_sequence" in field:
         return "root_input_sequence"
+    if "root_input_goal" in field:
+        return "root_input_goal"
     if "worst_reply" in field:
         return "worst_reply_event_footprint"
     if "root_transition" in field:

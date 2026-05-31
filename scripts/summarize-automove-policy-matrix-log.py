@@ -510,6 +510,12 @@ def active_color_name(record):
         return "white"
     if value == "black":
         return "black"
+    board_fields = str(record.get("board", "")).split()
+    if len(board_fields) >= 3:
+        if board_fields[2] == "w":
+            return "white"
+        if board_fields[2] == "b":
+            return "black"
     return "unknown"
 
 
@@ -660,6 +666,129 @@ def move_target_pressure_delta(candidate_values, baseline_values, candidate_labe
     if candidate_pressure < baseline_pressure:
         return f"{candidate_label}_less_pressured"
     return f"{candidate_label}_more_pressured"
+
+
+def home_row_for_color(color):
+    if color == "white":
+        return BOARD_MAX_INDEX
+    if color == "black":
+        return 0
+    return None
+
+
+def center_distance(location):
+    if location is None:
+        return None
+    center = BOARD_MAX_INDEX // 2
+    return max(abs(location[0] - center), abs(location[1] - center))
+
+
+def home_distance(location, active_color):
+    home_row = home_row_for_color(active_color)
+    if location is None or home_row is None:
+        return None
+    return abs(location[0] - home_row)
+
+
+def row_band_from_home(location, active_color):
+    distance = home_distance(location, active_color)
+    if distance is None:
+        return "unknown"
+    if distance == 0:
+        return "home_base"
+    if distance <= 2:
+        return "near_home"
+    if distance <= 5:
+        return "midfield"
+    if distance <= 8:
+        return "near_opp"
+    return "opp_base"
+
+
+def lane_bucket(location):
+    if location is None:
+        return "unknown"
+    column = location[1]
+    if column <= 1:
+        return "left_flank"
+    if column <= 3:
+        return "left_inner"
+    if column <= 6:
+        return "center_lane"
+    if column <= 8:
+        return "right_inner"
+    return "right_flank"
+
+
+def signed_delta_bucket(value, positive_label, negative_label):
+    if value is None:
+        return "missing"
+    if value >= 2:
+        return f"{positive_label}2plus"
+    if value == 1:
+        return f"{positive_label}1"
+    if value == 0:
+        return "same"
+    if value == -1:
+        return f"{negative_label}1"
+    return f"{negative_label}2plus"
+
+
+def optional_delta(left, right):
+    if left is None or right is None:
+        return None
+    return left - right
+
+
+def move_goal_values(record, move_fen):
+    locations = move_locations(move_fen)
+    if not locations:
+        return None
+    active_color = active_color_name(record)
+    source = locations[0]
+    target = locations[-1]
+    source_home_distance = home_distance(source, active_color)
+    target_home_distance = home_distance(target, active_color)
+    source_center_distance = center_distance(source)
+    target_center_distance = center_distance(target)
+    home_delta = None
+    center_delta = None
+    if source_home_distance is not None and target_home_distance is not None:
+        home_delta = source_home_distance - target_home_distance
+    if source_center_distance is not None and target_center_distance is not None:
+        center_delta = source_center_distance - target_center_distance
+    return {
+        "intent_focus": intent_focus(move_intent_shape(record, move_fen)),
+        "home_delta": home_delta,
+        "center_delta": center_delta,
+        "source_band": row_band_from_home(source, active_color),
+        "target_band": row_band_from_home(target, active_color),
+        "source_lane": lane_bucket(source),
+        "target_lane": lane_bucket(target),
+    }
+
+
+def move_goal_shape(values):
+    if not values:
+        return "none"
+    return (
+        f"intent={values['intent_focus']};"
+        f"home={signed_delta_bucket(values['home_delta'], 'closer_home', 'away_home')};"
+        f"center={signed_delta_bucket(values['center_delta'], 'closer_center', 'away_center')};"
+        f"band={values['source_band']}->{values['target_band']};"
+        f"lane={values['source_lane']}->{values['target_lane']}"
+    )
+
+
+def move_goal_delta(candidate_values, baseline_values):
+    if not candidate_values or not baseline_values:
+        return "missing"
+    home_delta = optional_delta(candidate_values["home_delta"], baseline_values["home_delta"])
+    center_delta = optional_delta(candidate_values["center_delta"], baseline_values["center_delta"])
+    return (
+        f"home={signed_delta_bucket(home_delta, 'candidate_more_home', 'candidate_less_home')} "
+        f"center={signed_delta_bucket(center_delta, 'candidate_more_center', 'candidate_less_center')}"
+    )
 
 
 def move_intent_shape(record, move_fen):
@@ -1055,6 +1184,27 @@ def corpus_move_local_pressure_axes(record, record_class):
     return axes
 
 
+def corpus_move_goal_axes(record, record_class):
+    baseline_values = move_goal_values(record, record.get("baseline_move", ""))
+    candidate_values = move_goal_values(record, record.get("candidate_move", ""))
+    if not baseline_values and not candidate_values:
+        return []
+
+    baseline_shape = move_goal_shape(baseline_values)
+    candidate_shape = move_goal_shape(candidate_values)
+    axes = [
+        f"first_move_candidate_goal {candidate_shape}",
+        f"first_move_baseline_goal {baseline_shape}",
+        f"first_move_goal_delta {move_goal_delta(candidate_values, baseline_values)}",
+    ]
+    if record_class not in {"candidate_better", "baseline_better"}:
+        return axes
+
+    preferred_shape = baseline_shape if record_class == "baseline_better" else candidate_shape
+    axes.append(f"first_move_preferred_goal {preferred_shape}")
+    return axes
+
+
 def corpus_record_axes(record, record_class):
     axes = []
     if record_class == "baseline_better":
@@ -1065,6 +1215,7 @@ def corpus_record_axes(record, record_class):
     axes.extend(corpus_move_shape_axes(record, record_class))
     axes.extend(corpus_move_intent_axes(record, record_class))
     axes.extend(corpus_move_local_pressure_axes(record, record_class))
+    axes.extend(corpus_move_goal_axes(record, record_class))
     axes.extend(source_board_axes(record))
     axes.extend(portfolio_support_axes(record))
     axes.extend(terminal_swing_axes(record, record_class))
@@ -2159,6 +2310,7 @@ def root_origin_profile(record):
 def normalized_pro_v4_root_pool_row(event, row_type):
     record = event["data"]
     state_record = {field: record.get(field, "") for field in CORPUS_STATE_FIELDS}
+    root_input_values = move_goal_values(record, record.get("inputs", ""))
     return {
         **record,
         "row_type": row_type,
@@ -2167,6 +2319,7 @@ def normalized_pro_v4_root_pool_row(event, row_type):
         "state_id": corpus_state_id(state_record),
         "cross_budget_state_id": cross_budget_state_id(state_record),
         "root_origin_profile": root_origin_profile(record),
+        "root_input_goal": move_goal_shape(root_input_values),
     }
 
 

@@ -4,6 +4,26 @@ This file keeps only short summaries of retired automove waves.
 
 Everything here is archive-only context. Use `HOW_TO_ITERATE_ON_AUTOMOVE.md` for the live workflow and `docs/automove-knowledge.md` for durable rules that still matter.
 
+## 2026-05-31 Phase-Gated Context Composite No-Go
+
+- A test-only `frontier_pro_v4_phase_gated_context` probe was built and then pruned from the active sweep surface. It combined existing reset policies behind variant/side/phase gates and a small number of exact FEN gates to test whether the reset portfolio could cover sampled and active dashboard rows at all.
+- The probe eventually reached dashboard scout shape: structural scout log `target/experiment-runs/frontier_pro_v4_phase_gated_context/20260531-181454_pro_promotion_dashboard_frontier_pro_v4_phase_gated_context.log` ended `PRO_PROMOTION_DASHBOARD_STOPLIGHT label=promotable_shape classification=promotable_scout panels=2 max_candidate_avg_ms=211.16` and `AUTOMOVE_STRUCTURAL_SCOUT_DECISION promotion_decision=confirm_before_promotion`.
+- The unfiltered dashboard evidence before confirm was strong but not source permission: sampled shipping duels passed strict gates (`vs_shipping_pro 11-1`, `vs_shipping_normal 11-1`, `vs_shipping_fast 12-0`) and active blockers passed directional gates (`6-0` in Pro, Normal, and Fast), with max dashboard average around `205-213ms`.
+- Confirmation failed all-variant breadth. Confirm log `target/experiment-runs/frontier_pro_v4_phase_gated_context/20260531-183319_pro_profile_sweep_frontier_pro_v4_phase_gated_context.log` had `duel_passes=false` for all budgets: Pro `15-9` (`win_rate=0.6250`), Normal `13-11` (`0.5417`), and Fast `19-5` (`0.7917`).
+- The all-variant failures were broad, not a single residual row: Pro missed swapped, offset, center-spoke, alternating, inner-wedge, outer-wedge, and bent-center; Normal missed offset, center-spoke, alternating, inner-wedge, outer-wedge, bent-center, outer-edge, split-flank, and corner-chain; Fast missed Classic, swapped, center-spoke, outer-wedge, and bent-center.
+- Durable outcome: a static phase/variant/exact-FEN selector can synthesize a dashboard `promotable_scout` from the reset portfolio, but it does not produce a promotable Pro mode. Dashboard shape alone is insufficient; all-variant confirm must pass, and exact-FEN/policy-label composites remain diagnostic-only no-source evidence.
+
+## 2026-05-31 Root-Input-Goal And Sampled/Active Corpus No-Source
+
+- Retained postprocess-only tooling now emits first-divergence move-goal axes and a root-pool `root_input_goal` field with `family`/`progress`/`path` compounds. These fields describe move intent by target emptiness, home-row progress, center progress, row band, and lane bucket.
+- Active Fast root-pool structural scout over `frontier_pro_v2_guarded` stayed no-source: dashboard was `not_promising`, outcome postprocess ended `corpus_decision=postprocess_only`, `route_permission=postprocess_only`, `root_pool_decision=fragmented_repeated_root_pool_signal`, `guarded_delta_decision=fragmented_repeated_root_pool_guarded_delta`, and `workbench_source_permission=no_source`.
+- Root-input-goal did not repair the root-pool blocker. The only clean repeated root-input vector was `path=lower_unlisted` with `empty_target|away_home1|closer_center1`, and it was the same active Fast no-selected-followup shape that failed sampled dashboards.
+- Full sampled Pro outcome corpus over the reset portfolio produced oracle coverage but no source: `total_games=12`, `candidate_any_wins=12`, `candidate_only_wins=5`, `baseline_wins=7`, `no_policy_wins=0`, `corpus_decision=no_source`, `root_pool_decision=singleton_root_pool_signal`, and `guarded_delta_decision=fragmented_repeated_root_pool_guarded_delta`.
+- Widened active Fast corpus also stayed no-source: `total_games=6`, `candidate_only_wins=4`, `baseline_wins=2`, `corpus_decision=no_source`, `route_permission=missing_recommendation`, `source_candidate_rollups=0`, and candidate-bearing axes were blocked by baseline-save risk, fragmentation, singleton pressure, or future-only evidence.
+- Sampled Fast corpus briefly produced two inspect-only rollups (`axis=decision_timing ply_bucket=ply0_7 color=black turn_bucket=turn0_2 mons_moves=mons1 can_action=false can_mana=true` and one matching baseline-goal row), but cross-checking Pro showed a center-spoke black baseline-save risk for the same raw early-black shape. It is not runtime source.
+- Failed temporary candidates `frontier_pro_v4_lower_safe_mana_tempo` and `frontier_pro_v4_guarded_lower_safe_mana_tempo` were pruned. The former sampled Pro result was `7-5` with weak confidence and the guarded version collapsed to `1-11`.
+- Durable outcome: keep move-goal/root-input-goal fields as diagnostics, not source. The reset portfolio has enough oracle coverage to build exact composites, but no repeated low-fragmentation mechanism currently separates wins from guarded saves across sampled, active, and all-variant evidence.
+
 ## Drainer-Pressure ProV4 Probe
 
 - Temporary test-only candidate source was cut and removed in the same session.

@@ -848,6 +848,24 @@ fn pro_promotion_dashboard_panel_specs() -> Vec<ProPromotionDashboardPanelSpec> 
     ]
 }
 
+fn pro_policy_matrix_panel_specs(panel_filter: &[String]) -> Vec<ProPromotionDashboardPanelSpec> {
+    let mut panels = pro_promotion_dashboard_panel_specs();
+    let include_all_variants = env_bool("SMART_PRO_POLICY_MATRIX_INCLUDE_ALL_VARIANTS_PANEL")
+        .unwrap_or(false)
+        || panel_filter.iter().any(|token| token == "all_variants");
+    if include_all_variants {
+        panels.push(ProPromotionDashboardPanelSpec {
+            label: "all_variants",
+            variant_policy: "all",
+            variants: "",
+            default_repeats: 1,
+            default_games: 12,
+            seed_tag: "pro_profile_all_variant_scout_v1",
+        });
+    }
+    panels
+}
+
 fn with_pro_promotion_dashboard_panel<T>(
     panel: ProPromotionDashboardPanelSpec,
     f: impl FnOnce() -> T,
@@ -20111,7 +20129,7 @@ fn smart_automove_pro_policy_matrix_probe() {
         "pro policy matrix: baseline={} candidates={} panels={} duels={} max_plies={} state_limit={:?} total_state_limit={:?} include_decision_probe={} include_mechanism_class={} include_portfolio_mechanism_class={} include_corpus_records={} include_pro_v4_root_pool={} pro_v4_root_pool_record_limit={} pro_v4_root_pool_root_limit={} global_only={} record_axis_filter={}",
         baseline.id,
         candidate_ids,
-        pro_promotion_dashboard_panel_specs()
+        pro_policy_matrix_panel_specs(&panel_filter)
             .into_iter()
             .filter(|panel| pro_sweep_filter_allows(&panel_filter, panel.label))
             .map(|panel| panel.label)
@@ -20152,7 +20170,7 @@ fn smart_automove_pro_policy_matrix_probe() {
     let mut total_states_seen = 0usize;
     let mut pro_v4_root_pool_records_printed = 0usize;
 
-    'panels: for panel in pro_promotion_dashboard_panel_specs()
+    'panels: for panel in pro_policy_matrix_panel_specs(&panel_filter)
         .into_iter()
         .filter(|panel| pro_sweep_filter_allows(&panel_filter, panel.label))
     {

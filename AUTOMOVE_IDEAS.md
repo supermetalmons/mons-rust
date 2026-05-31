@@ -16,6 +16,10 @@ Use `HOW_TO_ITERATE_ON_AUTOMOVE.md` for workflow, `docs/automove-major-reset-pla
 
 ## Latest No-Source Summary
 
+- 2026-05-31 `frontier_pro_v4_phase_gated_context` was built as a test-only exact phase/context composite and then pruned. It reached `promotable_scout` dashboard shape (`sampled`: Pro `11-1`, Normal `11-1`, Fast `12-0`; `active_blockers`: Pro/Normal/Fast all `6-0`; max dashboard average `~213ms`) but failed `--confirm` all-variant breadth: Pro `15-9`, Normal `13-11`, Fast `19-5`, all `duel_passes=false`.
+- The phase-gated composite is not runtime source and must not be reopened as a direct target. It proved the reset portfolio can be stitched into sampled/active dashboard coverage, but exact FEN / policy-label routing did not generalize to all current variants.
+- 2026-05-31 move-goal and root-input-goal postprocess fields were added as diagnostics. Active Fast, full sampled Pro, widened active Fast, sampled Normal, sampled Fast, and active Pro outcome corpora still produced no runtime source permission: decisions stayed `no_source`, `postprocess_only`, `baseline_save_risk`, `coverage_gap`, singleton root-pool pressure, or fragmented/contaminated root-pool signals.
+- The only sampled Fast inspect-only source candidate (`decision_timing ply0_7 black turn0_2 mons1 can_action=false can_mana=true`, plus a matching baseline-goal row) became unsafe after Pro cross-check because the same early-black raw shape had a center-spoke black baseline-save risk.
 - 2026-05-18 first-divergence local-pressure postprocess over the active Fast outcome-corpus produced no source permission. The dashboard stayed `not_promising` for `frontier_pro_v2_guarded` (`7-5`, `win_rate=0.5833`, `confidence=0.6128`, `129.45ms`), and postprocess ended `corpus_decision=postprocess_only`, `route_permission=postprocess_only`, `source_candidate_axis_count=0`, `blocked_candidate_axis_count=193`, `source_permission=no_source`.
 - Local-pressure axes are retained as source-time corpus evidence only: `first_move_candidate_target_pressure focus=empty_target target=supported;own=count1;opp=count0` repeated across two candidate-better states but also had one same-outcome joined state and fragmented across four policies, three branches, and six first-move pairs. The cleaner `first_move_preferred_target_pressure` and `first_move_pressure_delta candidate_less_pressured` buckets still fragmented by policy, branch, and first-move pair.
 - 2026-05-18 portfolio-support outcome postprocess over the active Fast outcome-corpus produced no source permission. The dashboard stayed `not_promising` for `frontier_pro_v2_guarded` (`7-5`, `win_rate=0.5833`, `confidence=0.6128`, `141.21ms`), and postprocess ended `corpus_decision=postprocess_only`, `route_permission=postprocess_only`, `source_candidate_axis_count=0`, `blocked_candidate_axis_count=170`, `source_permission=no_source`.
@@ -59,7 +63,8 @@ frontier_pro_v2_no_late_black_fallback,
 frontier_pro_v2_head_rerank,
 frontier_pro_v2_no_spirit_family,
 frontier_pro_v2_no_mid_tactical_guard,
-frontier_pro_v2_expansion_224
+frontier_pro_v2_expansion_224,
+frontier_pro_v4_phase_gated_context
 ```
 
 ## Next Command Sequence
