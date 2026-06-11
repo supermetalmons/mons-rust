@@ -4,6 +4,59 @@ This file keeps only short summaries of retired automove waves.
 
 Everything here is archive-only context. Use `HOW_TO_ITERATE_ON_AUTOMOVE.md` for the live workflow and `docs/automove-knowledge.md` for durable rules that still matter.
 
+## 2026-06-11 Targeted Arbitration ProV4 No-Go
+
+- A test-only `frontier_pro_v4_targeted_arbitration` scout was built and pruned from the active sweep surface. It preserved the guarded Pro wrapper by default, then stitched in measured sampled-row repairs: an inner-wedge early-white raw repair, black/white shipping-save turn-shape gates, a forward-bridge Pro oracle root, and three sampled Normal oracle roots.
+- The initial shipping/raw version reached only sampled Pro `9-3`; narrowing raw to inner-wedge and adding the alternating white shipping repair moved it to `10-2`. Replacing the forward-bridge white turn-5 shipping fallback with the oracle root `l10,0;l9,1` moved sampled Pro to `11-1`, with forward-bridge `4-0`.
+- That Pro-fixed version failed sampled Normal at `9-3`. Decision records showed three singleton nonwins across corner-chain white turn 3, forward-bridge white turn 3, and outer-edge black turn 2, with max branch/context/pair counts of `1`. Forced-root oracle showed winners in each row, but they split across top-rank SpiritImpact, adjacent ManaTempo tie-breaks, and top-rank early black ManaTempo.
+- A stitched version with those three Normal oracle roots fixed sampled Normal to `12-0`, while preserving sampled Pro `11-1`. It then failed sampled Fast hard: `5-7`, `win_rate=0.4167`, `confidence=0.0000`, candidate average `255.29ms`, and `PRO_PROMOTION_DASHBOARD_STOPLIGHT label=not_promising`.
+- Fast weaknesses were broad: `center_spoke_mana_rows` `0-2`, `corner_chain_mana_rows` `0-2`, and split rows in `offset_arc_mana_rows`, `inner_wedge_mana_rows`, and `forward_bridge_mana_rows`.
+- Durable outcome: direct sampled-row stitching can force Pro and Normal dashboard passes, but it is not promotable and rotates failures into Fast. Do not promote or reopen targeted arbitration, sampled oracle first-move patches, or approved-vs-ordered root tie-break patches without a new below-fragmented measured root feature.
+
+## 2026-06-11 Adaptive Reply-Progress ProV4 No-Go
+
+- A test-only `frontier_pro_v4_adaptive_reply_progress` probe was built and pruned from the active sweep surface. It preserved the guarded wrapper and only considered overrides after `frontier_execute`.
+- The probe compared the guarded selected root against scored roots using reply floor, spirit follow-up floor, safety, setup gain, root rank, score, and primary utility. It had two branches: safe mana-progress over unsafe or over-eager roots, and SpiritImpact over safe progress when setup evidence and reply floor competed.
+- The sampled dashboard killed it immediately: Pro vs shipping Pro was `6-6`, `win_rate=0.5000`, `confidence=0.0000`, candidate average `229.66ms`, and `PRO_PROMOTION_DASHBOARD_STOPLIGHT label=not_promising`.
+- Branch counts showed the mechanism was too broad: `adaptive_reply_progress_safety` fired `148` times, while `adaptive_reply_progress_spirit` fired only `3` times. Weak sampled rows were `inner_wedge_mana_rows` `0-2`, plus split `center_spoke_mana_rows`, `alternating_mana_rows`, and `forward_bridge_mana_rows`.
+- Durable outcome: the active-Fast exact-pressure conflict is not a simple safe-progress-vs-SpiritImpact balancing rule. Broad safety overrides swamp sampled Pro; any future attempt needs a new discriminator before this family is worth source work.
+
+## 2026-06-11 Active Fast Outcome-Corpus No-Source Refresh
+
+- The documented bounded active-blocker structural scout was rerun over `frontier_pro_v2_guarded` against `vs_shipping_fast`. The sampled dashboard remained weak: `7-5`, `win_rate=0.5833`, `confidence=0.6128`, candidate average `136.82ms`, and `PRO_PROMOTION_DASHBOARD_STOPLIGHT label=not_promising`.
+- Outcome postprocess over the bounded scout ended `corpus_decision=postprocess_only`, `source_decision=no_runtime_source`, `source_candidate_rollups=0`, and `source_blocker kind=fragmented_routes` with `clean_fragmented_routes=7` and `clean_low_fragmentation_routes=0`.
+- The active Fast corpus was widened to eight reset policies with state and aggregate limits. It had oracle coverage (`total_games=6`, `candidate_any_wins=6`, `candidate_only_wins=4`, `baseline_wins=2`, `no_policy_wins=0`) but still ended `postprocess_only` with `source_candidate_rollups=0`, `blocked_candidate_rollups=8`, `clean_fragmented_routes=12`, and `clean_low_fragmentation_routes=0`.
+- The previously tempting exact-pressure class repeated more strongly in the widened run (`class=candidate_only_win axis=exact_pressure window=window0 deny=deny0 attack=false drainer_safety=safe`), but the same class also carried baseline-better saves, so it is a baseline-save-risk route.
+- The best clean rows were route/role labels such as selected/pre-accept/legacy transitions and no-selected-followup lower-considered progress. They stayed fragmented by candidate policy, branch, or first-move pair, so they remain diagnostics only.
+- Durable outcome: active Fast still has reset-portfolio oracle coverage, but not source permission. The next serious attempt needs a new below-policy measured root feature; do not promote from exact-pressure, role, policy, branch, or first-move labels.
+
+## 2026-06-11 Sampled Normal Outcome-Corpus No-Source
+
+- A bounded sampled Normal outcome corpus over the reset portfolio also had oracle coverage but no source permission: `total_games=6`, `candidate_any_wins=6`, `candidate_only_wins=4`, `shared_wins=2`, `baseline_wins=2`, and `no_policy_wins=0`.
+- The global stoplight repeated one mechanism class, `axis=exact_timing color=white turn_bucket=turn3_4 mons_moves=mons0 can_action=true can_mana=true opp_win=false`, with four candidate-only games. Postprocess still recommended more outcome corpus work rather than source because the best clean route covered only two states and fragmented across two candidate policies and two first-move pairs.
+- Workbench source permission stayed `no_source`. Source status counts were dominated by `no_candidate_signal=251`, `fragmented_no_source=115`, `singleton_non_regressing=99`, `baseline_save_risk=38`, and `future_only_no_source=16`.
+- The strongest baseline-save risk came from advisor/reply-guard rows, and active Fast already showed nearby exact-timing/exact-pressure baseline-save risk. This rules out a broad early-white fallback disable or exact-timing selector.
+- Durable outcome: sampled Normal adds confirmation that reset portfolio candidates can find wins, but not a low-fragmentation runtime rule. Exact timing, early-white fallback labels, policy labels, and first-move pairs remain archive-only diagnostics.
+
+## 2026-06-11 Root-Pool Snapshot And Cross-Budget Refresh
+
+- Combining the fresh active Fast and sampled Normal outcome-corpus logs still produced no runtime source: `source_candidate_axis_count=0`, `source_candidate_rollups=0`, `workbench_source_permission=no_source`, and blockers were `singleton_non_regressing`, `baseline_save_risk`, `fragmented_no_source`, or `future_only_no_source`.
+- A bounded active Fast run with `SMART_PRO_POLICY_MATRIX_INCLUDE_PROV4_ROOT_POOL=true` was stopped for cost after partial evidence. Postprocess still reported `root_pool_decision=fragmented_repeated_root_pool_signal`, `root_pool_source_permission=no_source`, `guarded_delta_decision=fragmented_repeated_root_pool_guarded_delta`, and `guarded_delta_source_permission=no_source`.
+- Root-pool counts confirmed no low-fragmentation candidate signal: `low_fragmentation_repeated_candidate_signal_count=0`, `low_fragmentation_repeated_candidate_delta_signal_count=0`, `candidate_only_winning_policy_root_count=12`, `blocker_root_count=14`, and `same_state_blocker_root_count=3`.
+- The repeated root-pool rows were broad safe/lower-unlisted progress shapes such as `family_root_origin_profile=ManaTempo|guarded_scored+policy`, `path_legal_fanout_delta=lower_unlisted|...gain_2_plus`, and `path_step_threat_delta=lower_unlisted|...gain_2_plus`. This overlaps the failed adaptive safe-progress family, not a new sourceable mechanism.
+- A sampled cross-budget check over the reset portfolio was also stopped for cost. Its only emitted record was a one-state `candidate_nonregressing_repair` for `frontier_pro_v3_full_scored_reply_guard` that repaired Fast while Pro still lost, so it did not justify source work.
+- Direct structural-scout dashboard for `frontier_pro_v3_full_scored_reply_guard` killed that hint immediately: sampled Pro was `1-11`, `win_rate=0.0833`, `confidence=0.0000`, candidate average `178.25ms`, and stoplight `not_promising`.
+- Durable outcome: current root-pool and cross-budget surfaces still do not produce a promotable candidate or source permission. Do not retry root-pool safe-progress/lower-unlisted fanout rows or full-scored reply guard as direct candidates without a genuinely new below-fragmented feature.
+
+## 2026-06-11 Safe-Progress Root-Policy ProV4 No-Go
+
+- A test-only `frontier_pro_v4_safe_progress_root_policy` scout was built and pruned from the active sweep surface. It preserved guarded by default, then layered the retained alternating white edge-mana move, a white opening spirit-root override, a black rank-0 mana override, and finally a direct black `forward_bridge_mana_rows` weak-window shipping fallback.
+- The conservative version improved sampled Pro but failed the first gate at `10-2` (`win_rate=0.8333`, `confidence=0.9807`) with `forward_bridge_mana_rows` still split `2-2`.
+- Loosening the forward-bridge weak-window fallback fired once and moved sampled Pro to a strict pass: `11-1`, `win_rate=0.9167`, `confidence=0.9968`, candidate average `196.24ms`. The remaining Pro weak row was still `forward_bridge_mana_rows` at `3-1`.
+- The same sampled dashboard then failed against `shipping_normal`: `8-4`, `win_rate=0.6667`, `confidence=0.8062`, candidate average `252.73ms`. Weak rows were `inner_wedge_mana_rows`, `outer_edge_mana_rows`, `forward_bridge_mana_rows`, and `corner_chain_mana_rows`.
+- Normal decision records stayed fragmented: four regressions across different variants, colors, turns, branches, and first-move pairs. The only repeated axis with more than two games was the broad exact-pressure bucket `window=0 deny=0 attack=false drainer_safety=safe`, which is already retired as source material.
+- Durable outcome: direct root-policy stitching can force a sampled Pro pass, but it is not a promotable Pro mode. Do not promote or reopen this candidate as a variant-scoped weak-window/early-opening selector; a future attempt needs a lower-fragmentation measured root feature before runtime source changes.
+
 ## 2026-05-31 Phase-Gated Context Composite No-Go
 
 - A test-only `frontier_pro_v4_phase_gated_context` probe was built and then pruned from the active sweep surface. It combined existing reset policies behind variant/side/phase gates and a small number of exact FEN gates to test whether the reset portfolio could cover sampled and active dashboard rows at all.
