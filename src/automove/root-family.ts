@@ -1,13 +1,10 @@
 import {
   hasConcreteScoreSurface,
-  type RootEvaluation,
-  type ScoredRootMove,
+  type RootObservation,
 } from "./selector-types.js";
 import { TurnPlanFamily } from "./turn-engine.js";
 
-export function rootFamily(
-  root: ScoredRootMove | RootEvaluation,
-): TurnPlanFamily {
+export function rootFamily(root: RootObservation): TurnPlanFamily {
   if (hasConcreteScoreSurface(root)) {
     return TurnPlanFamily.ImmediateScore;
   }

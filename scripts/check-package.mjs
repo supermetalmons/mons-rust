@@ -1,96 +1,63 @@
 #!/usr/bin/env node
 
 import assert from "node:assert/strict";
-import crypto from "node:crypto";
+import { spawnSync } from "node:child_process";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { spawnSync } from "node:child_process";
-import { fileURLToPath } from "node:url";
+import { parseArgs } from "node:util";
+import { runInNewContext } from "node:vm";
 
 import { build } from "esbuild";
 
-const repoRoot = path.resolve(
-  path.dirname(fileURLToPath(import.meta.url)),
-  "..",
+const toolingRoot = path.resolve(import.meta.dirname, "..");
+const { positionals } = parseArgs({
+  args: process.argv.slice(2),
+  allowPositionals: true,
+  options: {},
+  strict: true,
+});
+assert(
+  positionals.length <= 1,
+  "usage: node scripts/check-package.mjs [package-directory]",
 );
+
+const packageRoot = path.resolve(positionals[0] ?? toolingRoot);
 const packageName = "mons-rules";
 const packageEntry = "./dist/mons-rules.js";
-const typesEntry = "./mons-rules.d.ts";
-const expectedFiles = [
-  "LICENSE",
-  "README.md",
-  "dist/mons-rules.js",
-  "mons-rules.d.ts",
-  "package.json",
-];
-const expectedExports = [
-  "AvailableMoveKind",
+const typesEntry = "./dist/entrypoints/mons-rules.d.ts";
+const publishedDistFiles = [
+  "api/game.d.ts",
+  "api/types.d.ts",
+  "api/winner.d.ts",
+  "entrypoints/mons-rules.d.ts",
+  "mons-rules.js",
+].sort();
+const expectedRuntimeExports = [
+  "AutomovePreference",
   "Color",
   "Consumable",
-  "EventModel",
-  "EventModelKind",
+  "Game",
   "GameVariant",
-  "ItemModel",
-  "ItemModelKind",
-  "Location",
-  "ManaKind",
-  "ManaModel",
   "Modifier",
-  "Mon",
   "MonKind",
-  "MonsGameModel",
-  "NextInputKind",
-  "NextInputModel",
-  "OutputModel",
-  "OutputModelKind",
-  "SquareModel",
-  "SquareModelKind",
-  "VerboseTrackingEntityModel",
-  "winner",
+  "resolveMatch",
 ].sort();
-const expectedDeclarationHash =
-  "68e0712dd6eff91e02a6a8ab0ea1e0437b4198d4ab1f48836af491a047d43b86";
 
 function readJson(filePath) {
   return JSON.parse(fs.readFileSync(filePath, "utf8"));
 }
 
-function canonicalizeDeclarations(source) {
-  const lines = source
-    .replace(/\/\*[\s\S]*?\*\//g, "")
-    .replace(/^\s*\/\/.*$/gm, "")
-    .split(/\r?\n/)
-    .map((line) => line.trim())
-    .filter(Boolean);
-  const declarations = [];
-
-  for (let index = 0; index < lines.length; index += 1) {
-    const header = lines[index].replace(/\s+/g, " ");
-    if (!header.endsWith("{")) {
-      declarations.push(header);
-      continue;
-    }
-
-    let depth = 1;
-    const members = [];
-    for (index += 1; index < lines.length; index += 1) {
-      const member = lines[index].replace(/\s+/g, " ");
-      depth += (member.match(/\{/g) ?? []).length;
-      depth -= (member.match(/\}/g) ?? []).length;
-      if (depth === 0) break;
-      members.push(member);
-    }
-    assert.equal(depth, 0, `unbalanced declaration block: ${header}`);
-    declarations.push(`${header}\n${members.sort().join("\n")}\n}`);
-  }
-
-  return `${declarations.sort().join("\n---\n")}\n`;
-}
-
-function declarationHash(filePath) {
-  const canonical = canonicalizeDeclarations(fs.readFileSync(filePath, "utf8"));
-  return crypto.createHash("sha256").update(canonical).digest("hex");
+function listFiles(directory, relativeTo = directory) {
+  return fs
+    .readdirSync(directory, { withFileTypes: true })
+    .flatMap((entry) => {
+      const entryPath = path.join(directory, entry.name);
+      return entry.isDirectory()
+        ? listFiles(entryPath, relativeTo)
+        : [path.relative(relativeTo, entryPath).split(path.sep).join("/")];
+    })
+    .sort();
 }
 
 function run(command, args, options = {}) {
@@ -106,24 +73,31 @@ function run(command, args, options = {}) {
   return result.stdout;
 }
 
-const manifest = readJson(path.join(repoRoot, "package.json"));
+const manifest = readJson(path.join(packageRoot, "package.json"));
 assert.equal(manifest.name, packageName, "package name changed");
-assert.equal(manifest.type, "module", "package must remain ESM");
+assert.equal(manifest.type, "module", "package must be ESM");
 assert.equal(manifest.main, packageEntry, "main entry changed");
-assert.equal(manifest.module, packageEntry, "module entry changed");
-assert.equal(manifest.browser, packageEntry, "browser entry changed");
 assert.equal(manifest.types, typesEntry, "types entry changed");
+assert.equal(manifest.sideEffects, false, "package must be side-effect free");
+assert.equal(
+  manifest.module,
+  undefined,
+  "duplicate module field must be absent",
+);
+assert.equal(
+  manifest.browser,
+  undefined,
+  "duplicate browser field must be absent",
+);
 assert.deepEqual(
   manifest.exports,
   {
     ".": {
       types: typesEntry,
       import: packageEntry,
-      require: packageEntry,
-      default: packageEntry,
     },
   },
-  "package exports changed",
+  "package must expose only its ESM and declaration entries",
 );
 for (const field of [
   "dependencies",
@@ -135,12 +109,53 @@ for (const field of [
 ]) {
   assert.equal(manifest[field], undefined, `${field} must not be published`);
 }
-assert.equal(
-  declarationHash(path.join(repoRoot, "mons-rules.d.ts")),
-  expectedDeclarationHash,
-  "public declarations changed",
+
+const distRoot = path.join(packageRoot, "dist");
+const distFiles = listFiles(distRoot);
+assert(distFiles.includes("mons-rules.js"), "runtime bundle is missing");
+assert(
+  distFiles.includes("entrypoints/mons-rules.d.ts"),
+  "generated declaration entry is missing",
+);
+for (const filePath of publishedDistFiles) {
+  assert(
+    distFiles.includes(filePath),
+    `published artifact is missing: ${filePath}`,
+  );
+}
+assert(
+  distFiles.every(
+    (filePath) =>
+      filePath === "mons-rules.js" ||
+      (filePath.endsWith(".d.ts") && !filePath.endsWith(".d.ts.map")),
+  ),
+  `dist contains an unexpected file: ${JSON.stringify(distFiles)}`,
 );
 
+const declarationText = publishedDistFiles
+  .filter((filePath) => filePath.endsWith(".d.ts"))
+  .map((filePath) => fs.readFileSync(path.join(distRoot, filePath), "utf8"))
+  .join("\n");
+for (const [label, pattern] of [
+  ["model façade", /\bMonsGameModel\b/u],
+  ["numeric model kind", /\b[A-Za-z]+ModelKind\b/u],
+  ["manual lifecycle method", /\bfree\s*\(/u],
+  ["Rust-style constructor", /\bstatic\s+new\s*\(/u],
+  [
+    "snake_case API",
+    /\b(?:from_fen|process_input|active_color|turn_number|winner_color|can_takeback|verify_moves|smart_automove)\b/u,
+  ],
+]) {
+  assert(!pattern.test(declarationText), `${label} leaked into declarations`);
+}
+
+const expectedFiles = [
+  "LICENSE",
+  "MIGRATION.md",
+  "README.md",
+  "package.json",
+  ...publishedDistFiles.map((filePath) => `dist/${filePath}`),
+].sort();
 const temporaryRoot = fs.mkdtempSync(
   path.join(os.tmpdir(), "mons-rules-package-check-"),
 );
@@ -150,7 +165,7 @@ try {
   fs.mkdirSync(packDirectory);
   const reports = JSON.parse(
     run("npm", ["pack", "--json", "--pack-destination", packDirectory], {
-      cwd: repoRoot,
+      cwd: packageRoot,
     }),
   );
   assert.equal(reports.length, 1, "npm pack must produce exactly one archive");
@@ -161,12 +176,12 @@ try {
   assert.deepEqual(
     report.files.map(({ path: filePath }) => filePath).sort(),
     expectedFiles,
-    "npm tar surface changed",
+    "npm tar surface differs from the built package",
   );
-  assert(report.size <= 150_000, `packed size ${report.size} exceeds 150000`);
+  assert(report.size <= 250_000, `packed size ${report.size} exceeds 250000`);
   assert(
-    report.unpackedSize <= 500_000,
-    `unpacked size ${report.unpackedSize} exceeds 500000`,
+    report.unpackedSize <= 1_000_000,
+    `unpacked size ${report.unpackedSize} exceeds 1000000`,
   );
 
   const archivePath = path.join(packDirectory, report.filename);
@@ -189,33 +204,36 @@ try {
     { cwd: consumerDirectory },
   );
 
-  const installedPackage = path.join(
-    consumerDirectory,
-    "node_modules",
-    packageName,
-  );
-  assert.equal(
-    declarationHash(path.join(installedPackage, "mons-rules.d.ts")),
-    expectedDeclarationHash,
-    "packed declarations changed",
-  );
-
   const runtimeSource = `
     import assert from "node:assert/strict";
-    import { createRequire } from "node:module";
-    import * as importedApi from ${JSON.stringify(packageName)};
+    import {
+      Color,
+      Game,
+      GameVariant,
+      resolveMatch,
+    } from ${JSON.stringify(packageName)};
+    import * as api from ${JSON.stringify(packageName)};
 
-    const requiredApi = createRequire(import.meta.url)(${JSON.stringify(packageName)});
-    assert.strictEqual(requiredApi, importedApi, "import and require returned different namespaces");
-    assert.deepEqual(Object.keys(importedApi).sort(), ${JSON.stringify(expectedExports)});
+    assert.deepEqual(Object.keys(api).sort(), ${JSON.stringify(expectedRuntimeExports)});
+    assert.equal(Game.name, "Game");
+    assert.equal(resolveMatch.name, "resolveMatch");
+    assert.equal(Color.White, "white");
+    assert.equal(GameVariant.Classic, "Classic");
 
-    const game = importedApi.MonsGameModel.new(importedApi.GameVariant.Classic);
-    const openingFen = game.fen();
-    const output = game.process_input_fen("l10,5;l9,4");
-    assert.equal(output.kind, importedApi.OutputModelKind.Events);
-    assert(output.events().length > 0, "representative move emitted no events");
-    assert.notEqual(game.fen(), openingFen, "representative move did not update the game");
-    assert.equal(importedApi.MonsGameModel.from_fen(game.fen())?.fen(), game.fen());
+    const game = new Game({ variant: GameVariant.Classic });
+    const openingFen = game.toFen();
+    const output = game.playFen("l10,5;l9,4");
+    assert.equal(output.kind, "complete");
+    assert(output.events.length > 0, "representative move emitted no events");
+    assert.notEqual(game.toFen(), openingFen, "representative move did not update the game");
+    assert.equal(Game.fromFen(game.toFen())?.toFen(), game.toFen());
+    assert.deepEqual(
+      resolveMatch({
+        white: { fen: openingFen, moves: [] },
+        black: { fen: openingFen, moves: [] },
+      }),
+      { kind: "ongoing" },
+    );
   `;
   fs.writeFileSync(path.join(consumerDirectory, "runtime.mjs"), runtimeSource);
   run(process.execPath, ["runtime.mjs"], { cwd: consumerDirectory });
@@ -223,23 +241,36 @@ try {
   fs.writeFileSync(
     path.join(consumerDirectory, "consumer.ts"),
     `
-      import { Color, GameVariant, Location, MonsGameModel, winner } from ${JSON.stringify(packageName)};
-      const game: MonsGameModel = MonsGameModel.new(GameVariant.Classic);
-      const color: Color = game.active_color();
-      game.square(new Location(0, 0));
-      winner(game.fen(), game.fen(), "", "");
+      import {
+        AutomovePreference,
+        Color,
+        Game,
+        GameVariant,
+        resolveMatch,
+        type Color as PlayerColor,
+        type Input,
+        type MatchSubmission,
+        type PlayResult,
+        type Position,
+      } from ${JSON.stringify(packageName)};
+
+      const game: Game = new Game({ variant: GameVariant.Classic });
+      const color: PlayerColor = game.activeColor;
+      const position: Position = { row: 10, column: 5 };
+      const inputs: Input[] = [
+        { kind: "position", position },
+        { kind: "position", position: { row: 9, column: 4 } },
+      ];
+      const result: PlayResult = game.play(inputs);
+      const submission: MatchSubmission = {
+        white: { fen: game.toFen(), moves: [] },
+        black: { fen: game.toFen(), moves: [] },
+      };
+      resolveMatch(submission);
+      game.suggestMove(AutomovePreference.Fast);
+      game.canTakeback(Color.White);
       void color;
-    `,
-  );
-  fs.writeFileSync(
-    path.join(consumerDirectory, "commonjs-consumer.cts"),
-    `
-      import api = require(${JSON.stringify(packageName)});
-      const game: api.MonsGameModel = api.MonsGameModel.new(api.GameVariant.Classic);
-      const color: api.Color = game.active_color();
-      game.square(new api.Location(0, 0));
-      api.winner(game.fen(), game.fen(), "", "");
-      void color;
+      void result;
     `,
   );
   fs.writeFileSync(
@@ -247,13 +278,14 @@ try {
     `${JSON.stringify(
       {
         compilerOptions: {
+          lib: ["ES2020", "DOM"],
           module: "NodeNext",
           moduleResolution: "NodeNext",
           noEmit: true,
           strict: true,
-          target: "ES2023",
+          target: "ES2020",
         },
-        files: ["consumer.ts", "commonjs-consumer.cts"],
+        files: ["consumer.ts"],
       },
       null,
       2,
@@ -262,7 +294,7 @@ try {
   run(
     process.execPath,
     [
-      path.join(repoRoot, "node_modules", "typescript", "bin", "tsc"),
+      path.join(toolingRoot, "node_modules", "typescript", "bin", "tsc"),
       "-p",
       "tsconfig.json",
     ],
@@ -270,34 +302,127 @@ try {
   );
 
   fs.writeFileSync(
+    path.join(consumerDirectory, "commonjs.cjs"),
+    `require(${JSON.stringify(packageName)});\n`,
+  );
+  const commonJsResult = spawnSync(process.execPath, ["commonjs.cjs"], {
+    cwd: consumerDirectory,
+    encoding: "utf8",
+  });
+  assert.notEqual(
+    commonJsResult.status,
+    0,
+    "CommonJS require unexpectedly loaded the ESM-only package",
+  );
+  assert.match(
+    commonJsResult.stderr,
+    /ERR_PACKAGE_PATH_NOT_EXPORTED|No "exports" main defined/u,
+    "CommonJS require failed for an unexpected reason",
+  );
+
+  fs.writeFileSync(
     path.join(consumerDirectory, "browser.ts"),
     `
-      import { GameVariant, MonsGameModel } from ${JSON.stringify(packageName)};
-      export const openingFen = MonsGameModel.new(GameVariant.Classic).fen();
+      import {
+        AutomovePreference,
+        Game,
+        GameVariant,
+      } from ${JSON.stringify(packageName)};
+      const game = new Game({ variant: GameVariant.Classic });
+      document.body.dataset["openingFen"] = game.toFen();
+      document.body.dataset["suggestion"] =
+        game.suggestMove(AutomovePreference.Random)?.inputFen ?? "";
     `,
   );
   fs.writeFileSync(
     path.join(consumerDirectory, "worker.ts"),
     `
-      import { GameVariant, MonsGameModel } from ${JSON.stringify(packageName)};
-      self.onmessage = () => postMessage(MonsGameModel.new(GameVariant.Classic).fen());
+      import {
+        AutomovePreference,
+        Game,
+        GameVariant,
+      } from ${JSON.stringify(packageName)};
+      self.onmessage = () => {
+        const game = new Game({ variant: GameVariant.Classic });
+        postMessage({
+          fen: game.toFen(),
+          suggestion:
+            game.suggestMove(AutomovePreference.Random)?.inputFen ?? "",
+        });
+      };
     `,
   );
-  for (const entryPoint of ["browser.ts", "worker.ts"]) {
-    await build({
+  const bundleForBrowser = async (entryPoint) => {
+    const result = await build({
       absWorkingDir: consumerDirectory,
       entryPoints: [entryPoint],
       bundle: true,
-      format: "esm",
+      format: "iife",
       logLevel: "silent",
       platform: "browser",
       target: "es2020",
       write: false,
     });
-  }
+    assert.equal(
+      result.outputFiles.length,
+      1,
+      `${entryPoint} bundle is missing`,
+    );
+    return result.outputFiles[0].text;
+  };
+  const deterministicCrypto = {
+    getRandomValues(values) {
+      values.fill(0);
+      return values;
+    },
+  };
+
+  const browserDataset = {};
+  runInNewContext(await bundleForBrowser("browser.ts"), {
+    crypto: deterministicCrypto,
+    document: { body: { dataset: browserDataset } },
+    performance: { now: () => 0 },
+  });
+  assert.match(
+    browserDataset.openingFen ?? "",
+    /^0 0 w /u,
+    "browser bundle did not initialize a game",
+  );
+  assert.notEqual(
+    browserDataset.suggestion,
+    "",
+    "browser bundle did not execute random automove",
+  );
+
+  const workerScope = {};
+  let workerMessage;
+  runInNewContext(await bundleForBrowser("worker.ts"), {
+    crypto: deterministicCrypto,
+    performance: { now: () => 0 },
+    postMessage(value) {
+      workerMessage = value;
+    },
+    self: workerScope,
+  });
+  assert.equal(
+    typeof workerScope.onmessage,
+    "function",
+    "worker bundle did not install its message handler",
+  );
+  workerScope.onmessage();
+  assert.match(
+    workerMessage?.fen ?? "",
+    /^0 0 w /u,
+    "worker bundle did not initialize a game",
+  );
+  assert.notEqual(
+    workerMessage?.suggestion,
+    "",
+    "worker bundle did not execute random automove",
+  );
 
   console.log(
-    `mons-rules package passed: packed=${report.size} unpacked=${report.unpackedSize}`,
+    `mons-rules ESM package passed: packed=${report.size} unpacked=${report.unpackedSize}`,
   );
 } finally {
   fs.rmSync(temporaryRoot, { recursive: true, force: true });

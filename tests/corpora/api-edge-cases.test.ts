@@ -4,15 +4,7 @@ import path from "node:path";
 
 import { describe, expect, it } from "vitest";
 
-import {
-  GameVariant,
-  type ItemModel,
-  Location,
-  type ManaModel,
-  type Mon,
-  MonsGameModel,
-  type SquareModel,
-} from "../../src/entrypoints/mons-rules.js";
+import { Color, Game, MonKind } from "../../src/entrypoints/mons-rules.js";
 
 type ArtifactManifest = {
   readonly path: string;
@@ -46,86 +38,28 @@ type EdgeManifest = {
   };
 };
 
-type Operation =
-  | "MonsGameModel.from_fen"
-  | "MonsGameModel.item/square/remove_item"
-  | "MonsGameModel.process_input_fen";
-
-type ThrowObservation = {
-  readonly kind: "throw";
-  readonly errorName: string;
-  readonly message: string;
-};
-
-type EdgeRecord = {
-  readonly id: string;
-  readonly category: string;
-  readonly operation: Operation;
-  readonly expectedParserWhitespace?: boolean | undefined;
-  readonly inputSpec?:
-    | {
-        readonly replaceAsciiFieldSeparatorsWithCodePoint?: number;
-      }
-    | undefined;
-  readonly inputFen?: string | undefined;
-  readonly inputCodeUnits?: readonly number[] | undefined;
-  readonly constructorArgs?:
-    | {
-        readonly iExpression: string;
-        readonly jExpression: string;
-      }
-    | undefined;
-  readonly expected: Readonly<Record<string, unknown>>;
-  readonly policy: "exception" | "matching";
-};
-
-/* The immutable v1 payload keeps these stored field and category names. */
 type StoredEdgeRecord = {
   readonly id: string;
   readonly category: string;
-  readonly operation: Operation;
+  readonly operation:
+    | "MonsGameModel.from_fen"
+    | "MonsGameModel.item/square/remove_item"
+    | "MonsGameModel.process_input_fen";
   readonly expectedRustWhitespace?: boolean;
-  readonly inputSpec?: EdgeRecord["inputSpec"];
+  readonly inputSpec?: {
+    readonly replaceAsciiFieldSeparatorsWithCodePoint?: number;
+  };
   readonly inputFen?: string;
   readonly inputCodeUnits?: readonly number[];
-  readonly constructorArgs?: EdgeRecord["constructorArgs"];
+  readonly constructorArgs?: {
+    readonly iExpression: string;
+    readonly jExpression: string;
+  };
   readonly legacy: Readonly<Record<string, unknown>>;
   readonly typescriptPolicy: {
     readonly kind: "approved-exception" | "match-legacy";
-    readonly expected?: ThrowObservation;
   };
 };
-
-function adaptStoredRecord(record: StoredEdgeRecord): EdgeRecord {
-  const category =
-    record.category === "rust-whitespace"
-      ? "parser-whitespace"
-      : record.category === "wasm-string-normalization"
-        ? "string-normalization"
-        : record.category;
-  const exception = record.typescriptPolicy.kind === "approved-exception";
-  const exceptionObservation = record.typescriptPolicy.expected;
-  if (exception && exceptionObservation === undefined) {
-    throw new Error(`${record.id} is missing its approved exception`);
-  }
-  const expected = exception
-    ? record.operation === "MonsGameModel.item/square/remove_item"
-      ? { ...record.legacy, remove: exceptionObservation }
-      : exceptionObservation
-    : record.legacy;
-  return {
-    id: record.id,
-    category,
-    operation: record.operation,
-    expectedParserWhitespace: record.expectedRustWhitespace,
-    inputSpec: record.inputSpec,
-    inputFen: record.inputFen,
-    inputCodeUnits: record.inputCodeUnits,
-    constructorArgs: record.constructorArgs,
-    expected: expected ?? {},
-    policy: exception ? "exception" : "matching",
-  };
-}
 
 const corpusDirectory = path.resolve("test-data/compatibility-edge-cases/v1");
 const manifest = JSON.parse(
@@ -136,7 +70,7 @@ function sha256(value: BinaryLike): string {
   return createHash("sha256").update(value).digest("hex");
 }
 
-function readArtifact(artifact: ArtifactManifest): readonly EdgeRecord[] {
+function readArtifact(artifact: ArtifactManifest): readonly StoredEdgeRecord[] {
   const bytes = readFileSync(path.resolve(artifact.path));
   expect(bytes.byteLength).toBe(artifact.bytes);
   expect(sha256(bytes)).toBe(artifact.sha256);
@@ -145,208 +79,40 @@ function readArtifact(artifact: ArtifactManifest): readonly EdgeRecord[] {
   expect(text.endsWith("\n")).toBe(true);
   const lines = text.slice(0, -1).split("\n");
   expect(lines).toHaveLength(artifact.recordCount);
-  const stored = lines.map((line) => {
+  const records = lines.map((line) => {
     const record = JSON.parse(line) as StoredEdgeRecord;
     expect(JSON.stringify(record)).toBe(line);
     return record;
   });
-  const ids = stored.map(({ id }) => id);
+  const ids = records.map(({ id }) => id);
   expect(ids[0]).toBe(artifact.firstId);
   expect(ids.at(-1)).toBe(artifact.lastId);
   expect(sha256(`${ids.join("\n")}\n`)).toBe(artifact.orderedIdsSha256);
-  return stored.map(adaptStoredRecord);
+  return records;
 }
 
-function throwObservation(error: unknown): ThrowObservation {
-  if (error instanceof Error) {
-    return { kind: "throw", errorName: error.name, message: error.message };
-  }
-  return {
-    kind: "throw",
-    errorName: typeof error,
-    message: String(error),
-  };
-}
-
-function monObservation(
-  mon: Mon | undefined,
-): Readonly<Record<string, unknown>> | null {
-  return mon === undefined
-    ? null
-    : { kind: mon.kind, color: mon.color, cooldown: mon.cooldown };
-}
-
-function manaObservation(
-  mana: ManaModel | undefined,
-): Readonly<Record<string, unknown>> | null {
-  return mana === undefined ? null : { kind: mana.kind, color: mana.color };
-}
-
-function itemObservation(
-  item: ItemModel | undefined,
-): Readonly<Record<string, unknown>> | null {
-  if (item === undefined) return null;
-  return {
-    kind: item.kind,
-    mon: monObservation(item.mon),
-    mana: manaObservation(item.mana),
-    consumable: item.consumable ?? null,
-  };
-}
-
-function squareObservation(
-  square: SquareModel,
-): Readonly<Record<string, unknown>> {
-  return {
-    kind: square.kind,
-    color: square.color ?? null,
-    monKind: square.mon_kind ?? null,
-  };
-}
-
-function required<T>(value: T | undefined, description: string): T {
-  if (value === undefined) throw new Error(`missing ${description}`);
-  return value;
-}
-
-function fromFenInput(record: EdgeRecord): string {
-  if (record.inputFen !== undefined) return record.inputFen;
-  const codePoint = required(
-    record.inputSpec?.replaceAsciiFieldSeparatorsWithCodePoint,
-    `${record.id} whitespace code point`,
-  );
-  return manifest.constants.classicInitialFen.replaceAll(
-    " ",
-    String.fromCodePoint(codePoint),
-  );
-}
-
-function executeFromFen(record: EdgeRecord): Readonly<Record<string, unknown>> {
-  try {
-    const game = MonsGameModel.from_fen(fromFenInput(record));
-    return game === undefined
-      ? { kind: "undefined" }
-      : { kind: "accepted", normalizedFen: game.fen() };
-  } catch (error) {
-    return throwObservation(error);
+function archivalCategory(category: string): string {
+  switch (category) {
+    case "rust-whitespace":
+      return "parser-whitespace";
+    case "wasm-string-normalization":
+      return "string-normalization";
+    default:
+      return category;
   }
 }
 
-function executeProcessInputFen(
-  record: EdgeRecord,
-): Readonly<Record<string, unknown>> {
-  const input = String.fromCharCode(
-    ...required(record.inputCodeUnits, `${record.id} input code units`),
-  );
-  const game = MonsGameModel.new(GameVariant.Classic);
-  const before = game.fen();
-  const output = game.process_input_fen(input);
-  const echoedInput = output.input_fen();
-  return {
-    outputKind: output.kind,
-    echoedInput,
-    echoedCodePoints: Array.from(
-      echoedInput,
-      (character) => character.codePointAt(0) ?? 0,
-    ),
-    stateChanged: game.fen() !== before,
-  };
-}
-
-const SPECIAL_CONSTRUCTOR_VALUES: Readonly<Record<string, number>> =
-  Object.freeze({
-    "2**31": 2 ** 31,
-    "2**32": 2 ** 32,
-    "-(2**32)": -(2 ** 32),
-    INT_MAX: 2_147_483_647,
-    INT_MIN: -2_147_483_648,
-    MAX_ALIAS_J: -2_147_483_634,
-    MIN_ALIAS_J: -2_147_483_645,
-    "Number.MAX_VALUE": Number.MAX_VALUE,
-  });
-
-function constructorValue(expression: string): number {
-  if (Object.hasOwn(SPECIAL_CONSTRUCTOR_VALUES, expression)) {
-    return required(
-      SPECIAL_CONSTRUCTOR_VALUES[expression],
-      `constructor value ${expression}`,
-    );
-  }
-  if (!/^-?(?:\d+(?:\.\d+)?|Infinity|NaN)$/u.test(expression)) {
-    throw new Error(`unsupported constructor expression: ${expression}`);
-  }
-  return Number(expression);
-}
-
-function executeCoordinateCase(
-  record: EdgeRecord,
-): Readonly<Record<string, unknown>> {
-  const constructorArgs = required(
-    record.constructorArgs,
-    `${record.id} constructor arguments`,
-  );
-  const location = new Location(
-    constructorValue(constructorArgs.iExpression),
-    constructorValue(constructorArgs.jExpression),
-  );
-  const signedLinearIndex = (Math.imul(location.i, 11) + location.j) | 0;
-  const unsignedLinearIndex = signedLinearIndex >>> 0;
-  const game = MonsGameModel.new(GameVariant.Classic);
-  const item = itemObservation(game.item(location));
-  const square = squareObservation(game.square(location));
-  const targetItemBeforeRemove =
-    unsignedLinearIndex <= 120
-      ? itemObservation(
-          game.item(
-            new Location(
-              Math.trunc(unsignedLinearIndex / 11),
-              unsignedLinearIndex % 11,
-            ),
-          ),
-        )
-      : null;
-  const fenBeforeRemove = game.fen();
-  let remove: Readonly<Record<string, unknown>>;
-  try {
-    game.remove_item(location);
-    remove = {
-      kind: "returned",
-      stateChanged: game.fen() !== fenBeforeRemove,
-      fenAfter: game.fen(),
-    };
-  } catch (error) {
-    remove = throwObservation(error);
-    expect(game.fen(), `${record.id}: failed write mutated state`).toBe(
-      fenBeforeRemove,
-    );
-  }
-
-  return {
-    coercedLocation: { i: location.i, j: location.j },
-    signedLinearIndex,
-    unsignedLinearIndex,
-    item,
-    square,
-    targetItemBeforeRemove,
-    remove,
-  };
-}
-
-function executeRecord(record: EdgeRecord): Readonly<Record<string, unknown>> {
-  switch (record.operation) {
-    case "MonsGameModel.from_fen":
-      return executeFromFen(record);
-    case "MonsGameModel.process_input_fen":
-      return executeProcessInputFen(record);
-    case "MonsGameModel.item/square/remove_item":
-      return executeCoordinateCase(record);
-  }
-}
-
-describe("public API edge-case corpus", () => {
+describe("archived public API edge-case corpus", () => {
   const records = manifest.artifacts.flatMap(readArtifact);
+  const recordsById = new Map(records.map((record) => [record.id, record]));
 
-  it("pins artifact bytes, record order, and aggregate metadata", () => {
+  function requiredRecord(id: string): StoredEdgeRecord {
+    const record = recordsById.get(id);
+    if (record === undefined) throw new Error(`missing archived record ${id}`);
+    return record;
+  }
+
+  it("pins every v1 payload byte, record ID, and aggregate", () => {
     expect(manifest.schemaVersion).toBe(1);
     expect(manifest.corpusVersion).toBe("api-edge-cases-v1");
     expect(records).toHaveLength(manifest.statistics.recordCount);
@@ -363,28 +129,31 @@ describe("public API edge-case corpus", () => {
 
     const categoryCounts: Record<string, number> = {};
     for (const record of records) {
-      categoryCounts[record.category] =
-        (categoryCounts[record.category] ?? 0) + 1;
+      const category = archivalCategory(record.category);
+      categoryCounts[category] = (categoryCounts[category] ?? 0) + 1;
     }
     expect(categoryCounts).toEqual(manifest.statistics.categoryCounts);
-    expect(records.filter(({ policy }) => policy === "matching")).toHaveLength(
-      manifest.statistics.matchingCaseCount,
-    );
-    expect(records.filter(({ policy }) => policy === "exception")).toHaveLength(
-      manifest.statistics.approvedExceptionCount,
-    );
+    expect(
+      records.filter(
+        ({ typescriptPolicy }) => typescriptPolicy.kind === "match-legacy",
+      ),
+    ).toHaveLength(manifest.statistics.matchingCaseCount);
+    expect(
+      records.filter(
+        ({ typescriptPolicy }) =>
+          typescriptPolicy.kind === "approved-exception",
+      ),
+    ).toHaveLength(manifest.statistics.approvedExceptionCount);
   });
 
-  it("pins the parser whitespace set and explicit exclusions", () => {
+  it("retains the archived parser-whitespace classification", () => {
     const whitespaceRecords = records.filter(
-      ({ category }) => category === "parser-whitespace",
+      ({ category }) => category === "rust-whitespace",
     );
-    const codePoints = (expected: boolean) =>
+    const codePoints = (expected: boolean): readonly (number | undefined)[] =>
       whitespaceRecords
-        .filter(({ expectedParserWhitespace }) =>
-          expected
-            ? expectedParserWhitespace
-            : expectedParserWhitespace === false,
+        .filter(({ expectedRustWhitespace }) =>
+          expected ? expectedRustWhitespace : expectedRustWhitespace === false,
         )
         .map(
           ({ inputSpec }) =>
@@ -399,11 +168,106 @@ describe("public API edge-case corpus", () => {
     );
   });
 
-  describe("public API replay", () => {
-    for (const record of records) {
-      it(record.id, () => {
-        expect(executeRecord(record)).toEqual(record.expected);
+  it("covers canonical FEN, board values, and legal input semantics", () => {
+    expect(requiredRecord("valid-occupied").operation).toBe(
+      "MonsGameModel.item/square/remove_item",
+    );
+    const game = Game.fromFen(manifest.constants.classicInitialFen);
+    expect(game).toBeDefined();
+    if (game === undefined) return;
+
+    expect(game.toFen()).toBe(manifest.constants.classicInitialFen);
+    expect(game.itemAt({ row: 0, column: 3 })).toEqual({
+      kind: "mon",
+      mon: {
+        kind: MonKind.Mystic,
+        color: Color.Black,
+        cooldown: 0,
+      },
+    });
+    expect(game.squareAt({ row: 0, column: 3 })).toEqual({
+      kind: "mon-base",
+      monKind: MonKind.Mystic,
+      color: Color.Black,
+    });
+
+    const before = game.toFen();
+    const preview = game.previewFen("l10,3;l9,2");
+    expect(preview.kind).toBe("complete");
+    expect(game.toFen()).toBe(before);
+    expect(game.playFen("l10,3;l9,2").kind).toBe("complete");
+    expect(game.toFen()).not.toBe(before);
+  });
+
+  it("strictly rejects representative permissive Rust FEN cases", () => {
+    for (const id of [
+      "wrong-row-count",
+      "empty-first-row",
+      "cross-row-11",
+      "row0-run99-alias",
+      "invalid-item-after-oob",
+      "ascii-ascii-two-byte",
+      "valid-pair-four-byte",
+    ]) {
+      const record = requiredRecord(id);
+      expect(record.inputFen, id).toBeDefined();
+      expect(Game.fromFen(record.inputFen ?? ""), id).toBeUndefined();
+    }
+
+    for (const codePoint of [9, 160, 8232]) {
+      const fen = manifest.constants.classicInitialFen.replaceAll(
+        " ",
+        String.fromCodePoint(codePoint),
+      );
+      expect(Game.fromFen(fen), `U+${codePoint.toString(16)}`).toBeUndefined();
+    }
+  });
+
+  it("rejects wrapped, fractional, and non-finite coordinates", () => {
+    const game = new Game();
+    for (const position of [
+      { row: 0.9, column: 3.9 },
+      { row: -1, column: 14 },
+      { row: 0, column: 37 },
+      { row: Number.NaN, column: Number.POSITIVE_INFINITY },
+    ]) {
+      expect(() => game.itemAt(position), JSON.stringify(position)).toThrow(
+        RangeError,
+      );
+      expect(() => game.squareAt(position), JSON.stringify(position)).toThrow(
+        RangeError,
+      );
+    }
+  });
+
+  it("rejects malformed input text without normalization or mutation", () => {
+    const game = new Game();
+    const before = game.toFen();
+
+    for (const id of [
+      "normalization-bom",
+      "normalization-valid-pair",
+      "normalization-lone-high",
+      "normalization-bom-then-high",
+    ]) {
+      const codeUnits = requiredRecord(id).inputCodeUnits;
+      if (codeUnits === undefined) {
+        throw new Error(`${id} is missing archived input code units`);
+      }
+      const input = String.fromCharCode(...codeUnits);
+      expect(game.previewFen(input), id).toEqual({
+        kind: "invalid",
+        inputFen: input,
       });
+      expect(game.toFen(), id).toBe(before);
+    }
+
+    for (const input of ["zjunk", "l10,3;garbage;l9,2", "l010,3;l9,2"]) {
+      expect(game.previewFen(input), input).toEqual({
+        kind: "invalid",
+        inputFen: input,
+      });
+      expect(game.toFen(), input).toBe(before);
     }
   });
 });

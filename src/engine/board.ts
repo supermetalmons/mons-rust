@@ -1,7 +1,7 @@
 import {
   Color,
   MonKind,
-  cloneItem,
+  immutableItem,
   isMonFainted,
   itemEquals,
   itemMon,
@@ -21,137 +21,95 @@ import {
 import {
   ALL_LOCATIONS,
   BOARD_CELLS,
-  checkedWrappedLocationIndex,
-  cloneLocation,
+  assertValidLocation,
   fromLocationIndex,
   isValidLocation,
   locationIndex,
   type Location,
 } from "./geometry.js";
 
-const BOARD_ITEMS_INITIALIZATION = Symbol();
+type BoardEntry = readonly [Location, Item];
 
-type OccupiedBoardEntry = readonly [Location, Item];
-
-type BoardItemsInitialization = {
-  readonly [BOARD_ITEMS_INITIALIZATION]:
-    | {
-        readonly kind: "deep";
-        readonly items: readonly (Item | undefined)[];
-      }
-    | {
-        readonly kind: "simulation";
-        readonly items: readonly (Item | undefined)[];
-        readonly occupiedEntries: readonly OccupiedBoardEntry[];
-      };
+type BoardStorage = {
+  readonly itemSlots: (Item | undefined)[];
+  occupiedEntries: readonly BoardEntry[] | undefined;
 };
 
-function cloneBoardItems(
-  items: readonly (Item | undefined)[],
-): (Item | undefined)[] {
-  return Array.from({ length: BOARD_CELLS }, (_, index) => {
-    const item = items[index];
-    return item === undefined ? undefined : cloneItem(item);
-  });
-}
-
 export class Board {
-  private readonly itemSlots: (Item | undefined)[];
-  private occupiedEntries: readonly OccupiedBoardEntry[] | undefined;
-  readonly #gameVariant: GameVariant;
+  protected readonly storage: BoardStorage;
 
-  public constructor(variant?: GameVariant);
-  /** @internal Direct initialization for value-preserving board copies. */
   public constructor(
-    variant: GameVariant,
-    // eslint-disable-next-line @typescript-eslint/unified-signatures -- This internal overload is stripped from declarations, preserving the public constructor signature.
-    initialization: BoardItemsInitialization,
-  );
-  public constructor(
-    variant: GameVariant = DEFAULT_GAME_VARIANT,
-    initialization?: BoardItemsInitialization,
+    public readonly variant: GameVariant = DEFAULT_GAME_VARIANT,
+    items?: readonly (Item | undefined)[],
+    sharedStorage?: BoardStorage,
+    itemsAreImmutable = false,
   ) {
-    const value = initialization?.[BOARD_ITEMS_INITIALIZATION];
-    this.itemSlots =
-      value === undefined
-        ? initialItemsForVariant(variant)
-        : value.kind === "deep"
-          ? cloneBoardItems(value.items)
-          : [...value.items];
-    this.#gameVariant = variant;
-    this.occupiedEntries =
-      value?.kind === "simulation" ? value.occupiedEntries : undefined;
+    if (sharedStorage !== undefined) {
+      this.storage = sharedStorage;
+      return;
+    }
+    const initialItems = items ?? initialItemsForVariant(variant);
+    if (initialItems.length !== BOARD_CELLS) {
+      throw new RangeError(`board requires exactly ${BOARD_CELLS} item slots`);
+    }
+    this.storage = {
+      itemSlots:
+        items === undefined || itemsAreImmutable
+          ? [...initialItems]
+          : initialItems.map((item) =>
+              item === undefined ? undefined : immutableItem(item),
+            ),
+      occupiedEntries: undefined,
+    };
   }
 
   public get items(): readonly (Item | undefined)[] {
-    return [...this.itemSlots];
+    return [...this.storage.itemSlots];
   }
 
   public static fromItems(
     items: readonly (Item | undefined)[],
     variant: GameVariant,
-  ): Board {
-    return new Board(variant, {
-      [BOARD_ITEMS_INITIALIZATION]: { kind: "deep", items },
-    });
+  ): MutableBoard {
+    return new MutableBoard(variant, items);
   }
 
-  public clone(): Board {
-    return Board.fromItems(this.itemSlots, this.#gameVariant);
+  /** Create an independently mutable board with shared immutable values. */
+  public fork(): MutableBoard {
+    const fork = new MutableBoard(
+      this.variant,
+      this.storage.itemSlots,
+      undefined,
+      true,
+    );
+    fork.storage.occupiedEntries = this.getOccupiedEntries();
+    return fork;
   }
 
-  /** @internal Shallow value copy for trusted simulation paths. */
-  public cloneForSimulation(): Board {
-    return new Board(this.#gameVariant, {
-      [BOARD_ITEMS_INITIALIZATION]: {
-        kind: "simulation",
-        items: this.itemSlots,
-        occupiedEntries: this.getOccupiedEntries(),
-      },
-    });
-  }
-
-  public removeItem(at: Location): void {
-    this.itemSlots[checkedWrappedLocationIndex(at)] = undefined;
-    this.occupiedEntries = undefined;
-  }
-
-  /** Store a value-copy so callers cannot mutate the board through an item. */
-  public put(item: Item, at: Location): void {
-    this.itemSlots[checkedWrappedLocationIndex(at)] = cloneItem(item);
-    this.occupiedEntries = undefined;
-  }
-
-  /** Internal live item reference. Public wrappers must clone before returning it. */
-  public item(at: Location): Item | undefined {
+  public get(at: Location): Item | undefined {
     if (!isValidLocation(at)) {
       return undefined;
     }
-    return this.itemSlots[locationIndex(at)];
+    return this.storage.itemSlots[locationIndex(at)];
   }
 
-  public square(at: Location): Square {
-    return isValidLocation(at)
-      ? squareAtForVariant(at, this.#gameVariant)
-      : { kind: "regular" };
+  public squareAt(at: Location): Square {
+    assertValidLocation(at);
+    return squareAtForVariant(at, this.variant);
   }
 
-  public variant(): GameVariant {
-    return this.#gameVariant;
-  }
-
-  public allMonsBases(): Location[] {
-    return MON_BASE_LOCATIONS.map(cloneLocation);
+  public allMonsBases(): readonly Location[] {
+    return MON_BASE_LOCATIONS;
   }
 
   public supermanaBase(): Location {
-    return cloneLocation(SUPERMANA_BASE);
+    return SUPERMANA_BASE;
   }
 
   public allMonsLocations(color: Color): Location[] {
     const result: Location[] = [];
     for (let index = 0; index < BOARD_CELLS; index += 1) {
-      const item = this.itemSlots[index];
+      const item = this.storage.itemSlots[index];
       if (item !== undefined && itemMon(item)?.color === color) {
         result.push(fromLocationIndex(index));
       }
@@ -162,7 +120,7 @@ export class Board {
   public allFreeRegularManaLocations(color: Color): Location[] {
     const result: Location[] = [];
     for (let index = 0; index < BOARD_CELLS; index += 1) {
-      const item = this.itemSlots[index];
+      const item = this.storage.itemSlots[index];
       if (
         item?.kind === "mana" &&
         item.mana.kind === "regular" &&
@@ -175,13 +133,13 @@ export class Board {
   }
 
   public base(mon: Mon): Location {
-    return cloneLocation(monBase(mon.kind, mon.color));
+    return monBase(mon.kind, mon.color);
   }
 
   public faintedMonsLocations(color: Color): Location[] {
     const result: Location[] = [];
     for (let index = 0; index < BOARD_CELLS; index += 1) {
-      const item = this.itemSlots[index];
+      const item = this.storage.itemSlots[index];
       if (
         item?.kind === "mon" &&
         item.mon.color === color &&
@@ -195,7 +153,7 @@ export class Board {
 
   public findMana(color: Color): Location | undefined {
     for (let index = 0; index < BOARD_CELLS; index += 1) {
-      const item = this.itemSlots[index];
+      const item = this.storage.itemSlots[index];
       if (
         item?.kind === "mana" &&
         item.mana.kind === "regular" &&
@@ -209,7 +167,7 @@ export class Board {
 
   public findAwakeAngel(color: Color): Location | undefined {
     for (let index = 0; index < BOARD_CELLS; index += 1) {
-      const item = this.itemSlots[index];
+      const item = this.storage.itemSlots[index];
       const mon = item === undefined ? undefined : itemMon(item);
       if (
         mon?.color === color &&
@@ -225,8 +183,8 @@ export class Board {
   /** @internal Compare board storage without allocating public snapshots. */
   public itemsEqual(other: Board): boolean {
     for (let index = 0; index < BOARD_CELLS; index += 1) {
-      const leftItem = this.itemSlots[index];
-      const rightItem = other.itemSlots[index];
+      const leftItem = this.storage.itemSlots[index];
+      const rightItem = other.storage.itemSlots[index];
       if (leftItem === undefined || rightItem === undefined) {
         if (leftItem !== rightItem) {
           return false;
@@ -238,13 +196,13 @@ export class Board {
     return true;
   }
 
-  private getOccupiedEntries(): readonly OccupiedBoardEntry[] {
-    if (this.occupiedEntries !== undefined) {
-      return this.occupiedEntries;
+  private getOccupiedEntries(): readonly BoardEntry[] {
+    if (this.storage.occupiedEntries !== undefined) {
+      return this.storage.occupiedEntries;
     }
-    const occupiedEntries: OccupiedBoardEntry[] = [];
+    const occupiedEntries: BoardEntry[] = [];
     for (let index = 0; index < BOARD_CELLS; index += 1) {
-      const item = this.itemSlots[index];
+      const item = this.storage.itemSlots[index];
       if (item !== undefined) {
         const at = ALL_LOCATIONS[index];
         if (at !== undefined) {
@@ -252,18 +210,46 @@ export class Board {
         }
       }
     }
-    this.occupiedEntries = occupiedEntries;
+    this.storage.occupiedEntries = occupiedEntries;
     return occupiedEntries;
   }
 
   /** Iterate a snapshot of the board's occupied locations in row-major order. */
-  public occupied(): IterableIterator<readonly [Location, Item]> {
+  public entries(): IterableIterator<BoardEntry> {
     return this.getOccupiedEntries().values();
   }
 }
 
+/**
+ * Mutable board storage for rules reducers and isolated simulations.
+ *
+ * Games expose {@link readonlyView} instead, so mutations cannot bypass their
+ * revisioned query-cache and history boundaries.
+ */
+export class MutableBoard extends Board {
+  #readonlyView: Board | undefined;
+
+  public delete(at: Location): void {
+    assertValidLocation(at);
+    this.storage.itemSlots[locationIndex(at)] = undefined;
+    this.storage.occupiedEntries = undefined;
+  }
+
+  public set(at: Location, item: Item): void {
+    assertValidLocation(at);
+    this.storage.itemSlots[locationIndex(at)] = immutableItem(item);
+    this.storage.occupiedEntries = undefined;
+  }
+
+  /** A stable, live view that intentionally has no mutating methods. */
+  public readonlyView(): Board {
+    this.#readonlyView ??= new Board(this.variant, undefined, this.storage);
+    return this.#readonlyView;
+  }
+}
+
 export function boardEquals(left: Board, right: Board): boolean {
-  if (left.variant() !== right.variant()) {
+  if (left.variant !== right.variant) {
     return false;
   }
   return left.itemsEqual(right);

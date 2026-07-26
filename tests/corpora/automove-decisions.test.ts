@@ -5,7 +5,11 @@ import { fileURLToPath } from "node:url";
 
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 
-import { MonsGameModel } from "../../src/entrypoints/mons-rules.js";
+import {
+  Game,
+  type MoveSuggestion,
+  type PlayResult,
+} from "../../src/entrypoints/mons-rules.js";
 
 const PREFERENCES = ["fast", "normal", "pro"] as const;
 const VARIANTS = [
@@ -65,6 +69,16 @@ type CorpusManifest = {
     readonly retainedRegressionStates: number;
   };
 };
+
+function archivedSuggestionKind(
+  suggestion: MoveSuggestion | undefined,
+): number {
+  return suggestion === undefined ? 0 : 3;
+}
+
+function archivedPlayResultKind(result: PlayResult): number {
+  return result.kind === "invalid" ? 0 : 3;
+}
 
 const corpusDirectory = fileURLToPath(
   new URL("../../test-data/automove-decisions/v1/", import.meta.url),
@@ -148,34 +162,35 @@ describe("automove decision corpus", () => {
       for (const preference of PREFERENCES) {
         decisionCount += 1;
         const expected = state.decisions[preference];
-        const game = MonsGameModel.from_fen(state.fen);
+        const game = Game.fromFen(state.fen);
         expect(game, `${state.id} ${preference}: source FEN`).toBeDefined();
         if (game === undefined) continue;
 
-        const before = game.fen();
-        const output = game.smartAutomove(preference);
-        expect(output.kind, `${state.id} ${preference}: output kind`).toBe(
-          expected.outputKind,
-        );
-        expect(output.input_fen(), `${state.id} ${preference}: input`).toBe(
+        const before = game.toFen();
+        const suggestion = game.suggestMove(preference);
+        expect(
+          archivedSuggestionKind(suggestion),
+          `${state.id} ${preference}: output kind`,
+        ).toBe(expected.outputKind);
+        expect(suggestion?.inputFen, `${state.id} ${preference}: input`).toBe(
           expected.inputFen,
         );
-        expect(game.fen(), `${state.id} ${preference}: source mutation`).toBe(
+        expect(game.toFen(), `${state.id} ${preference}: source mutation`).toBe(
           before,
         );
-        expect(game.fen(), `${state.id} ${preference}: source state`).toBe(
+        expect(game.toFen(), `${state.id} ${preference}: source state`).toBe(
           expected.sourceFenAfterSmartAutomove,
         );
 
-        const replay = MonsGameModel.from_fen(state.fen);
+        const replay = Game.fromFen(state.fen);
         expect(replay, `${state.id} ${preference}: replay FEN`).toBeDefined();
         if (replay === undefined) continue;
-        const replayOutput = replay.process_input_fen(expected.inputFen);
+        const replayOutput = replay.playFen(expected.inputFen);
         expect(
-          replayOutput.kind,
+          archivedPlayResultKind(replayOutput),
           `${state.id} ${preference}: replay output kind`,
         ).toBe(expected.replayOutputKind);
-        expect(replay.fen(), `${state.id} ${preference}: replay state`).toBe(
+        expect(replay.toFen(), `${state.id} ${preference}: replay state`).toBe(
           expected.fenAfter,
         );
       }

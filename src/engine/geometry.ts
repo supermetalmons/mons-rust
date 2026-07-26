@@ -1,5 +1,3 @@
-import { addI32, mulI32, toI32, toU32 } from "./numerics.js";
-
 export const BOARD_SIZE = 11;
 export const BOARD_CELLS = BOARD_SIZE * BOARD_SIZE;
 export const BOARD_CENTER_INDEX = Math.trunc(BOARD_SIZE / 2);
@@ -11,11 +9,7 @@ export type Location = {
 };
 
 export function location(i: number, j: number): Location {
-  return { i: toI32(i), j: toI32(j) };
-}
-
-export function cloneLocation(value: Location): Location {
-  return { i: value.i, j: value.j };
+  return { i, j };
 }
 
 export function locationEquals(left: Location, right: Location): boolean {
@@ -24,33 +18,34 @@ export function locationEquals(left: Location, right: Location): boolean {
 
 export function isValidLocation(value: Location): boolean {
   return (
-    value.i >= 0 && value.i < BOARD_SIZE && value.j >= 0 && value.j < BOARD_SIZE
+    Number.isInteger(value.i) &&
+    Number.isInteger(value.j) &&
+    value.i >= 0 &&
+    value.i < BOARD_SIZE &&
+    value.j >= 0 &&
+    value.j < BOARD_SIZE
   );
 }
 
+export function assertValidLocation(value: Location): void {
+  if (!isValidLocation(value)) {
+    throw new RangeError(
+      `board location must use integer coordinates from 0 to ${MAX_LOCATION_INDEX}`,
+    );
+  }
+}
+
 export function locationIndex(value: Location): number {
+  assertValidLocation(value);
   return value.i * BOARD_SIZE + value.j;
 }
 
-/**
- * Apply the engine's wrapped signed 32-bit indexing expression for mutation-only
- * board access. Some component-invalid locations therefore alias a
- * valid linear board slot. Read-only access intentionally continues to use
- * component validation instead.
- */
-export function wrappedLocationIndex(value: Location): number {
-  return toU32(addI32(mulI32(toI32(value.i), BOARD_SIZE), toI32(value.j)));
-}
-
-export function checkedWrappedLocationIndex(value: Location): number {
-  const index = wrappedLocationIndex(value);
-  if (index >= BOARD_CELLS) {
-    throw new RangeError("location index is out of bounds");
-  }
-  return index;
-}
-
 export function fromLocationIndex(index: number): Location {
+  if (!Number.isInteger(index) || index < 0 || index >= BOARD_CELLS) {
+    throw new RangeError(
+      `board location index must be an integer from 0 to ${BOARD_CELLS - 1}`,
+    );
+  }
   return location(Math.trunc(index / BOARD_SIZE), index % BOARD_SIZE);
 }
 
@@ -115,8 +110,12 @@ function spiritReachabilityFor(origin: Location): readonly Location[] {
 function buildCache(
   factory: (origin: Location) => readonly Location[],
 ): readonly (readonly Location[])[] {
-  return Array.from({ length: BOARD_CELLS }, (_, index) =>
-    factory(fromLocationIndex(index)),
+  return Object.freeze(
+    Array.from({ length: BOARD_CELLS }, (_, index) =>
+      Object.freeze(
+        factory(fromLocationIndex(index)).map((at) => Object.freeze(at)),
+      ),
+    ),
   );
 }
 
@@ -175,7 +174,8 @@ export function spiritReachableLocations(
 }
 
 /** Every board location in row-major array order. */
-export const ALL_LOCATIONS: readonly Location[] = Array.from(
-  { length: BOARD_CELLS },
-  (_, index) => fromLocationIndex(index),
+export const ALL_LOCATIONS: readonly Location[] = Object.freeze(
+  Array.from({ length: BOARD_CELLS }, (_, index) =>
+    Object.freeze(fromLocationIndex(index)),
+  ),
 );

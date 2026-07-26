@@ -1,67 +1,62 @@
-import { Color } from "../engine/domain.js";
-import { colorFen } from "../engine/fen.js";
+import { Color as EngineColor } from "../engine/domain.js";
 import { MonsGame } from "../engine/game.js";
-import { toWellFormedString } from "../engine/text.js";
 import { replayInterleavedMoves } from "./replay.js";
+import { Color, type MatchResolution, type MatchSubmission } from "./types.js";
 
-/** Validate two submitted end states and their independent move histories. */
-export function winner(
-  fen_w: string,
-  fen_b: string,
-  flat_moves_string_w: string,
-  flat_moves_string_b: string,
-): string {
-  const inputFenW = toWellFormedString(fen_w);
-  const inputFenB = toWellFormedString(fen_b);
-  const normalizedMovesW = toWellFormedString(flat_moves_string_w);
-  const normalizedMovesB = toWellFormedString(flat_moves_string_b);
-  // Unlike verify_moves, the winner route deliberately keeps one empty
-  // move when passed an empty string.
-  const movesW = normalizedMovesW.split("-");
-  const movesB = normalizedMovesB.split("-");
-  const gameW = MonsGame.fromFen(inputFenW, false);
-  const gameB = MonsGame.fromFen(inputFenB, false);
+/** Validate two independently submitted end states and move histories. */
+export function resolveMatch(submission: MatchSubmission): MatchResolution {
+  const whiteGame = submittedGame(submission.white.fen);
+  const blackGame = submittedGame(submission.black.fen);
 
-  if (gameW === undefined || gameB === undefined) {
-    if (gameW === undefined && gameB === undefined) {
-      return "x";
+  if (whiteGame === undefined || blackGame === undefined) {
+    if (whiteGame === undefined && blackGame === undefined) {
+      return { kind: "invalid" };
     }
-    return gameW === undefined ? "b" : "w";
+    return {
+      kind: "winner",
+      winner: whiteGame === undefined ? Color.Black : Color.White,
+    };
   }
-  if (gameW.variant() !== gameB.variant()) {
-    return "x";
-  }
-
-  const normalizedFenW = gameW.fen();
-  const normalizedFenB = gameB.fen();
-  if (gameW.winnerColor() === undefined && gameB.winnerColor() === undefined) {
-    return "";
+  if (whiteGame.variant() !== blackGame.variant()) {
+    return { kind: "invalid" };
   }
 
-  const game = new MonsGame(false, gameW.variant());
-  let winnerResult: string | undefined;
+  const normalizedWhiteFen = whiteGame.fen();
+  const normalizedBlackFen = blackGame.fen();
+  if (
+    whiteGame.winnerColor() === undefined &&
+    blackGame.winnerColor() === undefined
+  ) {
+    return { kind: "ongoing" };
+  }
+
+  const replay = new MonsGame(false, whiteGame.variant());
+  let resolution: MatchResolution | undefined;
   replayInterleavedMoves(
-    game,
-    movesW,
-    movesB,
+    replay,
+    submission.white.moves,
+    submission.black.moves,
     (replayedGame, { whiteMovesProcessed, blackMovesProcessed }) => {
-      const winnerColor = replayedGame.winnerColor();
-      if (winnerColor === undefined) return true;
+      const winner = replayedGame.winnerColor();
+      if (winner === undefined) return true;
 
-      const submittedAllWinnerMoves =
-        winnerColor === Color.White
-          ? whiteMovesProcessed === movesW.length
-          : blackMovesProcessed === movesB.length;
+      const submittedEveryWinnerMove =
+        winner === EngineColor.White
+          ? whiteMovesProcessed === submission.white.moves.length
+          : blackMovesProcessed === submission.black.moves.length;
       const submittedWinnerFen =
-        winnerColor === Color.White ? normalizedFenW : normalizedFenB;
-      winnerResult =
-        submittedAllWinnerMoves && submittedWinnerFen === replayedGame.fen()
-          ? colorFen(winnerColor)
-          : "x";
+        winner === EngineColor.White ? normalizedWhiteFen : normalizedBlackFen;
+      resolution =
+        submittedEveryWinnerMove && submittedWinnerFen === replayedGame.fen()
+          ? { kind: "winner", winner }
+          : { kind: "invalid" };
       return false;
     },
   );
-  if (winnerResult !== undefined) return winnerResult;
+  return resolution ?? { kind: "invalid" };
+}
 
-  return "x";
+function submittedGame(fen: string): MonsGame | undefined {
+  const game = MonsGame.fromFen(fen, false);
+  return game?.fen() === fen ? game : undefined;
 }

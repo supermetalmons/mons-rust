@@ -1,25 +1,23 @@
 import { ACTIONS_PER_TURN, BOARD_SIZE } from "../engine/config.js";
-import { Color, cloneInputs, type Input } from "../engine/domain.js";
+import { Color, type Input } from "../engine/domain.js";
 import type { MonsGame } from "../engine/game.js";
+import { scoreForColor } from "../engine/legality.js";
 import {
-  I32_MIN,
-  absI32,
-  addI32,
-  saturatingAddI32,
-  saturatingSubI32,
-  subI32,
-} from "../engine/numerics.js";
+  MIN_SCORE,
+  saturatingScoreAdd,
+  saturatingScoreSubtract,
+} from "./score-math.js";
 import {
   rootProgressStepsBetter,
   rootScorePathStepsBetter,
 } from "./root-focus.js";
+import type { EvaluatedRoot } from "./search.js";
 import {
   AUTOMOVE_TURN_ENGINE_MODE,
   isPlainSpiritDevelopmentRoot,
   rootIsUnsafe as isUnsafe,
   shouldPreferSpiritDevelopment,
-  type AutomoveSearchConfig,
-  type RootEvaluation,
+  type AutomoveConfig,
 } from "./selector-types.js";
 
 const ROOT_SPIRIT_DEVELOPMENT_SCORE_MARGIN = 700;
@@ -40,78 +38,144 @@ export type RootReplyRiskSnapshot = {
 
 export type RootSelectionContext = {
   readonly game: MonsGame;
-  readonly roots: readonly RootEvaluation[];
+  readonly roots: readonly EvaluatedRoot[];
   readonly candidateIndices: readonly number[];
   readonly perspective: Color;
-  readonly config: AutomoveSearchConfig;
+  readonly config: AutomoveConfig;
 };
 
-export type CurrentProCompetitionKind =
-  | "safe-progress"
-  | "followup-progress"
-  | "risky-score"
-  | "negative-deny"
-  | "score"
-  | "projection"
-  | "risky-recovery";
+export const ProductionCompetitionKind = Object.freeze({
+  SafeProgress: "safe-progress",
+  FollowupProgress: "followup-progress",
+  RiskyScore: "risky-score",
+  NegativeDeny: "negative-deny",
+  Score: "score",
+  Projection: "projection",
+  RiskyRecovery: "risky-recovery",
+} as const);
+
+export type ProductionCompetitionKind =
+  (typeof ProductionCompetitionKind)[keyof typeof ProductionCompetitionKind];
+
+export const PRODUCTION_COMPETITION_KIND_ORDER = Object.freeze([
+  ProductionCompetitionKind.SafeProgress,
+  ProductionCompetitionKind.FollowupProgress,
+  ProductionCompetitionKind.RiskyScore,
+  ProductionCompetitionKind.NegativeDeny,
+  ProductionCompetitionKind.Score,
+  ProductionCompetitionKind.Projection,
+  ProductionCompetitionKind.RiskyRecovery,
+] as const satisfies readonly ProductionCompetitionKind[]);
+
+export const ProductionComparisonPhase = Object.freeze({
+  SpiritSetup: "spirit-setup",
+  ProjectionChallenge: "projection-challenge",
+  Projection: "projection",
+  FollowupFloor: "followup-floor",
+} as const);
+
+export type ProductionComparisonPhase =
+  (typeof ProductionComparisonPhase)[keyof typeof ProductionComparisonPhase];
+
+export type ProductionRootRuleId =
+  | `competition.${string}`
+  | `safety-reentry.${string}`
+  | `final-reentry.${string}`
+  | `comparison.${string}`
+  | `root-picker.${string}`;
+
+export type ProductionContinueResult = {
+  readonly kind: "continue";
+};
+
+export type ProductionCompetitionResult =
+  ProductionContinueResult | { readonly kind: "select" };
+
+export type ProductionIndexSelectionResult =
+  | ProductionContinueResult
+  | {
+      readonly kind: "select";
+      readonly indices: readonly number[];
+    };
+
+export type ProductionRootSelectionResult =
+  | ProductionContinueResult
+  | {
+      readonly kind: "select";
+      readonly index: number;
+    };
+
+export type ProductionComparisonResult =
+  | ProductionContinueResult
+  | {
+      readonly kind: "compare";
+      /** Positive means candidate wins, negative means incumbent wins. */
+      readonly order: number;
+    };
+
+export type ProductionRootComparisonContext = RootSelectionContext & {
+  readonly candidateIndex: number;
+  readonly incumbentIndex: number;
+};
+
+export type ProductionRootReentryContext = RootSelectionContext & {
+  readonly selectedIndices: readonly number[];
+};
+
+export type ProductionCompetitionRule = {
+  readonly id: ProductionRootRuleId;
+  readonly kind: ProductionCompetitionKind;
+  readonly evaluate: (
+    context: RootSelectionContext,
+  ) => ProductionCompetitionResult;
+};
+
+export type ProductionReentryRule = {
+  readonly id: ProductionRootRuleId;
+  readonly select: (
+    context: ProductionRootReentryContext,
+  ) => ProductionIndexSelectionResult;
+};
+
+export type ProductionComparisonRule = {
+  readonly id: ProductionRootRuleId;
+  readonly phase: ProductionComparisonPhase;
+  readonly compare: (
+    context: ProductionRootComparisonContext,
+  ) => ProductionComparisonResult;
+};
+
+export type ProductionRootPicker = {
+  readonly id: ProductionRootRuleId;
+  readonly select: (
+    context: RootSelectionContext,
+  ) => ProductionRootSelectionResult;
+};
 
 /**
- * Projection-heavy seams intentionally supplied by P7 integration. Every
- * callback defaults to no competition/reentry while the ProV1 policy remains
- * exact and self-contained.
+ * Ordered production policy. Rules are data with stable IDs so each phase can
+ * be inspected and tested independently from the baseline selector.
  */
-export type CurrentProRootPolicyCallbacks = {
-  readonly pickRootIndex?: (
-    context: RootSelectionContext,
-  ) => number | undefined;
-  readonly competition?: (
-    kind: CurrentProCompetitionKind,
-    context: RootSelectionContext,
-  ) => boolean;
-  readonly safetyReentryIndices?: (
-    context: RootSelectionContext,
-    saferIndices: readonly number[],
-  ) => readonly number[];
-  readonly finalReentryIndices?: (
-    context: RootSelectionContext,
-  ) => readonly number[];
-  readonly spiritSetupCompetesWithBest?: (
-    context: RootSelectionContext,
-    candidateIndex: number,
-    incumbentIndex: number,
-  ) => boolean;
-  /** Positive means candidate wins, negative means incumbent wins. */
-  readonly spiritProjectionChallengeOrder?: (
-    context: RootSelectionContext,
-    candidateIndex: number,
-    incumbentIndex: number,
-  ) => number | undefined;
-  /** Positive means candidate wins, negative means incumbent wins. */
-  readonly spiritProjectionOrder?: (
-    context: RootSelectionContext,
-    candidateIndex: number,
-    incumbentIndex: number,
-  ) => number | undefined;
-  /** Positive means candidate wins, negative means incumbent wins. */
-  readonly spiritFollowupFloorOrder?: (
-    context: RootSelectionContext,
-    candidateIndex: number,
-    incumbentIndex: number,
-  ) => number | undefined;
+export type ProductionRootPolicy = {
+  readonly competitionRules: readonly ProductionCompetitionRule[];
+  readonly safetyReentryRules: readonly ProductionReentryRule[];
+  readonly finalReentryRules: readonly ProductionReentryRule[];
+  readonly comparisonRules: readonly ProductionComparisonRule[];
+  readonly rootPicker?: ProductionRootPicker;
 };
 
 export type RootSelectorOptions = {
   readonly rootReplyRiskSnapshot?: (
     stateAfterMove: MonsGame,
     perspective: Color,
-    config: AutomoveSearchConfig,
+    config: AutomoveConfig,
     replyLimit: number,
     rootIndex: number,
   ) => RootReplyRiskSnapshot;
   readonly pickReplyRiskGuardedIndex?: (
     context: RootSelectionContext,
   ) => number | undefined;
-  readonly currentPro?: CurrentProRootPolicyCallbacks;
+  readonly productionPolicy?: ProductionRootPolicy;
   readonly checkpoint?: () => boolean;
   readonly cancelled?: () => boolean;
 };
@@ -125,7 +189,7 @@ function valueAt<Value>(values: readonly Value[], index: number): Value {
 }
 
 function assertRootIndex(
-  roots: readonly RootEvaluation[],
+  roots: readonly EvaluatedRoot[],
   index: number,
   source: string,
 ): void {
@@ -145,10 +209,6 @@ function minValue(values: readonly number[]): number | undefined {
   for (const value of values)
     best = best === undefined ? value : Math.min(best, value);
   return best;
-}
-
-function scoreForColor(game: MonsGame, color: Color): number {
-  return color === Color.White ? game.whiteScore : game.blackScore;
 }
 
 function potionsForColor(game: MonsGame, color: Color): number {
@@ -173,7 +233,7 @@ function shouldPreferPotionTakebackLines(
 
 function rootSpendsPotion(
   gameBefore: MonsGame,
-  root: RootEvaluation,
+  root: EvaluatedRoot,
   perspective: Color,
 ): boolean {
   return (
@@ -184,14 +244,14 @@ function rootSpendsPotion(
 
 function rootPotionSpendCompensated(
   gameBefore: MonsGame,
-  root: RootEvaluation,
+  root: EvaluatedRoot,
   perspective: Color,
 ): boolean {
   return (
     root.winsImmediately ||
     root.attacksOpponentDrainer ||
     scoreForColor(root.game, perspective) >=
-      saturatingAddI32(scoreForColor(gameBefore, perspective), 2) ||
+      saturatingScoreAdd(scoreForColor(gameBefore, perspective), 2) ||
     root.scoresSupermanaThisTurn ||
     root.scoresOpponentManaThisTurn ||
     (!root.ownDrainerVulnerable &&
@@ -200,13 +260,13 @@ function rootPotionSpendCompensated(
 }
 
 function immediateOpponentWin(
-  root: RootEvaluation,
+  root: EvaluatedRoot,
   rootIndex: number,
   perspective: Color,
-  config: AutomoveSearchConfig,
+  config: AutomoveConfig,
   options: RootSelectorOptions,
 ): boolean {
-  const replyLimit = Math.max(config.rootAntiHelpReplyLimit, 1);
+  const replyLimit = Math.max(config.replyRisk.antiHelpReplyLimit, 1);
   return (
     options.rootReplyRiskSnapshot?.(
       root.game,
@@ -218,68 +278,58 @@ function immediateOpponentWin(
   );
 }
 
-function isCurrentPro(config: AutomoveSearchConfig): boolean {
-  return config.turnEngineMode === AUTOMOVE_TURN_ENGINE_MODE.CurrentPro;
+function isProductionMode(config: AutomoveConfig): boolean {
+  return config.planner.mode === AUTOMOVE_TURN_ENGINE_MODE.Production;
 }
 
 function selectionContext(
   game: MonsGame,
-  roots: readonly RootEvaluation[],
+  roots: readonly EvaluatedRoot[],
   candidateIndices: readonly number[],
   perspective: Color,
-  config: AutomoveSearchConfig,
+  config: AutomoveConfig,
 ): RootSelectionContext {
   return { game, roots, candidateIndices, perspective, config };
 }
 
-function currentProCompetition(
-  kind: CurrentProCompetitionKind,
-  game: MonsGame,
-  roots: readonly RootEvaluation[],
-  candidateIndices: readonly number[],
-  perspective: Color,
-  config: AutomoveSearchConfig,
-  options: RootSelectorOptions,
+export function evaluateProductionCompetitionRules(
+  policy: ProductionRootPolicy | undefined,
+  kind: ProductionCompetitionKind,
+  context: RootSelectionContext,
 ): boolean {
-  return (
-    isCurrentPro(config) &&
-    (options.currentPro?.competition?.(
-      kind,
-      selectionContext(game, roots, candidateIndices, perspective, config),
-    ) ??
-      false)
-  );
+  let selected = false;
+  for (const rule of policy?.competitionRules ?? []) {
+    if (rule.kind !== kind) continue;
+    if (rule.evaluate(context).kind === "select") selected = true;
+  }
+  return selected;
 }
 
-function anyCurrentProCompetition(
+function anyProductionCompetition(
   game: MonsGame,
-  roots: readonly RootEvaluation[],
+  roots: readonly EvaluatedRoot[],
   candidateIndices: readonly number[],
   perspective: Color,
-  config: AutomoveSearchConfig,
+  config: AutomoveConfig,
   options: RootSelectorOptions,
   negativeDenyIsOverridden?: () => boolean,
 ): boolean {
-  const kinds: readonly CurrentProCompetitionKind[] = [
-    "safe-progress",
-    "followup-progress",
-    "risky-score",
-    "negative-deny",
-    "score",
-    "projection",
-    "risky-recovery",
-  ];
   let competes = false;
-  for (const kind of kinds) {
-    const kindCompetes = currentProCompetition(
-      kind,
-      game,
-      roots,
-      candidateIndices,
-      perspective,
-      config,
-      options,
-    );
+  const context = selectionContext(
+    game,
+    roots,
+    candidateIndices,
+    perspective,
+    config,
+  );
+  for (const kind of PRODUCTION_COMPETITION_KIND_ORDER) {
+    const kindCompetes =
+      isProductionMode(config) &&
+      evaluateProductionCompetitionRules(
+        options.productionPolicy,
+        kind,
+        context,
+      );
     if (
       kindCompetes &&
       (kind !== "negative-deny" || negativeDenyIsOverridden?.() !== true)
@@ -293,24 +343,31 @@ function anyCurrentProCompetition(
 function spiritSetupOverridesNegativeDeny(
   context: RootSelectionContext,
   spiritSetupIndices: readonly number[],
-  callbacks: CurrentProRootPolicyCallbacks | undefined,
+  policy: ProductionRootPolicy | undefined,
 ): boolean {
-  const setupCompetes = callbacks?.spiritSetupCompetesWithBest;
-  if (setupCompetes === undefined) return false;
   const nonSpiritIndices = context.candidateIndices.filter(
     (index) => !valueAt(context.roots, index).spiritDevelopment,
   );
   return spiritSetupIndices.some((spiritIndex) =>
-    nonSpiritIndices.every((index) =>
-      setupCompetes(context, spiritIndex, index),
-    ),
+    nonSpiritIndices.every((index) => {
+      const order = compareProductionRules(
+        ProductionComparisonPhase.SpiritSetup,
+        {
+          ...context,
+          candidateIndex: spiritIndex,
+          incumbentIndex: index,
+        },
+        policy,
+      );
+      return order !== undefined && order > 0;
+    }),
   );
 }
 
 function retainBestKnownSteps(
-  roots: readonly RootEvaluation[],
+  roots: readonly EvaluatedRoot[],
   indices: readonly number[],
-  steps: (root: RootEvaluation) => number,
+  steps: (root: EvaluatedRoot) => number,
   unknown: number,
 ): number[] {
   const best = minValue(
@@ -325,9 +382,9 @@ function retainBestKnownSteps(
 
 export function filteredRootCandidateIndices(
   game: MonsGame,
-  roots: readonly RootEvaluation[],
+  roots: readonly EvaluatedRoot[],
   perspective: Color,
-  config: AutomoveSearchConfig,
+  config: AutomoveConfig,
   options: RootSelectorOptions = {},
 ): number[] {
   if (roots.length === 0) return [];
@@ -469,7 +526,7 @@ export function filteredRootCandidateIndices(
     });
     if (
       spiritSetups.length > 0 &&
-      !anyCurrentProCompetition(
+      !anyProductionCompetition(
         game,
         roots,
         candidates,
@@ -480,7 +537,7 @@ export function filteredRootCandidateIndices(
           spiritSetupOverridesNegativeDeny(
             selectionContext(game, roots, candidates, perspective, config),
             spiritSetups,
-            options.currentPro,
+            options.productionPolicy,
           ),
       )
     ) {
@@ -517,7 +574,7 @@ export function filteredRootCandidateIndices(
   }
 
   if (
-    config.enableInterviewHardSpiritDeploy &&
+    config.policy.hardSpiritDeployment &&
     !forcedAttackApplied &&
     shouldPreferSpiritDevelopment(game, perspective)
   ) {
@@ -532,7 +589,7 @@ export function filteredRootCandidateIndices(
     });
     if (
       !hasSafeHighValuePickup &&
-      !anyCurrentProCompetition(
+      !anyProductionCompetition(
         game,
         roots,
         candidates,
@@ -585,18 +642,16 @@ export function filteredRootCandidateIndices(
     const preSafety = [...candidates];
     const bestScore = maxValue(
       candidates.map((index) => valueAt(roots, index).score),
-      I32_MIN,
+      MIN_SCORE,
     );
-    const margin = Math.max(config.rootDrainerSafetyScoreMargin, 0);
+    const margin = Math.max(config.policy.drainerSafetyScoreMargin, 0);
     const safer = candidates.filter((index) => {
       const root = valueAt(roots, index);
-      return (
-        !root.ownDrainerVulnerable && addI32(root.score, margin) >= bestScore
-      );
+      return !root.ownDrainerVulnerable && root.score + margin >= bestScore;
     });
     if (safer.length > 0) {
       candidates = safer;
-      if (isCurrentPro(config)) {
+      if (isProductionMode(config)) {
         const context = selectionContext(
           game,
           roots,
@@ -604,24 +659,28 @@ export function filteredRootCandidateIndices(
           perspective,
           config,
         );
-        for (const index of options.currentPro?.safetyReentryIndices?.(
-          context,
-          safer,
-        ) ?? []) {
-          assertRootIndex(roots, index, "CurrentPro safety reentry callback");
-          if (!preSafety.includes(index)) {
-            throw new RangeError(
-              "CurrentPro safety reentry callback selected a root outside the prefilter",
-            );
+        for (const rule of options.productionPolicy?.safetyReentryRules ?? []) {
+          const result = rule.select({
+            ...context,
+            selectedIndices: candidates,
+          });
+          if (result.kind === "continue") continue;
+          for (const index of result.indices) {
+            assertRootIndex(roots, index, `Production rule ${rule.id}`);
+            if (!preSafety.includes(index)) {
+              throw new RangeError(
+                `Production rule ${rule.id} selected a root outside the prefilter`,
+              );
+            }
+            if (!candidates.includes(index)) candidates.push(index);
           }
-          if (!candidates.includes(index)) candidates.push(index);
         }
       }
     }
   }
 
   if (
-    config.enableRootSpiritDevelopmentPref &&
+    config.policy.preferSpiritDevelopment &&
     shouldPreferSpiritDevelopment(game, perspective) &&
     candidates.some((index) => valueAt(roots, index).spiritDevelopment)
   ) {
@@ -636,7 +695,7 @@ export function filteredRootCandidateIndices(
     });
     if (
       !hasSafeHighValuePickup &&
-      !anyCurrentProCompetition(
+      !anyProductionCompetition(
         game,
         roots,
         candidates,
@@ -647,13 +706,13 @@ export function filteredRootCandidateIndices(
     ) {
       const bestScore = maxValue(
         candidates.map((index) => valueAt(roots, index).score),
-        I32_MIN,
+        MIN_SCORE,
       );
       const spiritSetups = candidates.filter((index) => {
         const root = valueAt(roots, index);
         return (
           root.spiritOwnManaSetupNow &&
-          addI32(root.score, ROOT_SPIRIT_DEVELOPMENT_SCORE_MARGIN) >= bestScore
+          root.score + ROOT_SPIRIT_DEVELOPMENT_SCORE_MARGIN >= bestScore
         );
       });
       if (spiritSetups.length > 0) {
@@ -663,8 +722,7 @@ export function filteredRootCandidateIndices(
           const root = valueAt(roots, index);
           return (
             root.spiritDevelopment &&
-            addI32(root.score, ROOT_SPIRIT_DEVELOPMENT_SCORE_MARGIN) >=
-              bestScore
+            root.score + ROOT_SPIRIT_DEVELOPMENT_SCORE_MARGIN >= bestScore
           );
         });
         if (spirit.length > 0) candidates = spirit;
@@ -679,11 +737,11 @@ export function filteredRootCandidateIndices(
   ) {
     const bestScore = maxValue(
       candidates.map((index) => valueAt(roots, index).score),
-      I32_MIN,
+      MIN_SCORE,
     );
     const nearBest = candidates.filter(
       (index) =>
-        addI32(valueAt(roots, index).score, ROOT_POTION_HOLD_SCORE_MARGIN) >=
+        valueAt(roots, index).score + ROOT_POTION_HOLD_SCORE_MARGIN >=
         bestScore,
     );
     if (nearBest.length > 1) {
@@ -724,11 +782,11 @@ export function filteredRootCandidateIndices(
   if (candidates.length > 1) {
     const bestScore = maxValue(
       candidates.map((index) => valueAt(roots, index).score),
-      I32_MIN,
+      MIN_SCORE,
     );
-    const margin = Math.max(config.rootAntiHelpScoreMargin, 0);
+    const margin = Math.max(config.replyRisk.antiHelpScoreMargin, 0);
     const nearBest = candidates.filter(
-      (index) => addI32(valueAt(roots, index).score, margin) >= bestScore,
+      (index) => valueAt(roots, index).score + margin >= bestScore,
     );
     if (nearBest.length > 1) {
       const quickLoss = new Map<number, boolean>();
@@ -768,35 +826,41 @@ export function filteredRootCandidateIndices(
     }
   }
 
-  if (isCurrentPro(config)) {
+  if (isProductionMode(config)) {
     const context = selectionContext(
       game,
       roots,
-      candidates,
+      [...candidates],
       perspective,
       config,
     );
     let reentered = false;
-    for (const index of options.currentPro?.finalReentryIndices?.(context) ??
-      []) {
-      assertRootIndex(roots, index, "CurrentPro final reentry callback");
-      if (!candidates.includes(index)) {
-        candidates.push(index);
-        reentered = true;
+    for (const rule of options.productionPolicy?.finalReentryRules ?? []) {
+      const result = rule.select({
+        ...context,
+        selectedIndices: candidates,
+      });
+      if (result.kind === "continue") continue;
+      for (const index of result.indices) {
+        assertRootIndex(roots, index, `Production rule ${rule.id}`);
+        if (!candidates.includes(index)) {
+          candidates.push(index);
+          reentered = true;
+        }
       }
     }
     if (reentered) {
       candidates.sort((left, right) =>
-        compareRankedRootEvaluationIndices(roots, left, right),
+        compareRankedEvaluatedRootIndices(roots, left, right),
       );
     }
   }
   return candidates;
 }
 
-export function compareTacticalRootEvaluations(
-  candidate: RootEvaluation,
-  incumbent: RootEvaluation,
+export function compareTacticalEvaluatedRoots(
+  candidate: EvaluatedRoot,
+  incumbent: EvaluatedRoot,
 ): number {
   const preferBoolean = (
     candidateValue: boolean,
@@ -962,10 +1026,8 @@ export function compareTacticalRootEvaluations(
     true,
   );
   if (order !== undefined) return order;
-  if (candidate.interviewSoftPriority !== incumbent.interviewSoftPriority) {
-    return candidate.interviewSoftPriority > incumbent.interviewSoftPriority
-      ? -1
-      : 1;
+  if (candidate.policyPriority !== incumbent.policyPriority) {
+    return candidate.policyPriority > incumbent.policyPriority ? -1 : 1;
   }
   if (candidate.efficiency !== incumbent.efficiency) {
     return candidate.efficiency > incumbent.efficiency ? -1 : 1;
@@ -973,8 +1035,8 @@ export function compareTacticalRootEvaluations(
   return 0;
 }
 
-export function compareRankedRootEvaluationIndices(
-  roots: readonly RootEvaluation[],
+export function compareRankedEvaluatedRootIndices(
+  roots: readonly EvaluatedRoot[],
   candidateIndex: number,
   incumbentIndex: number,
 ): number {
@@ -984,18 +1046,18 @@ export function compareRankedRootEvaluationIndices(
     return candidate.score > incumbent.score ? -1 : 1;
   }
   return (
-    compareTacticalRootEvaluations(candidate, incumbent) ||
+    compareTacticalEvaluatedRoots(candidate, incumbent) ||
     candidateIndex - incumbentIndex
   );
 }
 
 function bestScoredRootIndex(
-  roots: readonly RootEvaluation[],
+  roots: readonly EvaluatedRoot[],
   candidateIndices: readonly number[],
 ): number {
   let bestIndex = candidateIndices[0] ?? 0;
   for (const index of candidateIndices) {
-    if (compareRankedRootEvaluationIndices(roots, index, bestIndex) < 0) {
+    if (compareRankedEvaluatedRootIndices(roots, index, bestIndex) < 0) {
       bestIndex = index;
     }
   }
@@ -1004,8 +1066,8 @@ function bestScoredRootIndex(
 
 /** Positive means candidate wins the challenge; negative means incumbent wins. */
 export function spiritScoreChallengeOrder(
-  candidate: RootEvaluation,
-  incumbent: RootEvaluation,
+  candidate: EvaluatedRoot,
+  incumbent: EvaluatedRoot,
 ): number | undefined {
   const candidatePlainSpirit = isPlainSpiritDevelopmentRoot(candidate);
   const incumbentPlainSpirit = isPlainSpiritDevelopmentRoot(incumbent);
@@ -1017,7 +1079,7 @@ export function spiritScoreChallengeOrder(
     isUnsafe(challenger) ||
     challenger.hasRoundtrip ||
     challenger.score <
-      saturatingAddI32(spirit.score, SPIRIT_SCORE_CHALLENGE_MARGIN) ||
+      saturatingScoreAdd(spirit.score, SPIRIT_SCORE_CHALLENGE_MARGIN) ||
     challenger.sameTurnScoreWindowValue < spirit.sameTurnScoreWindowValue
   ) {
     return undefined;
@@ -1025,19 +1087,27 @@ export function spiritScoreChallengeOrder(
   return candidateIsChallenger ? 1 : -1;
 }
 
-function currentProCallbackOrder(
-  value: number | undefined,
+export function compareProductionRules(
+  phase: ProductionComparisonPhase,
+  context: ProductionRootComparisonContext,
+  policy: ProductionRootPolicy | undefined,
 ): number | undefined {
-  if (value === undefined) return undefined;
-  return value === 0 ? 0 : value > 0 ? 1 : -1;
+  for (const rule of policy?.comparisonRules ?? []) {
+    if (rule.phase !== phase) continue;
+    const result = rule.compare(context);
+    if (result.kind === "compare") {
+      return result.order === 0 ? 0 : result.order > 0 ? 1 : -1;
+    }
+  }
+  return undefined;
 }
 
 export function pickBaselineRootIndexFromCandidateIndices(
   game: MonsGame,
-  roots: readonly RootEvaluation[],
+  roots: readonly EvaluatedRoot[],
   candidateIndices: readonly number[],
   perspective: Color,
-  config: AutomoveSearchConfig,
+  config: AutomoveConfig,
   options: RootSelectorOptions = {},
 ): number | undefined {
   if (
@@ -1054,7 +1124,7 @@ export function pickBaselineRootIndexFromCandidateIndices(
     perspective,
     config,
   );
-  if (config.enableRootReplyRiskGuard) {
+  if (config.replyRisk.enabled) {
     const guarded = options.pickReplyRiskGuardedIndex?.(context);
     if (guarded !== undefined) {
       assertRootIndex(roots, guarded, "reply-risk guard");
@@ -1070,209 +1140,201 @@ export function pickBaselineRootIndexFromCandidateIndices(
 
   const bestScore = maxValue(
     candidateIndices.map((index) => valueAt(roots, index).score),
-    I32_MIN,
+    MIN_SCORE,
   );
-  const scoreMargin = Math.max(config.rootEfficiencyScoreMargin, 0);
+  const scoreMargin = Math.max(config.policy.efficiencyScoreMargin, 0);
   let bestIndex = bestScoredRootIndex(roots, candidateIndices);
-  let bestEfficiency = I32_MIN;
-  let bestShortlistedScore = I32_MIN;
+  let bestEfficiency = MIN_SCORE;
+  let bestShortlistedScore = MIN_SCORE;
   const preferSpirit =
-    config.enableRootSpiritDevelopmentPref &&
+    config.policy.preferSpiritDevelopment &&
     shouldPreferSpiritDevelopment(game, perspective);
-  const currentProPlainSpiritProjectionTiebreak =
-    isCurrentPro(config) &&
+  const productionPlainSpiritProjectionTiebreak =
+    isProductionMode(config) &&
     candidateIndices.filter((index) =>
       isPlainSpiritDevelopmentRoot(valueAt(roots, index)),
     ).length >= 2;
-  let best = valueAt(roots, bestIndex);
-  let bestSpiritDevelopment = best.spiritDevelopment;
-  let bestSpiritSameTurnSetup = best.spiritSameTurnScoreSetupNow;
-  let bestSpiritOwnManaSetup = best.spiritOwnManaSetupNow;
-  let bestSupermanaProgress = best.supermanaProgress;
-  let bestOpponentManaProgress = best.opponentManaProgress;
-  let bestScorePathSteps = best.scorePathBestSteps;
-  let bestSupermanaSteps = best.safeSupermanaProgressSteps;
-  let bestOpponentSteps = best.safeOpponentManaProgressSteps;
-  let bestScoreWindow = best.sameTurnScoreWindowValue;
-  let bestSpiritSetupGain = best.spiritSetupGain;
-  let bestManaHandoff = best.manaHandoffToOpponent;
-  let bestRoundtrip = best.hasRoundtrip;
-  let bestSoftPriority = best.interviewSoftPriority;
 
   for (const index of candidateIndices) {
     if (options.checkpoint?.() === true) return undefined;
     const evaluation = valueAt(roots, index);
-    best = valueAt(roots, bestIndex);
+    const best = valueAt(roots, bestIndex);
     const allowClosePlainSpiritSlack =
-      isCurrentPro(config) &&
+      isProductionMode(config) &&
       game.turnNumber <= 3 &&
       isPlainSpiritDevelopmentRoot(evaluation) &&
       isPlainSpiritDevelopmentRoot(best) &&
-      saturatingSubI32(bestScore, evaluation.score) <= 16;
-    const spiritSetupCompetes = isCurrentPro(config)
-      ? (options.currentPro?.spiritSetupCompetesWithBest?.(
-          context,
-          index,
-          bestIndex,
-        ) ?? true)
-      : true;
+      saturatingScoreSubtract(bestScore, evaluation.score) <= 16;
+    const spiritSetupOrder = isProductionMode(config)
+      ? compareProductionRules(
+          ProductionComparisonPhase.SpiritSetup,
+          { ...context, candidateIndex: index, incumbentIndex: bestIndex },
+          options.productionPolicy,
+        )
+      : undefined;
+    const spiritSetupCompetes =
+      !isProductionMode(config) ||
+      spiritSetupOrder === undefined ||
+      spiritSetupOrder >= 0;
     if (
-      addI32(evaluation.score, scoreMargin) < bestScore &&
+      evaluation.score + scoreMargin < bestScore &&
       !allowClosePlainSpiritSlack
     ) {
       continue;
     }
 
     let spiritChallengeOrder =
-      preferSpirit && evaluation.spiritDevelopment !== bestSpiritDevelopment
+      preferSpirit && evaluation.spiritDevelopment !== best.spiritDevelopment
         ? spiritScoreChallengeOrder(evaluation, best)
         : undefined;
     if (
       spiritChallengeOrder === undefined &&
-      isCurrentPro(config) &&
+      isProductionMode(config) &&
       preferSpirit &&
-      evaluation.spiritDevelopment !== bestSpiritDevelopment &&
-      absI32(subI32(evaluation.score, best.score)) <= 320
+      evaluation.spiritDevelopment !== best.spiritDevelopment &&
+      Math.abs(evaluation.score - best.score) <= 320
     ) {
-      spiritChallengeOrder = currentProCallbackOrder(
-        options.currentPro?.spiritProjectionChallengeOrder?.(
-          context,
-          index,
-          bestIndex,
-        ),
+      spiritChallengeOrder = compareProductionRules(
+        ProductionComparisonPhase.ProjectionChallenge,
+        { ...context, candidateIndex: index, incumbentIndex: bestIndex },
+        options.productionPolicy,
       );
     }
     const spiritBetter =
       spiritChallengeOrder === undefined &&
       preferSpirit &&
       evaluation.spiritDevelopment &&
-      !bestSpiritDevelopment &&
+      !best.spiritDevelopment &&
       spiritSetupCompetes;
     const equalSpiritPreference =
       !preferSpirit ||
-      evaluation.spiritDevelopment === bestSpiritDevelopment ||
+      evaluation.spiritDevelopment === best.spiritDevelopment ||
       spiritChallengeOrder !== undefined ||
-      (isCurrentPro(config) &&
+      (isProductionMode(config) &&
         spiritSetupCompetes &&
         (evaluation.spiritOwnManaSetupNow ||
           evaluation.spiritSameTurnScoreSetupNow));
     const spiritSameTurnSetupBetter =
       evaluation.spiritSameTurnScoreSetupNow &&
-      !bestSpiritSameTurnSetup &&
+      !best.spiritSameTurnScoreSetupNow &&
       spiritSetupCompetes;
     const equalSpiritSameTurnSetup =
-      evaluation.spiritSameTurnScoreSetupNow === bestSpiritSameTurnSetup;
+      evaluation.spiritSameTurnScoreSetupNow ===
+      best.spiritSameTurnScoreSetupNow;
     const spiritSetupBetter =
       evaluation.spiritOwnManaSetupNow &&
-      !bestSpiritOwnManaSetup &&
+      !best.spiritOwnManaSetupNow &&
       spiritSetupCompetes;
     const equalSpiritSetup =
-      evaluation.spiritOwnManaSetupNow === bestSpiritOwnManaSetup;
+      evaluation.spiritOwnManaSetupNow === best.spiritOwnManaSetupNow;
     const spiritSetupGainBetter =
       preferSpirit &&
       evaluation.spiritDevelopment &&
-      bestSpiritDevelopment &&
-      evaluation.spiritSetupGain > bestSpiritSetupGain;
+      best.spiritDevelopment &&
+      evaluation.spiritSetupGain > best.spiritSetupGain;
     const equalSpiritSetupGain =
       !preferSpirit ||
       !evaluation.spiritDevelopment ||
-      !bestSpiritDevelopment ||
-      evaluation.spiritSetupGain === bestSpiritSetupGain;
+      !best.spiritDevelopment ||
+      evaluation.spiritSetupGain === best.spiritSetupGain;
     const comparePlainSpiritProjection =
-      currentProPlainSpiritProjectionTiebreak &&
+      productionPlainSpiritProjectionTiebreak &&
       isPlainSpiritDevelopmentRoot(evaluation) &&
       isPlainSpiritDevelopmentRoot(best);
     const spiritProjectionOrder =
-      isCurrentPro(config) &&
+      isProductionMode(config) &&
       (preferSpirit || comparePlainSpiritProjection) &&
       evaluation.spiritDevelopment &&
-      bestSpiritDevelopment
-        ? currentProCallbackOrder(
-            options.currentPro?.spiritProjectionOrder?.(
-              context,
-              index,
-              bestIndex,
-            ),
+      best.spiritDevelopment
+        ? compareProductionRules(
+            ProductionComparisonPhase.Projection,
+            { ...context, candidateIndex: index, incumbentIndex: bestIndex },
+            options.productionPolicy,
           )
         : undefined;
-    const spiritFollowupOrder = isCurrentPro(config)
-      ? currentProCallbackOrder(
-          options.currentPro?.spiritFollowupFloorOrder?.(
-            context,
-            index,
-            bestIndex,
-          ),
+    const spiritFollowupOrder = isProductionMode(config)
+      ? compareProductionRules(
+          ProductionComparisonPhase.FollowupFloor,
+          { ...context, candidateIndex: index, incumbentIndex: bestIndex },
+          options.productionPolicy,
         )
       : undefined;
     const spiritSetupSupermanaStepsBetter =
       evaluation.spiritOwnManaSetupNow &&
-      bestSpiritOwnManaSetup &&
+      best.spiritOwnManaSetupNow &&
       evaluation.supermanaProgress &&
-      bestSupermanaProgress &&
+      best.supermanaProgress &&
       rootProgressStepsBetter(
         evaluation.safeSupermanaProgressSteps,
-        bestSupermanaSteps,
+        best.safeSupermanaProgressSteps,
       );
     const equalSpiritSetupSupermanaSteps =
       !evaluation.spiritOwnManaSetupNow ||
-      !bestSpiritOwnManaSetup ||
+      !best.spiritOwnManaSetupNow ||
       !evaluation.supermanaProgress ||
-      !bestSupermanaProgress ||
-      evaluation.safeSupermanaProgressSteps === bestSupermanaSteps;
+      !best.supermanaProgress ||
+      evaluation.safeSupermanaProgressSteps === best.safeSupermanaProgressSteps;
     const spiritSetupOpponentStepsBetter =
       evaluation.spiritOwnManaSetupNow &&
-      bestSpiritOwnManaSetup &&
+      best.spiritOwnManaSetupNow &&
       evaluation.opponentManaProgress &&
-      bestOpponentManaProgress &&
+      best.opponentManaProgress &&
       rootProgressStepsBetter(
         evaluation.safeOpponentManaProgressSteps,
-        bestOpponentSteps,
+        best.safeOpponentManaProgressSteps,
       );
     const equalSpiritSetupOpponentSteps =
       !evaluation.spiritOwnManaSetupNow ||
-      !bestSpiritOwnManaSetup ||
+      !best.spiritOwnManaSetupNow ||
       !evaluation.opponentManaProgress ||
-      !bestOpponentManaProgress ||
-      evaluation.safeOpponentManaProgressSteps === bestOpponentSteps;
+      !best.opponentManaProgress ||
+      evaluation.safeOpponentManaProgressSteps ===
+        best.safeOpponentManaProgressSteps;
     const spiritSetupScorePathBetter =
       evaluation.spiritOwnManaSetupNow &&
-      bestSpiritOwnManaSetup &&
+      best.spiritOwnManaSetupNow &&
       rootScorePathStepsBetter(
         evaluation.scorePathBestSteps,
-        bestScorePathSteps,
+        best.scorePathBestSteps,
       );
     const equalSpiritSetupScorePath =
       !evaluation.spiritOwnManaSetupNow ||
-      !bestSpiritOwnManaSetup ||
-      evaluation.scorePathBestSteps === bestScorePathSteps;
+      !best.spiritOwnManaSetupNow ||
+      evaluation.scorePathBestSteps === best.scorePathBestSteps;
     const supermanaStepsBetter = rootProgressStepsBetter(
       evaluation.safeSupermanaProgressSteps,
-      bestSupermanaSteps,
+      best.safeSupermanaProgressSteps,
     );
     const equalSupermanaSteps =
-      evaluation.safeSupermanaProgressSteps === bestSupermanaSteps;
+      evaluation.safeSupermanaProgressSteps === best.safeSupermanaProgressSteps;
     const opponentStepsBetter = rootProgressStepsBetter(
       evaluation.safeOpponentManaProgressSteps,
-      bestOpponentSteps,
+      best.safeOpponentManaProgressSteps,
     );
     const equalOpponentSteps =
-      evaluation.safeOpponentManaProgressSteps === bestOpponentSteps;
+      evaluation.safeOpponentManaProgressSteps ===
+      best.safeOpponentManaProgressSteps;
     const scoreWindowBetter =
-      evaluation.sameTurnScoreWindowValue > bestScoreWindow;
+      evaluation.sameTurnScoreWindowValue > best.sameTurnScoreWindowValue;
     const equalScoreWindow =
-      evaluation.sameTurnScoreWindowValue === bestScoreWindow;
-    const handoffBetter = !evaluation.manaHandoffToOpponent && bestManaHandoff;
-    const equalHandoff = evaluation.manaHandoffToOpponent === bestManaHandoff;
-    const roundtripBetter = !evaluation.hasRoundtrip && bestRoundtrip;
-    const equalRoundtrip = evaluation.hasRoundtrip === bestRoundtrip;
+      evaluation.sameTurnScoreWindowValue === best.sameTurnScoreWindowValue;
+    const handoffBetter =
+      !evaluation.manaHandoffToOpponent && best.manaHandoffToOpponent;
+    const equalHandoff =
+      evaluation.manaHandoffToOpponent === best.manaHandoffToOpponent;
+    const roundtripBetter = !evaluation.hasRoundtrip && best.hasRoundtrip;
+    const equalRoundtrip = evaluation.hasRoundtrip === best.hasRoundtrip;
     const softBetter =
-      evaluation.interviewSoftPriority >
-      saturatingAddI32(bestSoftPriority, INTERVIEW_SOFT_PRIORITY_SCORE_MARGIN);
-    const softEqualOrDisabled =
-      saturatingAddI32(
-        evaluation.interviewSoftPriority,
+      evaluation.policyPriority >
+      saturatingScoreAdd(
+        best.policyPriority,
         INTERVIEW_SOFT_PRIORITY_SCORE_MARGIN,
-      ) >= bestSoftPriority;
+      );
+    const softEqualOrDisabled =
+      saturatingScoreAdd(
+        evaluation.policyPriority,
+        INTERVIEW_SOFT_PRIORITY_SCORE_MARGIN,
+      ) >= best.policyPriority;
     const efficiencyOrScoreBetter =
       evaluation.efficiency > bestEfficiency ||
       (evaluation.efficiency === bestEfficiency &&
@@ -1315,19 +1377,6 @@ export function pickBaselineRootIndexFromCandidateIndices(
       bestIndex = index;
       bestEfficiency = evaluation.efficiency;
       bestShortlistedScore = evaluation.score;
-      bestSpiritDevelopment = evaluation.spiritDevelopment;
-      bestSpiritSameTurnSetup = evaluation.spiritSameTurnScoreSetupNow;
-      bestSpiritOwnManaSetup = evaluation.spiritOwnManaSetupNow;
-      bestSupermanaProgress = evaluation.supermanaProgress;
-      bestOpponentManaProgress = evaluation.opponentManaProgress;
-      bestScorePathSteps = evaluation.scorePathBestSteps;
-      bestSupermanaSteps = evaluation.safeSupermanaProgressSteps;
-      bestOpponentSteps = evaluation.safeOpponentManaProgressSteps;
-      bestScoreWindow = evaluation.sameTurnScoreWindowValue;
-      bestSpiritSetupGain = evaluation.spiritSetupGain;
-      bestManaHandoff = evaluation.manaHandoffToOpponent;
-      bestRoundtrip = evaluation.hasRoundtrip;
-      bestSoftPriority = evaluation.interviewSoftPriority;
     }
   }
   return bestIndex;
@@ -1335,20 +1384,23 @@ export function pickBaselineRootIndexFromCandidateIndices(
 
 export function pickBaselineRootIndex(
   game: MonsGame,
-  roots: readonly RootEvaluation[],
+  roots: readonly EvaluatedRoot[],
   perspective: Color,
-  config: AutomoveSearchConfig,
+  config: AutomoveConfig,
   options: RootSelectorOptions = {},
 ): number | undefined {
   if (options.checkpoint?.() === true || roots.length === 0) return undefined;
-  if (isCurrentPro(config)) {
+  if (isProductionMode(config)) {
     const all = roots.map((_root, index) => index);
-    const selected = options.currentPro?.pickRootIndex?.(
-      selectionContext(game, roots, all, perspective, config),
-    );
-    if (selected !== undefined) {
-      assertRootIndex(roots, selected, "CurrentPro callback");
-      return options.cancelled?.() === true ? undefined : selected;
+    const picker = options.productionPolicy?.rootPicker;
+    if (picker !== undefined) {
+      const result = picker.select(
+        selectionContext(game, roots, all, perspective, config),
+      );
+      if (result.kind === "select") {
+        assertRootIndex(roots, result.index, `Production rule ${picker.id}`);
+        return options.cancelled?.() === true ? undefined : result.index;
+      }
     }
   }
   let candidates = filteredRootCandidateIndices(
@@ -1371,9 +1423,9 @@ export function pickBaselineRootIndex(
 
 export function pickBaselineRootInputs(
   game: MonsGame,
-  roots: readonly RootEvaluation[],
+  roots: readonly EvaluatedRoot[],
   perspective: Color,
-  config: AutomoveSearchConfig,
+  config: AutomoveConfig,
   options: RootSelectorOptions = {},
 ): Input[] {
   const index = pickBaselineRootIndex(
@@ -1383,5 +1435,5 @@ export function pickBaselineRootInputs(
     config,
     options,
   );
-  return index === undefined ? [] : cloneInputs(valueAt(roots, index).inputs);
+  return index === undefined ? [] : [...valueAt(roots, index).inputs];
 }

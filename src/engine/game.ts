@@ -1,4 +1,4 @@
-import { Board } from "./board.js";
+import { Board, MutableBoard } from "./board.js";
 import {
   AvailableMoveKind,
   Color,
@@ -6,14 +6,9 @@ import {
   Modifier,
   MonKind,
   NextInputKind,
-  SUPERMANA,
-  cloneInput,
-  cloneItem,
-  cloneMana,
-  cloneMon,
-  decreaseMonCooldown,
-  faintMon,
+  MAX_INPUTS_PER_MOVE,
   inputEquals,
+  inputChainKey,
   inputKey,
   isMonFainted,
   isSpiritTargetAllowed,
@@ -21,11 +16,6 @@ import {
   itemKey,
   itemMana,
   itemMon,
-  manaItem,
-  manaScore,
-  monItem,
-  monWithConsumableItem,
-  monWithManaItem,
   otherColor,
   type Event,
   type Input,
@@ -40,13 +30,16 @@ import {
   GameVariant,
   MANA_MOVES_PER_TURN,
   MONS_MOVES_PER_TURN,
-  TARGET_SCORE,
 } from "./config.js";
 import { gameFen, parseGameFen, type GameFenState } from "./fen.js";
 import {
+  applyRulesEvents,
+  canApplyRulesEvents,
+  type MutableRulesState,
+} from "./event-reducer.js";
+import {
   BOARD_CELLS,
   bombReachableLocations,
-  cloneLocation,
   demonReachableLocations,
   locationBetween,
   locationDistance,
@@ -57,18 +50,22 @@ import {
   spiritReachableLocations,
   type Location,
 } from "./geometry.js";
-import { addI32, subI32 } from "./numerics.js";
+import { RulesQueryCache, type InputStageResult } from "./query-cache.js";
+import {
+  GameHistory,
+  type HistoryReplacement,
+  type VerboseTrackingEntity,
+} from "./history.js";
+import {
+  canPlayerMoveMana,
+  canPlayerMoveMon,
+  canPlayerUseAction,
+  currentPlayerPotions,
+  isFirstTurnState,
+  winnerForState,
+} from "./legality.js";
 
-const START_SUGGESTIONS_CACHE_CAPACITY = 8;
-const SECOND_INPUT_OPTIONS_CACHE_CAPACITY = 4_096;
-const SECOND_STAGE_CACHE_CAPACITY = 8_192;
-const THIRD_STAGE_CACHE_CAPACITY = 8_192;
-
-export type VerboseTrackingEntity = {
-  readonly fen: string;
-  readonly color: Color;
-  readonly events: readonly Event[];
-};
+export type { VerboseTrackingEntity } from "./history.js";
 
 export type SuggestedStartInputOptions = {
   readonly includeManaStartsWithPotionAction: boolean;
@@ -84,178 +81,13 @@ export const FOR_AUTOMOVE_START_INPUT_OPTIONS: SuggestedStartInputOptions =
     includeManaStartsWithPotionAction: true,
   });
 
-type StageResult =
-  readonly [readonly Event[], readonly NextInput[]] | undefined;
-
-type ProcessInputCache = {
-  readonly startSuggestions: Map<string, Output>;
-  readonly secondInputOptions: Map<string, readonly NextInput[]>;
-  readonly secondStage: Map<string, StageResult>;
-  readonly thirdStage: Map<string, StageResult>;
-};
-
-function createProcessInputCache(): ProcessInputCache {
-  return {
-    startSuggestions: new Map(),
-    secondInputOptions: new Map(),
-    secondStage: new Map(),
-    thirdStage: new Map(),
-  };
-}
-
-function cloneNextInput(nextInput: NextInput): NextInput {
-  const base = {
-    input: cloneInput(nextInput.input),
-    kind: nextInput.kind,
-  };
-  return nextInput.actorMonItem === undefined
-    ? base
-    : { ...base, actorMonItem: cloneItem(nextInput.actorMonItem) };
-}
-
-function cloneEvent(event: Event): Event {
-  switch (event.kind) {
-    case "mon-move":
-      return {
-        kind: event.kind,
-        item: cloneItem(event.item),
-        from: cloneLocation(event.from),
-        to: cloneLocation(event.to),
-      };
-    case "mana-move":
-      return {
-        kind: event.kind,
-        mana: cloneMana(event.mana),
-        from: cloneLocation(event.from),
-        to: cloneLocation(event.to),
-      };
-    case "mana-scored":
-    case "mana-dropped":
-      return {
-        kind: event.kind,
-        mana: cloneMana(event.mana),
-        at: cloneLocation(event.at),
-      };
-    case "mystic-action":
-      return {
-        kind: event.kind,
-        mystic: cloneMon(event.mystic),
-        from: cloneLocation(event.from),
-        to: cloneLocation(event.to),
-      };
-    case "demon-action":
-    case "demon-additional-step":
-      return {
-        kind: event.kind,
-        demon: cloneMon(event.demon),
-        from: cloneLocation(event.from),
-        to: cloneLocation(event.to),
-      };
-    case "spirit-target-move":
-      return {
-        kind: event.kind,
-        item: cloneItem(event.item),
-        from: cloneLocation(event.from),
-        to: cloneLocation(event.to),
-        by: cloneLocation(event.by),
-      };
-    case "pickup-bomb":
-      return {
-        kind: event.kind,
-        by: cloneMon(event.by),
-        at: cloneLocation(event.at),
-      };
-    case "pickup-potion":
-      return {
-        kind: event.kind,
-        by: cloneItem(event.by),
-        at: cloneLocation(event.at),
-      };
-    case "use-potion":
-    case "supermana-back-to-base":
-      return {
-        kind: event.kind,
-        from: cloneLocation(event.from),
-        to: cloneLocation(event.to),
-      };
-    case "pickup-mana":
-      return {
-        kind: event.kind,
-        mana: cloneMana(event.mana),
-        by: cloneMon(event.by),
-        at: cloneLocation(event.at),
-      };
-    case "mon-fainted":
-      return {
-        kind: event.kind,
-        mon: cloneMon(event.mon),
-        from: cloneLocation(event.from),
-        to: cloneLocation(event.to),
-      };
-    case "bomb-attack":
-      return {
-        kind: event.kind,
-        by: cloneMon(event.by),
-        from: cloneLocation(event.from),
-        to: cloneLocation(event.to),
-      };
-    case "mon-awake":
-      return {
-        kind: event.kind,
-        mon: cloneMon(event.mon),
-        at: cloneLocation(event.at),
-      };
-    case "bomb-explosion":
-      return { kind: event.kind, at: cloneLocation(event.at) };
-    case "next-turn":
-      return { kind: event.kind, color: event.color };
-    case "game-over":
-      return { kind: event.kind, winner: event.winner };
-    case "takeback":
-      return { kind: event.kind };
-  }
-}
-
-function cloneOutput(output: Output): Output {
-  switch (output.kind) {
-    case "invalid-input":
-      return { kind: output.kind };
-    case "locations-to-start-from":
-      return {
-        kind: output.kind,
-        locations: output.locations.map(cloneLocation),
-      };
-    case "next-input-options":
-      return {
-        kind: output.kind,
-        nextInputs: output.nextInputs.map(cloneNextInput),
-      };
-    case "events":
-      return { kind: output.kind, events: output.events.map(cloneEvent) };
-  }
-}
-
-function boundedCacheInsert<T>(
-  cache: Map<string, T>,
-  key: string,
-  value: T,
-  capacity: number,
-): void {
-  if (cache.size >= capacity && !cache.has(key)) {
-    cache.clear();
-  }
-  cache.set(key, value);
-}
-
 function nextInput(
   input: Input,
   kind: NextInputKind,
   actorMonItem?: Item,
 ): NextInput {
-  const base = { input: cloneInput(input), kind };
-  return actorMonItem === undefined
-    ? base
-    : { ...base, actorMonItem: cloneItem(actorMonItem) };
+  const base = { input, kind };
+  return actorMonItem === undefined ? base : { ...base, actorMonItem };
 }
 
 function regularSquareForMovement(square: Square): boolean {
@@ -271,60 +103,92 @@ function regularSquareForMovement(square: Square): boolean {
   }
 }
 
-const MONS_GAME_BOARD_INITIALIZATION = Symbol();
-
-type MonsGameBoardInitialization = {
-  readonly [MONS_GAME_BOARD_INITIALIZATION]: Board;
-};
-
 export class MonsGame {
-  public board: Board;
-  public whiteScore: number;
-  public blackScore: number;
-  public activeColor: Color;
-  public actionsUsedCount: number;
-  public manaMovesCount: number;
-  public monsMovesCount: number;
-  public whitePotionsCount: number;
-  public blackPotionsCount: number;
-  public turnNumber: number;
-  public takebackFens: string[];
-  public isMovesVerified: boolean;
-  public withVerboseTracking: boolean;
-  public verboseTrackingEntities: VerboseTrackingEntity[];
-  #trackTakebackHistory: boolean;
-  #processInputCache: ProcessInputCache;
+  #state: MutableRulesState;
+  #history: GameHistory;
+  readonly #queryCache: RulesQueryCache;
 
-  public constructor(withVerboseTracking?: boolean, variant?: GameVariant);
-  /** @internal Direct initialization for an already-created board. */
-  public constructor(
-    withVerboseTracking: boolean,
-    variant: GameVariant,
-    // eslint-disable-next-line @typescript-eslint/unified-signatures -- This internal overload is stripped from declarations, preserving the public constructor signature.
-    initialization: MonsGameBoardInitialization,
-  );
   public constructor(
     withVerboseTracking = false,
     variant: GameVariant = DEFAULT_GAME_VARIANT,
-    initialization?: MonsGameBoardInitialization,
+    board?: Board,
   ) {
-    this.board =
-      initialization?.[MONS_GAME_BOARD_INITIALIZATION] ?? new Board(variant);
-    this.whiteScore = 0;
-    this.blackScore = 0;
-    this.activeColor = Color.White;
-    this.actionsUsedCount = 0;
-    this.manaMovesCount = 0;
-    this.monsMovesCount = 0;
-    this.whitePotionsCount = 0;
-    this.blackPotionsCount = 0;
-    this.turnNumber = 1;
-    this.takebackFens = [];
-    this.isMovesVerified = true;
-    this.withVerboseTracking = withVerboseTracking;
-    this.verboseTrackingEntities = [];
-    this.#trackTakebackHistory = true;
-    this.#processInputCache = createProcessInputCache();
+    const ownedBoard =
+      board === undefined ? new MutableBoard(variant) : board.fork();
+    this.#state = {
+      board: ownedBoard,
+      whiteScore: 0,
+      blackScore: 0,
+      activeColor: Color.White,
+      actionsUsedCount: 0,
+      manaMovesCount: 0,
+      monsMovesCount: 0,
+      whitePotionsCount: 0,
+      blackPotionsCount: 0,
+      turnNumber: 1,
+    };
+    this.#history = new GameHistory(withVerboseTracking);
+    this.#queryCache = new RulesQueryCache();
+  }
+
+  public get board(): Board {
+    return this.#state.board.readonlyView();
+  }
+
+  public get whiteScore(): number {
+    return this.#state.whiteScore;
+  }
+
+  public get blackScore(): number {
+    return this.#state.blackScore;
+  }
+
+  public get activeColor(): Color {
+    return this.#state.activeColor;
+  }
+
+  public get actionsUsedCount(): number {
+    return this.#state.actionsUsedCount;
+  }
+
+  public get manaMovesCount(): number {
+    return this.#state.manaMovesCount;
+  }
+
+  public get monsMovesCount(): number {
+    return this.#state.monsMovesCount;
+  }
+
+  public get whitePotionsCount(): number {
+    return this.#state.whitePotionsCount;
+  }
+
+  public get blackPotionsCount(): number {
+    return this.#state.blackPotionsCount;
+  }
+
+  public get turnNumber(): number {
+    return this.#state.turnNumber;
+  }
+
+  public get takebackFens(): readonly string[] {
+    return this.#history.takebackFens;
+  }
+
+  public get isMovesVerified(): boolean {
+    return this.#history.movesVerified;
+  }
+
+  public get withVerboseTracking(): boolean {
+    return this.#history.verboseTrackingEnabled;
+  }
+
+  public get verboseTrackingEntities(): readonly VerboseTrackingEntity[] {
+    return this.#history.trackingEntries;
+  }
+
+  public replaceHistory(replacement: HistoryReplacement): void {
+    this.#history.replace(replacement);
   }
 
   /**
@@ -332,34 +196,25 @@ export class MonsGame {
    * history, tracking, and cache ownership explicit.
    */
   #copyFenFieldsFrom(state: GameFenState): void {
-    this.whiteScore = state.whiteScore;
-    this.blackScore = state.blackScore;
-    this.activeColor = state.activeColor;
-    this.actionsUsedCount = state.actionsUsedCount;
-    this.manaMovesCount = state.manaMovesCount;
-    this.monsMovesCount = state.monsMovesCount;
-    this.whitePotionsCount = state.whitePotionsCount;
-    this.blackPotionsCount = state.blackPotionsCount;
-    this.turnNumber = state.turnNumber;
+    this.#state.whiteScore = state.whiteScore;
+    this.#state.blackScore = state.blackScore;
+    this.#state.activeColor = state.activeColor;
+    this.#state.actionsUsedCount = state.actionsUsedCount;
+    this.#state.manaMovesCount = state.manaMovesCount;
+    this.#state.monsMovesCount = state.monsMovesCount;
+    this.#state.whitePotionsCount = state.whitePotionsCount;
+    this.#state.blackPotionsCount = state.blackPotionsCount;
+    this.#state.turnNumber = state.turnNumber;
   }
 
   static #fromBoard(withVerboseTracking: boolean, board: Board): MonsGame {
-    return new MonsGame(withVerboseTracking, board.variant(), {
-      [MONS_GAME_BOARD_INITIALIZATION]: board,
-    });
-  }
-
-  public static new(
-    withVerboseTracking: boolean,
-    variant: GameVariant,
-  ): MonsGame {
-    return new MonsGame(withVerboseTracking, variant);
+    return new MonsGame(withVerboseTracking, board.variant, board);
   }
 
   public static newSimulationState(state: GameFenState): MonsGame {
     const game = MonsGame.#fromBoard(false, state.board);
     game.#copyFenFieldsFrom(state);
-    game.#trackTakebackHistory = false;
+    game.#history.setTakebackTracking(false);
     return game;
   }
 
@@ -373,9 +228,7 @@ export class MonsGame {
     }
     const game = MonsGame.#fromBoard(withVerboseTracking, state.board);
     game.#copyFenFieldsFrom(state);
-    game.takebackFens = [];
-    game.isMovesVerified = false;
-    game.verboseTrackingEntities = [];
+    game.#history.resetForLoadedFen();
     return game;
   }
 
@@ -383,38 +236,22 @@ export class MonsGame {
     return gameFen(this);
   }
 
-  public clone(): MonsGame {
-    const game = MonsGame.#fromBoard(
-      this.withVerboseTracking,
-      this.board.clone(),
-    );
+  public copy(): MonsGame {
+    const game = MonsGame.#fromBoard(this.withVerboseTracking, this.board);
     game.#copyFenFieldsFrom(this);
-    game.takebackFens = [...this.takebackFens];
-    game.isMovesVerified = this.isMovesVerified;
-    game.verboseTrackingEntities = this.verboseTrackingEntities.map(
-      (entity) => ({
-        fen: entity.fen,
-        color: entity.color,
-        events: entity.events.map(cloneEvent),
-      }),
-    );
-    game.#trackTakebackHistory = this.#trackTakebackHistory;
+    game.#history = this.#history.copy();
     return game;
   }
 
-  public cloneForSimulation(): MonsGame {
-    const simulation = MonsGame.#fromBoard(
-      false,
-      this.board.cloneForSimulation(),
-    );
+  public fork(): MonsGame {
+    const simulation = MonsGame.#fromBoard(false, this.board);
     simulation.#copyFenFieldsFrom(this);
-    simulation.#trackTakebackHistory = false;
-    simulation.isMovesVerified = this.isMovesVerified;
+    simulation.#history = this.#history.fork();
     return simulation;
   }
 
   public variant(): GameVariant {
-    return this.board.variant();
+    return this.board.variant;
   }
 
   public replaceBoardItems(items: Iterable<readonly [Location, Item]>): void {
@@ -423,52 +260,41 @@ export class MonsGame {
       () => undefined,
     );
     for (const [at, item] of items) {
-      itemArray[locationIndex(at)] = cloneItem(item);
+      itemArray[locationIndex(at)] = item;
     }
-    this.board = Board.fromItems(itemArray, this.variant());
-    this.takebackFens = [];
-    this.verboseTrackingEntities = [];
-    this.isMovesVerified = false;
+    const board = Board.fromItems(itemArray, this.variant());
+    this.#state.board = board;
+    this.#history.resetForBoardReplacement();
     this.invalidateProcessInputCache();
   }
 
   public setTakebackHistoryTracking(enabled: boolean): void {
-    this.#trackTakebackHistory = enabled;
-    if (!enabled) {
-      this.takebackFens = [];
-    }
+    this.#history.setTakebackTracking(enabled);
     this.invalidateProcessInputCache();
   }
 
   public invalidateProcessInputCache(): void {
-    this.#processInputCache = createProcessInputCache();
+    this.#queryCache.invalidate();
   }
 
   public setVerboseTracking(enabled: boolean): void {
-    this.withVerboseTracking = enabled;
-    if (!enabled) {
-      this.verboseTrackingEntities = [];
-    }
+    this.#history.setVerboseTracking(enabled);
   }
 
   public clearTracking(): void {
-    this.takebackFens = [];
-    this.verboseTrackingEntities = [];
+    this.#history.clearTracking();
     this.invalidateProcessInputCache();
   }
 
   #updateWith(otherGame: MonsGame): void {
-    this.board = otherGame.board.clone();
+    const board = otherGame.board.fork();
+    this.#state.board = board;
     this.#copyFenFieldsFrom(otherGame);
     this.invalidateProcessInputCache();
   }
 
   public canTakeback(color: Color): boolean {
-    return (
-      this.#trackTakebackHistory &&
-      this.takebackFens.length > 1 &&
-      this.activeColor === color
-    );
+    return this.#history.canTakeback(this.activeColor, color);
   }
 
   public processInput(
@@ -498,48 +324,69 @@ export class MonsGame {
     );
   }
 
+  /**
+   * Resolve only the input grammar, without recursively filtering completions
+   * for numeric-capacity failures. Automove's emergency fallback uses this to
+   * walk candidates in stable order and stop at the first applicable leaf.
+   */
+  public inspectInputGrammar(
+    input: readonly Input[],
+    suggestedStartOptions: SuggestedStartInputOptions,
+  ): Output {
+    return this.#processInputInternal(
+      input,
+      true,
+      false,
+      suggestedStartOptions,
+      false,
+    );
+  }
+
   #processInputInternal(
     input: readonly Input[],
     doNotApplyEvents: boolean,
     oneOptionEnough: boolean,
     suggestedStartOptions: SuggestedStartInputOptions,
+    filterCounterCapacityOptions = true,
   ): Output {
-    if (this.winnerColor() !== undefined) {
+    if (
+      input.length > MAX_INPUTS_PER_MOVE ||
+      this.winnerColor() !== undefined
+    ) {
       return { kind: "invalid-input" };
     }
     if (input.length === 0) {
-      const key = suggestedStartOptions.includeManaStartsWithPotionAction
-        ? "1"
-        : "0";
-      const cached = this.#processInputCache.startSuggestions.get(key);
+      const key = `${filterCounterCapacityOptions ? 1 : 0}:${
+        suggestedStartOptions.includeManaStartsWithPotionAction ? 1 : 0
+      }`;
+      const cached = this.#queryCache.getStartSuggestion(key);
       if (cached !== undefined) {
-        return cloneOutput(cached);
+        return cached;
       }
-      const output = this.#suggestedInputToStartWith(suggestedStartOptions);
-      boundedCacheInsert(
-        this.#processInputCache.startSuggestions,
-        key,
-        cloneOutput(output),
-        START_SUGGESTIONS_CACHE_CAPACITY,
+      const output = this.#suggestedInputToStartWith(
+        suggestedStartOptions,
+        filterCounterCapacityOptions,
       );
+      this.#queryCache.setStartSuggestion(key, output);
       return output;
     }
 
     const firstInput = input[0];
     if (input.length === 1 && firstInput?.kind === "takeback") {
-      if (!this.canTakeback(this.activeColor)) {
+      const prepared = this.#history.prepareTakeback(
+        this.activeColor,
+        this.activeColor,
+      );
+      if (prepared === undefined) {
         return { kind: "invalid-input" };
       }
-      this.takebackFens.pop();
-      this.verboseTrackingEntities.pop();
-      const previousFen = this.takebackFens[this.takebackFens.length - 1];
-      if (previousFen === undefined) {
-        return { kind: "invalid-input" };
+      const previousGame = MonsGame.fromFen(prepared.previousFen, false);
+      if (previousGame === undefined) return { kind: "invalid-input" };
+      if (doNotApplyEvents) {
+        return { kind: "events", events: [{ kind: "takeback" }] };
       }
-      const previousGame = MonsGame.fromFen(previousFen, false);
-      if (previousGame !== undefined) {
-        this.#updateWith(previousGame);
-      }
+      this.#updateWith(previousGame);
+      this.#history.commitTakeback(prepared);
       this.invalidateProcessInputCache();
       return { kind: "events", events: [{ kind: "takeback" }] };
     }
@@ -548,23 +395,32 @@ export class MonsGame {
       return { kind: "invalid-input" };
     }
     const startLocation = firstInput.location;
-    const boardStartItem = this.board.item(startLocation);
+    const boardStartItem = this.board.get(startLocation);
     if (boardStartItem === undefined) {
       return { kind: "invalid-input" };
     }
-    const startItem = cloneItem(boardStartItem);
+    const startItem = boardStartItem;
     const specificSecondInput = input[1];
+    const filterCounterCapacity =
+      filterCounterCapacityOptions && this.#requiresCounterCapacityFiltering();
     const secondInputOptions = this.#secondInputOptions(
       startLocation,
       startItem,
-      oneOptionEnough,
+      oneOptionEnough && !filterCounterCapacity,
       specificSecondInput,
     );
 
     if (specificSecondInput === undefined) {
-      return secondInputOptions.length === 0
+      const applicableOptions = this.#applicableInputOptions(
+        input,
+        secondInputOptions,
+        suggestedStartOptions,
+        filterCounterCapacity,
+        oneOptionEnough,
+      );
+      return applicableOptions.length === 0
         ? { kind: "invalid-input" }
-        : { kind: "next-input-options", nextInputs: secondInputOptions };
+        : { kind: "next-input-options", nextInputs: applicableOptions };
     }
     if (specificSecondInput.kind !== "location") {
       return { kind: "invalid-input" };
@@ -584,20 +440,24 @@ export class MonsGame {
       startLocation,
       targetLocation,
     );
-    const events = secondResult?.[0].map(cloneEvent) ?? [];
-    const thirdInputOptions = secondResult?.[1].map(cloneNextInput) ?? [];
+    const events = secondResult?.[0] ?? [];
+    const thirdInputOptions = secondResult?.[1] ?? [];
 
     if (specificThirdInput === undefined) {
       if (thirdInputOptions.length !== 0) {
-        return { kind: "next-input-options", nextInputs: thirdInputOptions };
+        const applicableOptions = this.#applicableInputOptions(
+          input,
+          thirdInputOptions,
+          suggestedStartOptions,
+          filterCounterCapacity,
+          oneOptionEnough,
+        );
+        return applicableOptions.length === 0
+          ? { kind: "invalid-input" }
+          : { kind: "next-input-options", nextInputs: applicableOptions };
       }
       if (events.length !== 0) {
-        return {
-          kind: "events",
-          events: doNotApplyEvents
-            ? events
-            : this.applyAndAddResultingEvents(events),
-        };
+        return this.#resolveEvents(events, doNotApplyEvents);
       }
       return { kind: "invalid-input" };
     }
@@ -615,20 +475,24 @@ export class MonsGame {
       startLocation,
       targetLocation,
     );
-    events.push(...(thirdResult?.[0].map(cloneEvent) ?? []));
-    const fourthInputOptions = thirdResult?.[1].map(cloneNextInput) ?? [];
+    events.push(...(thirdResult?.[0] ?? []));
+    const fourthInputOptions = thirdResult?.[1] ?? [];
 
     if (specificFourthInput === undefined) {
       if (fourthInputOptions.length !== 0) {
-        return { kind: "next-input-options", nextInputs: fourthInputOptions };
+        const applicableOptions = this.#applicableInputOptions(
+          input,
+          fourthInputOptions,
+          suggestedStartOptions,
+          filterCounterCapacity,
+          oneOptionEnough,
+        );
+        return applicableOptions.length === 0
+          ? { kind: "invalid-input" }
+          : { kind: "next-input-options", nextInputs: applicableOptions };
       }
       if (events.length !== 0) {
-        return {
-          kind: "events",
-          events: doNotApplyEvents
-            ? events
-            : this.applyAndAddResultingEvents(events),
-        };
+        return this.#resolveEvents(events, doNotApplyEvents);
       }
       return { kind: "invalid-input" };
     }
@@ -652,30 +516,91 @@ export class MonsGame {
       case Modifier.SelectBomb:
         events.push({
           kind: "pickup-bomb",
-          by: cloneMon(actorMon),
-          at: cloneLocation(thirdInput.input.location),
+          by: actorMon,
+          at: thirdInput.input.location,
         });
         break;
       case Modifier.SelectPotion:
         events.push({
           kind: "pickup-potion",
-          by: cloneItem(actorMonItem),
-          at: cloneLocation(thirdInput.input.location),
+          by: actorMonItem,
+          at: thirdInput.input.location,
         });
         break;
-      case Modifier.Cancel:
-        return { kind: "invalid-input" };
     }
-    return {
-      kind: "events",
-      events: doNotApplyEvents
-        ? events
-        : this.applyAndAddResultingEvents(events),
-    };
+    return this.#resolveEvents(events, doNotApplyEvents);
+  }
+
+  #requiresCounterCapacityFiltering(): boolean {
+    return (
+      this.turnNumber === Number.MAX_SAFE_INTEGER ||
+      this.whitePotionsCount === Number.MAX_SAFE_INTEGER ||
+      this.blackPotionsCount === Number.MAX_SAFE_INTEGER
+    );
+  }
+
+  #applicableInputOptions(
+    prefix: readonly Input[],
+    options: NextInput[],
+    suggestedStartOptions: SuggestedStartInputOptions,
+    required: boolean,
+    oneOptionEnough: boolean,
+  ): NextInput[] {
+    if (!required) return options;
+    const applicable = (option: NextInput): boolean =>
+      this.#hasApplicableCompletion(
+        [...prefix, option.input],
+        suggestedStartOptions,
+      );
+    if (!oneOptionEnough) return options.filter(applicable);
+    const first = options.find(applicable);
+    return first === undefined ? [] : [first];
+  }
+
+  #hasApplicableCompletion(
+    inputs: readonly Input[],
+    suggestedStartOptions: SuggestedStartInputOptions,
+  ): boolean {
+    const cacheKey = `${suggestedStartOptions.includeManaStartsWithPotionAction ? 1 : 0}|${inputChainKey(inputs)}`;
+    const cached = this.#queryCache.getCompletionViability(cacheKey);
+    if (cached !== undefined) return cached;
+
+    const output = this.#processInputInternal(
+      inputs,
+      true,
+      false,
+      suggestedStartOptions,
+      false,
+    );
+    const applicable = (() => {
+      switch (output.kind) {
+        case "invalid-input":
+          return false;
+        case "events":
+          return canApplyRulesEvents(this.#state, output.events);
+        case "locations-to-start-from":
+          return output.locations.some((at) =>
+            this.#hasApplicableCompletion(
+              [...inputs, { kind: "location", location: at }],
+              suggestedStartOptions,
+            ),
+          );
+        case "next-input-options":
+          return output.nextInputs.some((option) =>
+            this.#hasApplicableCompletion(
+              [...inputs, option.input],
+              suggestedStartOptions,
+            ),
+          );
+      }
+    })();
+    this.#queryCache.setCompletionViability(cacheKey, applicable);
+    return applicable;
   }
 
   #suggestedInputToStartWith(
     suggestedStartOptions: SuggestedStartInputOptions,
+    filterCounterCapacityOptions: boolean,
   ): Output {
     const suggestedLocations: Location[] = [];
     const seenLocations = Array.from({ length: BOARD_CELLS }, () => false);
@@ -686,6 +611,7 @@ export class MonsGame {
         true,
         true,
         suggestedStartOptions,
+        filterCounterCapacityOptions,
       );
       if (
         output.kind === "next-input-options" &&
@@ -717,6 +643,7 @@ export class MonsGame {
           true,
           true,
           suggestedStartOptions,
+          filterCounterCapacityOptions,
         );
         if (
           output.kind === "next-input-options" &&
@@ -745,9 +672,9 @@ export class MonsGame {
     const cacheKey = `${locationIndex(startLocation)}|${itemKey(startItem)}|${onlyOne ? 1 : 0}|${
       specificNext === undefined ? "" : inputKey(specificNext)
     }`;
-    const cached = this.#processInputCache.secondInputOptions.get(cacheKey);
+    const cached = this.#queryCache.getSecondInputOptions(cacheKey);
     if (cached !== undefined) {
-      return cached.map(cloneNextInput);
+      return cached;
     }
 
     const specificLocation =
@@ -755,7 +682,7 @@ export class MonsGame {
     const opponentsAngelLocation = this.board.findAwakeAngel(
       otherColor(this.activeColor),
     );
-    const startSquare = this.board.square(startLocation);
+    const startSquare = this.board.squareAt(startLocation);
     const options: NextInput[] = [];
 
     switch (startItem.kind) {
@@ -776,8 +703,8 @@ export class MonsGame {
                   ? specificNext.location
                   : startLocation,
               (at) => {
-                const item = this.board.item(at);
-                const square = this.board.square(at);
+                const item = this.board.get(at);
+                const square = this.board.squareAt(at);
                 let itemAllows: boolean;
                 switch (item?.kind) {
                   case "mon":
@@ -832,7 +759,7 @@ export class MonsGame {
                   onlyOne,
                   specificLocation,
                   (at) => {
-                    const item = this.board.item(at);
+                    const item = this.board.get(at);
                     if (
                       item === undefined ||
                       MonsGame.#isLocationGuardedByAngelLocation(
@@ -860,16 +787,16 @@ export class MonsGame {
                   onlyOne,
                   specificLocation,
                   (at) => {
-                    const item = this.board.item(at);
+                    const item = this.board.get(at);
                     const between = locationBetween(startLocation, at);
-                    const betweenSquare = this.board.square(between);
+                    const betweenSquare = this.board.squareAt(between);
                     if (
                       item === undefined ||
                       MonsGame.#isLocationGuardedByAngelLocation(
                         opponentsAngelLocation,
                         at,
                       ) ||
-                      this.board.item(between) !== undefined ||
+                      this.board.get(between) !== undefined ||
                       betweenSquare.kind === "supermana-base" ||
                       betweenSquare.kind === "mon-base"
                     ) {
@@ -893,7 +820,7 @@ export class MonsGame {
                   onlyOne,
                   specificLocation,
                   (at) => {
-                    const item = this.board.item(at);
+                    const item = this.board.get(at);
                     if (item === undefined) {
                       return false;
                     }
@@ -919,8 +846,8 @@ export class MonsGame {
               onlyOne,
               specificLocation,
               (at) => {
-                const item = this.board.item(at);
-                const square = this.board.square(at);
+                const item = this.board.get(at);
+                const square = this.board.squareAt(at);
                 if (item?.kind === "mon") {
                   return (
                     regularSquareForMovement(square) &&
@@ -948,8 +875,8 @@ export class MonsGame {
               onlyOne,
               specificLocation,
               (at) => {
-                const item = this.board.item(at);
-                const square = this.board.square(at);
+                const item = this.board.get(at);
+                const square = this.board.squareAt(at);
                 switch (item?.kind) {
                   case "mon":
                   case "mon-with-mana":
@@ -985,8 +912,8 @@ export class MonsGame {
               onlyOne,
               specificLocation,
               (at) => {
-                const item = this.board.item(at);
-                const square = this.board.square(at);
+                const item = this.board.get(at);
+                const square = this.board.squareAt(at);
                 switch (item?.kind) {
                   case "mon":
                   case "mana":
@@ -1010,7 +937,7 @@ export class MonsGame {
               onlyOne,
               specificLocation,
               (at) => {
-                const item = this.board.item(at);
+                const item = this.board.get(at);
                 const targetMon =
                   item === undefined ? undefined : itemMon(item);
                 return (
@@ -1028,12 +955,7 @@ export class MonsGame {
         break;
     }
 
-    boundedCacheInsert(
-      this.#processInputCache.secondInputOptions,
-      cacheKey,
-      options.map(cloneNextInput),
-      SECOND_INPUT_OPTIONS_CACHE_CAPACITY,
-    );
+    this.#queryCache.setSecondInputOptions(cacheKey, options);
     return options;
   }
 
@@ -1042,12 +964,12 @@ export class MonsGame {
     startItem: Item,
     startLocation: Location,
     targetLocation: Location,
-  ): StageResult {
+  ): InputStageResult {
     const cacheKey = `${kind}|${itemKey(startItem)}|${locationIndex(startLocation)}|${locationIndex(
       targetLocation,
     )}`;
-    if (this.#processInputCache.secondStage.has(cacheKey)) {
-      return this.#processInputCache.secondStage.get(cacheKey);
+    if (this.#queryCache.hasSecondStage(cacheKey)) {
+      return this.#queryCache.getSecondStage(cacheKey);
     }
     const computed = this.#processSecondInputUncached(
       kind,
@@ -1055,12 +977,7 @@ export class MonsGame {
       startLocation,
       targetLocation,
     );
-    boundedCacheInsert(
-      this.#processInputCache.secondStage,
-      cacheKey,
-      computed,
-      SECOND_STAGE_CACHE_CAPACITY,
-    );
+    this.#queryCache.setSecondStage(cacheKey, computed);
     return computed;
   }
 
@@ -1069,11 +986,11 @@ export class MonsGame {
     startItem: Item,
     startLocation: Location,
     targetLocation: Location,
-  ): StageResult {
+  ): InputStageResult {
     const thirdInputOptions: NextInput[] = [];
     const events: Event[] = [];
-    const targetSquare = this.board.square(targetLocation);
-    const targetItem = this.board.item(targetLocation);
+    const targetSquare = this.board.squareAt(targetLocation);
+    const targetItem = this.board.get(targetLocation);
 
     switch (kind) {
       case NextInputKind.MonMove: {
@@ -1083,9 +1000,9 @@ export class MonsGame {
         }
         events.push({
           kind: "mon-move",
-          item: cloneItem(startItem),
-          from: cloneLocation(startLocation),
-          to: cloneLocation(targetLocation),
+          item: startItem,
+          from: startLocation,
+          to: targetLocation,
         });
 
         if (targetItem !== undefined) {
@@ -1099,15 +1016,15 @@ export class MonsGame {
               if (startMana !== undefined) {
                 events.push({
                   kind: "mana-dropped",
-                  mana: cloneMana(startMana),
-                  at: cloneLocation(startLocation),
+                  mana: startMana,
+                  at: startLocation,
                 });
               }
               events.push({
                 kind: "pickup-mana",
-                mana: cloneMana(targetItem.mana),
-                by: cloneMon(movingMon),
-                at: cloneLocation(targetLocation),
+                mana: targetItem.mana,
+                by: movingMon,
+                at: targetLocation,
               });
               break;
             }
@@ -1123,8 +1040,8 @@ export class MonsGame {
                   ) {
                     events.push({
                       kind: "pickup-potion",
-                      by: cloneItem(startItem),
-                      at: cloneLocation(targetLocation),
+                      by: startItem,
+                      at: targetLocation,
                     });
                   } else {
                     thirdInputOptions.push(
@@ -1153,8 +1070,8 @@ export class MonsGame {
           if (manaInHand !== undefined) {
             events.push({
               kind: "mana-scored",
-              mana: cloneMana(manaInHand),
-              at: cloneLocation(targetLocation),
+              mana: manaInHand,
+              at: targetLocation,
             });
           }
         }
@@ -1167,9 +1084,9 @@ export class MonsGame {
         const mana = startItem.mana;
         events.push({
           kind: "mana-move",
-          mana: cloneMana(mana),
-          from: cloneLocation(startLocation),
-          to: cloneLocation(targetLocation),
+          mana: mana,
+          from: startLocation,
+          to: targetLocation,
         });
         if (targetItem !== undefined) {
           if (targetItem.kind !== "mon") {
@@ -1177,9 +1094,9 @@ export class MonsGame {
           }
           events.push({
             kind: "pickup-mana",
-            mana: cloneMana(mana),
-            by: cloneMon(targetItem.mon),
-            at: cloneLocation(targetLocation),
+            mana: mana,
+            by: targetItem.mon,
+            at: targetLocation,
           });
         }
         switch (targetSquare.kind) {
@@ -1190,8 +1107,8 @@ export class MonsGame {
           case "mana-pool":
             events.push({
               kind: "mana-scored",
-              mana: cloneMana(mana),
-              at: cloneLocation(targetLocation),
+              mana: mana,
+              at: targetLocation,
             });
             break;
           case "mon-base":
@@ -1206,9 +1123,9 @@ export class MonsGame {
         }
         events.push({
           kind: "mystic-action",
-          mystic: cloneMon(startItem.mon),
-          from: cloneLocation(startLocation),
-          to: cloneLocation(targetLocation),
+          mystic: startItem.mon,
+          from: startLocation,
+          to: targetLocation,
         });
         if (targetItem !== undefined) {
           const targetMon = itemMon(targetItem);
@@ -1217,21 +1134,21 @@ export class MonsGame {
           }
           events.push({
             kind: "mon-fainted",
-            mon: cloneMon(targetMon),
-            from: cloneLocation(targetLocation),
+            mon: targetMon,
+            from: targetLocation,
             to: this.board.base(targetMon),
           });
           if (targetItem.kind === "mon-with-mana") {
             if (targetItem.mana.kind === "regular") {
               events.push({
                 kind: "mana-dropped",
-                mana: cloneMana(targetItem.mana),
-                at: cloneLocation(targetLocation),
+                mana: targetItem.mana,
+                at: targetLocation,
               });
             } else {
               events.push({
                 kind: "supermana-back-to-base",
-                from: cloneLocation(targetLocation),
+                from: targetLocation,
                 to: this.board.supermanaBase(),
               });
             }
@@ -1241,7 +1158,7 @@ export class MonsGame {
               case Consumable.Bomb:
                 events.push({
                   kind: "bomb-explosion",
-                  at: cloneLocation(targetLocation),
+                  at: targetLocation,
                 });
                 break;
               case Consumable.Potion:
@@ -1259,9 +1176,9 @@ export class MonsGame {
         const startMon = startItem.mon;
         events.push({
           kind: "demon-action",
-          demon: cloneMon(startMon),
-          from: cloneLocation(startLocation),
-          to: cloneLocation(targetLocation),
+          demon: startMon,
+          from: startLocation,
+          to: targetLocation,
         });
         let requiresAdditionalStep = false;
         if (targetItem !== undefined) {
@@ -1271,8 +1188,8 @@ export class MonsGame {
           }
           events.push({
             kind: "mon-fainted",
-            mon: cloneMon(targetMon),
-            from: cloneLocation(targetLocation),
+            mon: targetMon,
+            from: targetLocation,
             to: this.board.base(targetMon),
           });
           if (targetItem.kind === "mon-with-mana") {
@@ -1280,13 +1197,13 @@ export class MonsGame {
               requiresAdditionalStep = true;
               events.push({
                 kind: "mana-dropped",
-                mana: cloneMana(targetItem.mana),
-                at: cloneLocation(targetLocation),
+                mana: targetItem.mana,
+                at: targetLocation,
               });
             } else {
               events.push({
                 kind: "supermana-back-to-base",
-                from: cloneLocation(targetLocation),
+                from: targetLocation,
                 to: this.board.supermanaBase(),
               });
             }
@@ -1296,12 +1213,12 @@ export class MonsGame {
               case Consumable.Bomb:
                 events.push({
                   kind: "bomb-explosion",
-                  at: cloneLocation(targetLocation),
+                  at: targetLocation,
                 });
                 events.push({
                   kind: "mon-fainted",
-                  mon: cloneMon(startMon),
-                  from: cloneLocation(targetLocation),
+                  mon: startMon,
+                  from: targetLocation,
                   to: this.board.base(startMon),
                 });
                 break;
@@ -1319,8 +1236,8 @@ export class MonsGame {
         }
         if (requiresAdditionalStep) {
           for (const at of nearbyLocations(targetLocation)) {
-            const item = this.board.item(at);
-            const square = this.board.square(at);
+            const item = this.board.get(at);
+            const square = this.board.squareAt(at);
             if (item !== undefined && item.kind !== "consumable") {
               continue;
             }
@@ -1360,8 +1277,8 @@ export class MonsGame {
             false,
             undefined,
             (at) => {
-              const destinationItem = this.board.item(at);
-              const destinationSquare = this.board.square(at);
+              const destinationItem = this.board.get(at);
+              const destinationSquare = this.board.squareAt(at);
               let validDestination: boolean;
               switch (destinationItem?.kind) {
                 case "mon":
@@ -1447,9 +1364,9 @@ export class MonsGame {
         }
         events.push({
           kind: "bomb-attack",
-          by: cloneMon(startMon),
-          from: cloneLocation(startLocation),
-          to: cloneLocation(targetLocation),
+          by: startMon,
+          from: startLocation,
+          to: targetLocation,
         });
         if (targetItem !== undefined) {
           const targetMon = itemMon(targetItem);
@@ -1458,21 +1375,21 @@ export class MonsGame {
           }
           events.push({
             kind: "mon-fainted",
-            mon: cloneMon(targetMon),
-            from: cloneLocation(targetLocation),
+            mon: targetMon,
+            from: targetLocation,
             to: this.board.base(targetMon),
           });
           if (targetItem.kind === "mon-with-mana") {
             if (targetItem.mana.kind === "regular") {
               events.push({
                 kind: "mana-dropped",
-                mana: cloneMana(targetItem.mana),
-                at: cloneLocation(targetLocation),
+                mana: targetItem.mana,
+                at: targetLocation,
               });
             } else {
               events.push({
                 kind: "supermana-back-to-base",
-                from: cloneLocation(targetLocation),
+                from: targetLocation,
                 to: this.board.supermanaBase(),
               });
             }
@@ -1482,7 +1399,7 @@ export class MonsGame {
               case Consumable.Bomb:
                 events.push({
                   kind: "bomb-explosion",
-                  at: cloneLocation(targetLocation),
+                  at: targetLocation,
                 });
                 break;
               case Consumable.Potion:
@@ -1507,14 +1424,14 @@ export class MonsGame {
     startItem: Item,
     startLocation: Location,
     targetLocation: Location,
-  ): StageResult {
+  ): InputStageResult {
     const cacheKey = `${inputKey(thirdInput.input)}|${thirdInput.kind}|${
       thirdInput.actorMonItem === undefined
         ? ""
         : itemKey(thirdInput.actorMonItem)
     }|${itemKey(startItem)}|${locationIndex(startLocation)}|${locationIndex(targetLocation)}`;
-    if (this.#processInputCache.thirdStage.has(cacheKey)) {
-      return this.#processInputCache.thirdStage.get(cacheKey);
+    if (this.#queryCache.hasThirdStage(cacheKey)) {
+      return this.#queryCache.getThirdStage(cacheKey);
     }
     const computed = this.#processThirdInputUncached(
       thirdInput,
@@ -1522,12 +1439,7 @@ export class MonsGame {
       startLocation,
       targetLocation,
     );
-    boundedCacheInsert(
-      this.#processInputCache.thirdStage,
-      cacheKey,
-      computed,
-      THIRD_STAGE_CACHE_CAPACITY,
-    );
+    this.#queryCache.setThirdStage(cacheKey, computed);
     return computed;
   }
 
@@ -1536,8 +1448,8 @@ export class MonsGame {
     startItem: Item,
     startLocation: Location,
     targetLocation: Location,
-  ): StageResult {
-    const targetItem = this.board.item(targetLocation);
+  ): InputStageResult {
+    const targetItem = this.board.get(targetLocation);
     const fourthInputOptions: NextInput[] = [];
     const events: Event[] = [];
 
@@ -1547,14 +1459,14 @@ export class MonsGame {
           return undefined;
         }
         const destinationLocation = thirdInput.input.location;
-        const destinationItem = this.board.item(destinationLocation);
-        const destinationSquare = this.board.square(destinationLocation);
+        const destinationItem = this.board.get(destinationLocation);
+        const destinationSquare = this.board.squareAt(destinationLocation);
         events.push({
           kind: "spirit-target-move",
-          item: cloneItem(targetItem),
-          from: cloneLocation(targetLocation),
-          to: cloneLocation(destinationLocation),
-          by: cloneLocation(startLocation),
+          item: targetItem,
+          from: targetLocation,
+          to: destinationLocation,
+          by: startLocation,
         });
 
         if (destinationItem !== undefined) {
@@ -1568,9 +1480,9 @@ export class MonsGame {
                 case "mana":
                   events.push({
                     kind: "pickup-mana",
-                    mana: cloneMana(destinationItem.mana),
-                    by: cloneMon(targetItem.mon),
-                    at: cloneLocation(destinationLocation),
+                    mana: destinationItem.mana,
+                    by: targetItem.mon,
+                    at: destinationLocation,
                   });
                   break;
                 case "consumable":
@@ -1604,9 +1516,9 @@ export class MonsGame {
               }
               events.push({
                 kind: "pickup-mana",
-                mana: cloneMana(targetItem.mana),
-                by: cloneMon(destinationItem.mon),
-                at: cloneLocation(destinationLocation),
+                mana: targetItem.mana,
+                by: destinationItem.mon,
+                at: destinationLocation,
               });
               break;
             case "mon-with-mana":
@@ -1618,14 +1530,14 @@ export class MonsGame {
                 case "mana":
                   events.push({
                     kind: "mana-dropped",
-                    mana: cloneMana(targetItem.mana),
-                    at: cloneLocation(targetLocation),
+                    mana: targetItem.mana,
+                    at: targetLocation,
                   });
                   events.push({
                     kind: "pickup-mana",
-                    mana: cloneMana(destinationItem.mana),
-                    by: cloneMon(targetItem.mon),
-                    at: cloneLocation(destinationLocation),
+                    mana: destinationItem.mana,
+                    by: targetItem.mon,
+                    at: destinationLocation,
                   });
                   break;
                 case "consumable":
@@ -1636,8 +1548,8 @@ export class MonsGame {
                     case Consumable.BombOrPotion:
                       events.push({
                         kind: "pickup-potion",
-                        by: cloneItem(targetItem),
-                        at: cloneLocation(destinationLocation),
+                        by: targetItem,
+                        at: destinationLocation,
                       });
                       break;
                   }
@@ -1653,8 +1565,8 @@ export class MonsGame {
               }
               events.push({
                 kind: "pickup-potion",
-                by: cloneItem(targetItem),
-                at: cloneLocation(destinationLocation),
+                by: targetItem,
+                at: destinationLocation,
               });
               break;
             case "consumable":
@@ -1687,8 +1599,8 @@ export class MonsGame {
                     case Consumable.BombOrPotion:
                       events.push({
                         kind: "pickup-potion",
-                        by: cloneItem(destinationItem),
-                        at: cloneLocation(destinationLocation),
+                        by: destinationItem,
+                        at: destinationLocation,
                       });
                       break;
                   }
@@ -1703,8 +1615,8 @@ export class MonsGame {
           if (mana !== undefined) {
             events.push({
               kind: "mana-scored",
-              mana: cloneMana(mana),
-              at: cloneLocation(destinationLocation),
+              mana: mana,
+              at: destinationLocation,
             });
           }
         }
@@ -1721,11 +1633,11 @@ export class MonsGame {
         const destinationLocation = thirdInput.input.location;
         events.push({
           kind: "demon-additional-step",
-          demon: cloneMon(demon),
-          from: cloneLocation(targetLocation),
-          to: cloneLocation(destinationLocation),
+          demon: demon,
+          from: targetLocation,
+          to: destinationLocation,
         });
-        const destinationItem = this.board.item(destinationLocation);
+        const destinationItem = this.board.get(destinationLocation);
         if (destinationItem?.kind === "consumable") {
           switch (destinationItem.consumable) {
             case Consumable.Potion:
@@ -1763,19 +1675,17 @@ export class MonsGame {
           case Modifier.SelectBomb:
             events.push({
               kind: "pickup-bomb",
-              by: cloneMon(mon),
-              at: cloneLocation(targetLocation),
+              by: mon,
+              at: targetLocation,
             });
             break;
           case Modifier.SelectPotion:
             events.push({
               kind: "pickup-potion",
-              by: cloneItem(startItem),
-              at: cloneLocation(targetLocation),
+              by: startItem,
+              at: targetLocation,
             });
             break;
-          case Modifier.Cancel:
-            return undefined;
         }
         break;
       }
@@ -1791,239 +1701,34 @@ export class MonsGame {
     return [events, fourthInputOptions];
   }
 
-  public applyAndAddResultingEvents(events: readonly Event[]): Event[] {
-    this.invalidateProcessInputCache();
-
-    if (this.#trackTakebackHistory && this.takebackFens.length === 0) {
-      const initialFen = this.fen();
-      this.takebackFens.push(initialFen);
-      if (
-        this.withVerboseTracking &&
-        this.verboseTrackingEntities.length === 0
-      ) {
-        this.verboseTrackingEntities.push({
-          fen: initialFen,
-          color: this.activeColor,
-          events: [],
-        });
-      }
+  #resolveEvents(events: readonly Event[], doNotApplyEvents: boolean): Output {
+    if (doNotApplyEvents) {
+      return { kind: "events", events };
     }
-
-    const extraEvents: Event[] = [];
-    for (const event of events) {
-      switch (event.kind) {
-        case "mon-move":
-          this.monsMovesCount = addI32(this.monsMovesCount, 1);
-          this.board.removeItem(event.from);
-          this.board.put(event.item, event.to);
-          break;
-        case "mana-move":
-          this.manaMovesCount = addI32(this.manaMovesCount, 1);
-          this.board.removeItem(event.from);
-          this.board.put(manaItem(event.mana), event.to);
-          break;
-        case "mana-scored": {
-          const score = manaScore(event.mana, this.activeColor);
-          if (this.activeColor === Color.White) {
-            this.whiteScore = addI32(this.whiteScore, score);
-          } else {
-            this.blackScore = addI32(this.blackScore, score);
-          }
-          const item = this.board.item(event.at);
-          if (item !== undefined) {
-            const mon = itemMon(item);
-            if (mon === undefined) {
-              this.board.removeItem(event.at);
-            } else {
-              this.board.put(monItem(mon), event.at);
-            }
-          }
-          break;
-        }
-        case "mystic-action":
-          if (this.actionsUsedCount >= ACTIONS_PER_TURN) {
-            if (this.activeColor === Color.White) {
-              this.whitePotionsCount = subI32(this.whitePotionsCount, 1);
-            } else {
-              this.blackPotionsCount = subI32(this.blackPotionsCount, 1);
-            }
-            extraEvents.push({
-              kind: "use-potion",
-              from: cloneLocation(event.from),
-              to: cloneLocation(event.to),
-            });
-          } else {
-            this.actionsUsedCount = addI32(this.actionsUsedCount, 1);
-          }
-          this.board.removeItem(event.to);
-          break;
-        case "demon-action": {
-          this.board.removeItem(event.from);
-          const additionalDestination = events.find(
-            (
-              candidate,
-            ): candidate is Extract<
-              Event,
-              { readonly kind: "demon-additional-step" }
-            > => candidate.kind === "demon-additional-step",
-          )?.to;
-          if (additionalDestination === undefined) {
-            this.board.put(monItem(event.demon), event.to);
-          } else {
-            this.board.removeItem(event.to);
-          }
-          if (this.actionsUsedCount >= ACTIONS_PER_TURN) {
-            if (this.activeColor === Color.White) {
-              this.whitePotionsCount = subI32(this.whitePotionsCount, 1);
-            } else {
-              this.blackPotionsCount = subI32(this.blackPotionsCount, 1);
-            }
-            const potionLocation = additionalDestination ?? event.to;
-            extraEvents.push({
-              kind: "use-potion",
-              from: cloneLocation(potionLocation),
-              to: cloneLocation(potionLocation),
-            });
-          } else {
-            this.actionsUsedCount = addI32(this.actionsUsedCount, 1);
-          }
-          break;
-        }
-        case "demon-additional-step":
-          this.board.put(monItem(event.demon), event.to);
-          break;
-        case "spirit-target-move":
-          if (this.actionsUsedCount >= ACTIONS_PER_TURN) {
-            if (this.activeColor === Color.White) {
-              this.whitePotionsCount = subI32(this.whitePotionsCount, 1);
-            } else {
-              this.blackPotionsCount = subI32(this.blackPotionsCount, 1);
-            }
-            extraEvents.push({
-              kind: "use-potion",
-              from: cloneLocation(event.by),
-              to: cloneLocation(event.to),
-            });
-          } else {
-            this.actionsUsedCount = addI32(this.actionsUsedCount, 1);
-          }
-          this.board.removeItem(event.from);
-          this.board.put(event.item, event.to);
-          break;
-        case "pickup-bomb":
-          this.board.put(
-            monWithConsumableItem(event.by, Consumable.Bomb),
-            event.at,
-          );
-          break;
-        case "pickup-potion": {
-          const mon = itemMon(event.by);
-          if (mon === undefined) {
-            break;
-          }
-          if (mon.color === Color.White) {
-            this.whitePotionsCount = addI32(this.whitePotionsCount, 1);
-          } else {
-            this.blackPotionsCount = addI32(this.blackPotionsCount, 1);
-          }
-          this.board.put(event.by, event.at);
-          break;
-        }
-        case "pickup-mana":
-          this.board.put(monWithManaItem(event.by, event.mana), event.at);
-          break;
-        case "mon-fainted": {
-          const faintedMon = cloneMon(event.mon);
-          faintMon(faintedMon);
-          this.board.put(monItem(faintedMon), event.to);
-          break;
-        }
-        case "mana-dropped":
-          this.board.put(manaItem(event.mana), event.at);
-          break;
-        case "supermana-back-to-base": {
-          const item = this.board.item(event.to);
-          if (item?.kind === "mon") {
-            this.board.put(monWithManaItem(item.mon, SUPERMANA), event.to);
-          } else {
-            this.board.put(manaItem(SUPERMANA), event.to);
-          }
-          break;
-        }
-        case "bomb-attack":
-          this.board.removeItem(event.to);
-          this.board.put(monItem(event.by), event.from);
-          break;
-        case "bomb-explosion":
-          this.board.removeItem(event.at);
-          break;
-        case "mon-awake":
-        case "game-over":
-        case "next-turn":
-        case "takeback":
-        case "use-potion":
-          break;
-      }
-    }
-
-    const winner = this.winnerColor();
-    if (winner !== undefined) {
-      extraEvents.push({ kind: "game-over", winner });
-      if (this.#trackTakebackHistory) {
-        this.takebackFens = [];
-      }
-    } else if (
-      (this.isFirstTurn() && !this.playerCanMoveMon()) ||
-      (!this.isFirstTurn() && !this.playerCanMoveMana()) ||
-      (!this.isFirstTurn() &&
-        !this.playerCanMoveMon() &&
-        this.board.findMana(this.activeColor) === undefined)
-    ) {
-      this.activeColor = otherColor(this.activeColor);
-      this.turnNumber = addI32(this.turnNumber, 1);
-      this.#resetTurnState();
-      extraEvents.push({ kind: "next-turn", color: this.activeColor });
-
-      for (const monLocation of this.board.faintedMonsLocations(
-        this.activeColor,
-      )) {
-        const item = this.board.item(monLocation);
-        const mon = item === undefined ? undefined : itemMon(item);
-        if (mon !== undefined) {
-          const updatedMon = cloneMon(mon);
-          decreaseMonCooldown(updatedMon);
-          if (!isMonFainted(updatedMon)) {
-            extraEvents.push({
-              kind: "mon-awake",
-              mon: cloneMon(updatedMon),
-              at: cloneLocation(monLocation),
-            });
-          }
-          this.board.put(monItem(updatedMon), monLocation);
-        }
-      }
-      if (this.#trackTakebackHistory) {
-        this.takebackFens = [this.fen()];
-      }
-    } else if (this.#trackTakebackHistory) {
-      this.takebackFens.push(this.fen());
-    }
-
-    const updatedEvents = [...events, ...extraEvents].map(cloneEvent);
-    if (this.withVerboseTracking) {
-      this.verboseTrackingEntities.push({
-        fen: this.fen(),
-        color: this.activeColor,
-        events: updatedEvents.map(cloneEvent),
-      });
-    }
-    return updatedEvents;
+    const applied = this.applyAndAddResultingEvents(events);
+    return applied === undefined
+      ? { kind: "invalid-input" }
+      : { kind: "events", events: applied };
   }
 
-  #resetTurnState(): void {
-    this.actionsUsedCount = 0;
-    this.manaMovesCount = 0;
-    this.monsMovesCount = 0;
+  public applyAndAddResultingEvents(
+    events: readonly Event[],
+  ): Event[] | undefined {
+    if (!canApplyRulesEvents(this.#state, events)) {
+      return undefined;
+    }
+    this.invalidateProcessInputCache();
+    const snapshotFen = (): string => this.fen();
+    this.#history.beginEventApplication(snapshotFen, this.activeColor);
+    const reduction = applyRulesEvents(this.#state, events);
+    this.#history.completeEventApplication({
+      snapshotFen,
+      color: this.activeColor,
+      events: reduction.events,
+      turnAdvanced: reduction.turnAdvanced,
+      winner: reduction.winner,
+    });
+    return reduction.events;
   }
 
   static #isLocationGuardedByAngelLocation(
@@ -2067,7 +1772,7 @@ export class MonsGame {
     const moves = new Map<AvailableMoveKind, number>();
     moves.set(
       AvailableMoveKind.MonMove,
-      subI32(MONS_MOVES_PER_TURN, this.monsMovesCount),
+      MONS_MOVES_PER_TURN - this.monsMovesCount,
     );
     moves.set(AvailableMoveKind.Action, 0);
     moves.set(AvailableMoveKind.Potion, 0);
@@ -2077,21 +1782,18 @@ export class MonsGame {
     }
     moves.set(
       AvailableMoveKind.Action,
-      subI32(ACTIONS_PER_TURN, this.actionsUsedCount),
+      ACTIONS_PER_TURN - this.actionsUsedCount,
     );
     moves.set(AvailableMoveKind.Potion, this.playerPotionsCount());
     moves.set(
       AvailableMoveKind.ManaMove,
-      subI32(MANA_MOVES_PER_TURN, this.manaMovesCount),
+      MANA_MOVES_PER_TURN - this.manaMovesCount,
     );
     return moves;
   }
 
   public winnerColor(): Color | undefined {
-    if (this.whiteScore >= TARGET_SCORE) {
-      return Color.White;
-    }
-    return this.blackScore >= TARGET_SCORE ? Color.Black : undefined;
+    return winnerForState(this);
   }
 
   public isLaterThan(game: MonsGame): boolean {
@@ -2115,28 +1817,22 @@ export class MonsGame {
   }
 
   public isFirstTurn(): boolean {
-    return this.turnNumber === 1;
+    return isFirstTurnState(this);
   }
 
   public playerPotionsCount(): number {
-    return this.activeColor === Color.White
-      ? this.whitePotionsCount
-      : this.blackPotionsCount;
+    return currentPlayerPotions(this);
   }
 
   public playerCanMoveMon(): boolean {
-    return this.monsMovesCount < MONS_MOVES_PER_TURN;
+    return canPlayerMoveMon(this);
   }
 
   public playerCanMoveMana(): boolean {
-    return !this.isFirstTurn() && this.manaMovesCount < MANA_MOVES_PER_TURN;
+    return canPlayerMoveMana(this);
   }
 
   public playerCanUseAction(): boolean {
-    return (
-      !this.isFirstTurn() &&
-      (this.playerPotionsCount() > 0 ||
-        this.actionsUsedCount < ACTIONS_PER_TURN)
-    );
+    return canPlayerUseAction(this);
   }
 }

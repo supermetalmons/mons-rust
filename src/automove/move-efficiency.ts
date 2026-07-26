@@ -3,6 +3,7 @@ import { BOARD_SIZE, MONS_MOVES_PER_TURN } from "../engine/config.js";
 import {
   Color,
   MonKind,
+  colorId,
   isMonFainted,
   itemMon,
   manaScore,
@@ -15,18 +16,13 @@ import {
   locationEquals,
   type Location,
 } from "../engine/geometry.js";
-import { addI32, mulI32, subI32 } from "../engine/numerics.js";
-import { cacheWriteAllowed } from "./deadline.js";
 import {
-  EXACT_TURN_TACTICAL_NEED_OPPONENT_MANA_PROGRESS,
-  EXACT_TURN_TACTICAL_NEED_SCORE_WINDOW,
-  EXACT_TURN_TACTICAL_NEED_SPIRIT_DENIAL,
-  EXACT_TURN_TACTICAL_NEED_SPIRIT_SCORE,
-  EXACT_TURN_TACTICAL_NEED_SUPERMANA_PROGRESS,
+  EXACT_TURN_TACTICAL_ALL_FLAGS,
   exactStrategicAnalysis,
   exactTurnTacticalProjectionWithSearchHash,
   type ExactTurnTacticalProjection,
 } from "./exact.js";
+import type { AutomoveExecutionContext } from "./execution-context.js";
 import { Hash64Table, type Hash64 } from "./hash64.js";
 import { hasMaterialEvent } from "./transitions.js";
 
@@ -36,12 +32,6 @@ const NO_EFFECT_ROOT_PENALTY = 120;
 const LOW_IMPACT_ROOT_PENALTY = 40;
 const SPIRIT_DEPLOY_EFFICIENCY_BONUS = 90;
 const SPIRIT_ACTION_TARGET_DELTA_WEIGHT = 22;
-const MOVE_EFFICIENCY_TACTICAL_PROJECTION_FLAGS =
-  EXACT_TURN_TACTICAL_NEED_SUPERMANA_PROGRESS |
-  EXACT_TURN_TACTICAL_NEED_OPPONENT_MANA_PROGRESS |
-  EXACT_TURN_TACTICAL_NEED_SPIRIT_SCORE |
-  EXACT_TURN_TACTICAL_NEED_SPIRIT_DENIAL |
-  EXACT_TURN_TACTICAL_NEED_SCORE_WINDOW;
 
 /** Value snapshot used by both root and child move ordering. */
 export type MoveEfficiencySnapshot = {
@@ -82,9 +72,19 @@ export type MoveEfficiencyDeltaOptions = MoveEfficiencyDeltaPolicy & {
   readonly includeStrategicExact: boolean;
 };
 
-const moveEfficiencySnapshotCache = new Hash64Table<MoveEfficiencySnapshot>(
-  MOVE_EFFICIENCY_SNAPSHOT_CACHE_MAX_ENTRIES,
-);
+const MOVE_EFFICIENCY_CACHE = Symbol("move-efficiency-cache");
+
+function moveEfficiencyCache(
+  context: AutomoveExecutionContext,
+): Hash64Table<MoveEfficiencySnapshot> {
+  return context.caches.session.getOrCreate(
+    MOVE_EFFICIENCY_CACHE,
+    () =>
+      new Hash64Table<MoveEfficiencySnapshot>(
+        MOVE_EFFICIENCY_SNAPSHOT_CACHE_MAX_ENTRIES,
+      ),
+  );
+}
 
 function snapshotCacheTag(
   perspective: Color,
@@ -92,7 +92,7 @@ function snapshotCacheTag(
   includeStrategicExact: boolean,
 ): number {
   return (
-    perspective |
+    colorId(perspective) |
     (Number(includeTacticalExact) << 1) |
     (Number(includeStrategicExact) << 2)
   );
@@ -145,7 +145,7 @@ function approximateBestDrainerToManaSteps(
   color: Color,
 ): number | undefined {
   let bestSteps: number | undefined;
-  for (const [drainerLocation, item] of game.board.occupied()) {
+  for (const [drainerLocation, item] of game.board.entries()) {
     const mon = itemMon(item);
     if (
       mon?.color !== color ||
@@ -155,12 +155,10 @@ function approximateBestDrainerToManaSteps(
       continue;
     }
 
-    for (const [manaLocation, manaItem] of game.board.occupied()) {
+    for (const [manaLocation, manaItem] of game.board.entries()) {
       if (manaItem.kind !== "mana") continue;
-      const candidateSteps = subI32(
-        locationDistance(drainerLocation, manaLocation),
-        1,
-      );
+      const candidateSteps =
+        locationDistance(drainerLocation, manaLocation) - 1;
       bestSteps =
         bestSteps === undefined
           ? candidateSteps
@@ -170,17 +168,14 @@ function approximateBestDrainerToManaSteps(
   return bestSteps;
 }
 
-function approximateSameTurnScoreWindowValue(
+export function approximateSameTurnScoreWindowValue(
   game: MonsGame,
   color: Color,
 ): number {
   if (game.activeColor !== color) return 0;
-  const remainingMoves = Math.max(
-    0,
-    subI32(MONS_MOVES_PER_TURN, game.monsMovesCount),
-  );
+  const remainingMoves = Math.max(0, MONS_MOVES_PER_TURN - game.monsMovesCount);
   let best = 0;
-  for (const [location, item] of game.board.occupied()) {
+  for (const [location, item] of game.board.entries()) {
     if (
       item.kind !== "mon-with-mana" ||
       item.mon.color !== color ||
@@ -188,7 +183,7 @@ function approximateSameTurnScoreWindowValue(
     ) {
       continue;
     }
-    const poolSteps = subI32(distanceToAnyPoolStepsForEfficiency(location), 1);
+    const poolSteps = distanceToAnyPoolStepsForEfficiency(location) - 1;
     if (poolSteps <= remainingMoves) {
       best = Math.max(best, manaScore(item.mana, color));
     }
@@ -201,6 +196,7 @@ type MoveEfficiencySnapshotBuilder = {
 };
 
 function initializeMoveEfficiencySnapshot(
+  context: AutomoveExecutionContext,
   game: MonsGame,
   perspective: Color,
   opponent: Color,
@@ -209,14 +205,15 @@ function initializeMoveEfficiencySnapshot(
   stateHash: Hash64,
 ): MoveEfficiencySnapshotBuilder {
   const strategic = includeStrategicExact
-    ? exactStrategicAnalysis(game)
+    ? exactStrategicAnalysis(context, game)
     : undefined;
   const mySummary = strategic?.colorSummary(perspective);
   const opponentSummary = strategic?.colorSummary(opponent);
-  const tacticalFlags = MOVE_EFFICIENCY_TACTICAL_PROJECTION_FLAGS;
+  const tacticalFlags = EXACT_TURN_TACTICAL_ALL_FLAGS;
   const myTurnSummary =
     includeTacticalExact && game.activeColor === perspective
       ? exactTurnTacticalProjectionWithSearchHash(
+          context,
           game,
           perspective,
           stateHash,
@@ -229,6 +226,7 @@ function initializeMoveEfficiencySnapshot(
   const opponentTurnSummary =
     includeTacticalExact && game.activeColor === opponent
       ? exactTurnTacticalProjectionWithSearchHash(
+          context,
           game,
           opponent,
           stateHash,
@@ -316,24 +314,18 @@ function observeMoveEfficiencyBoard(
     cooldown: 0,
   });
 
-  for (const [location, item] of game.board.occupied()) {
+  for (const [location, item] of game.board.entries()) {
     if (item.kind === "mon-with-mana") {
       if (isMonFainted(item.mon)) continue;
-      const poolSteps = subI32(
-        distanceToAnyPoolStepsForEfficiency(location),
-        1,
-      );
+      const poolSteps = distanceToAnyPoolStepsForEfficiency(location) - 1;
       if (item.mon.color === perspective) {
-        snapshot.myCarrierCount = addI32(snapshot.myCarrierCount, 1);
+        snapshot.myCarrierCount = snapshot.myCarrierCount + 1;
         snapshot.myBestCarrierSteps = Math.min(
           snapshot.myBestCarrierSteps,
           poolSteps,
         );
       } else {
-        snapshot.opponentCarrierCount = addI32(
-          snapshot.opponentCarrierCount,
-          1,
-        );
+        snapshot.opponentCarrierCount = snapshot.opponentCarrierCount + 1;
         snapshot.opponentBestCarrierSteps = Math.min(
           snapshot.opponentBestCarrierSteps,
           poolSteps,
@@ -357,6 +349,7 @@ function observeMoveEfficiencyBoard(
 }
 
 function buildMoveEfficiencySnapshot(
+  context: AutomoveExecutionContext,
   game: MonsGame,
   perspective: Color,
   includeTacticalExact: boolean,
@@ -365,6 +358,7 @@ function buildMoveEfficiencySnapshot(
 ): MoveEfficiencySnapshot {
   const opponent = otherColor(perspective);
   const snapshot = initializeMoveEfficiencySnapshot(
+    context,
     game,
     perspective,
     opponent,
@@ -378,35 +372,39 @@ function buildMoveEfficiencySnapshot(
 
 /** Cached builder used for the parent/before side of ordering deltas. */
 export function moveEfficiencySnapshotWithHash(
+  context: AutomoveExecutionContext,
   game: MonsGame,
   perspective: Color,
   includeTacticalExact: boolean,
   includeStrategicExact: boolean,
   stateHash: Hash64,
 ): MoveEfficiencySnapshot {
+  const cache = moveEfficiencyCache(context);
   const tag = snapshotCacheTag(
     perspective,
     includeTacticalExact,
     includeStrategicExact,
   );
-  const cached = moveEfficiencySnapshotCache.get(stateHash, tag);
+  const cached = cache.get(stateHash, tag);
   if (cached !== undefined) return cached;
 
   const snapshot = buildMoveEfficiencySnapshot(
+    context,
     game,
     perspective,
     includeTacticalExact,
     includeStrategicExact,
     stateHash,
   );
-  if (cacheWriteAllowed()) {
-    moveEfficiencySnapshotCache.set(stateHash, snapshot, tag);
+  if (context.session.cacheWriteAllowed) {
+    cache.set(stateHash, snapshot, tag);
   }
   return snapshot;
 }
 
 /** Uncached builder used for the simulated/after side of ordering deltas. */
 export function moveEfficiencySnapshotUncachedWithHash(
+  context: AutomoveExecutionContext,
   game: MonsGame,
   perspective: Color,
   includeTacticalExact: boolean,
@@ -414,6 +412,7 @@ export function moveEfficiencySnapshotUncachedWithHash(
   stateHash: Hash64,
 ): MoveEfficiencySnapshot {
   return buildMoveEfficiencySnapshot(
+    context,
     game,
     perspective,
     includeTacticalExact,
@@ -422,8 +421,10 @@ export function moveEfficiencySnapshotUncachedWithHash(
   );
 }
 
-export function clearMoveEfficiencyCache(): void {
-  moveEfficiencySnapshotCache.clear();
+export function clearMoveEfficiencyCache(
+  context: AutomoveExecutionContext,
+): void {
+  moveEfficiencyCache(context).clear();
 }
 
 export function stepProgressDelta(
@@ -436,13 +437,13 @@ export function stepProgressDelta(
   const beforeKnown = beforeSteps < unknownSteps;
   const afterKnown = afterSteps < unknownSteps;
   if (beforeKnown && afterKnown) {
-    const deltaSteps = subI32(beforeSteps, afterSteps);
-    if (deltaSteps > 0) return mulI32(deltaSteps, forwardWeight);
-    if (deltaSteps < 0) return mulI32(deltaSteps, backwardWeight);
+    const deltaSteps = beforeSteps - afterSteps;
+    if (deltaSteps > 0) return deltaSteps * forwardWeight;
+    if (deltaSteps < 0) return deltaSteps * backwardWeight;
     return 0;
   }
   if (!beforeKnown && afterKnown) return forwardWeight;
-  if (beforeKnown && !afterKnown) return subI32(0, backwardWeight);
+  if (beforeKnown && !afterKnown) return 0 - backwardWeight;
   return 0;
 }
 
@@ -532,17 +533,12 @@ export function manaHandoffPenalty(
       event.to,
       opponent,
     );
-    const movedTowardOpponent = Math.max(
-      subI32(opponentBefore, opponentAfter),
-      0,
-    );
-    const movedTowardMe = Math.max(subI32(myBefore, myAfter), 0);
+    const movedTowardOpponent = Math.max(opponentBefore - opponentAfter, 0);
+    const movedTowardMe = Math.max(myBefore - myAfter, 0);
     if (movedTowardOpponent > movedTowardMe) {
-      const excess = subI32(movedTowardOpponent, movedTowardMe);
-      penalty = addI32(
-        penalty,
-        mulI32(mulI32(excess, manaScore(event.mana, opponent)), perStepPenalty),
-      );
+      const excess = movedTowardOpponent - movedTowardMe;
+      penalty =
+        penalty + excess * manaScore(event.mana, opponent) * perStepPenalty;
     }
   }
   return penalty;
@@ -554,50 +550,41 @@ function applyCarrierAndDrainerEfficiencyDelta(
   initialDelta: number,
 ): number {
   let delta = initialDelta;
-  delta = addI32(
-    delta,
+  delta =
+    delta +
     stepProgressDelta(
       before.myBestCarrierSteps,
       after.myBestCarrierSteps,
       90,
       130,
-    ),
-  );
-  delta = subI32(
-    delta,
+    );
+  delta =
+    delta -
     stepProgressDelta(
       before.opponentBestCarrierSteps,
       after.opponentBestCarrierSteps,
       80,
       120,
-    ),
-  );
-  delta = addI32(
-    delta,
+    );
+  delta =
+    delta +
     stepProgressDelta(
       before.myBestDrainerToManaSteps,
       after.myBestDrainerToManaSteps,
       34,
       50,
-    ),
-  );
-  delta = subI32(
-    delta,
+    );
+  delta =
+    delta -
     stepProgressDelta(
       before.opponentBestDrainerToManaSteps,
       after.opponentBestDrainerToManaSteps,
       30,
       44,
-    ),
-  );
-  delta = addI32(
-    delta,
-    mulI32(subI32(after.myCarrierCount, before.myCarrierCount), 55),
-  );
-  delta = subI32(
-    delta,
-    mulI32(subI32(after.opponentCarrierCount, before.opponentCarrierCount), 48),
-  );
+    );
+  delta = delta + (after.myCarrierCount - before.myCarrierCount) * 55;
+  delta =
+    delta - (after.opponentCarrierCount - before.opponentCarrierCount) * 48;
   return delta;
 }
 
@@ -608,28 +595,19 @@ function applySpiritEfficiencyDelta(
 ): number {
   let delta = initialDelta;
   if (before.mySpiritOnBase && !after.mySpiritOnBase) {
-    delta = addI32(delta, SPIRIT_DEPLOY_EFFICIENCY_BONUS);
+    delta = delta + SPIRIT_DEPLOY_EFFICIENCY_BONUS;
   }
   if (!before.opponentSpiritOnBase && after.opponentSpiritOnBase) {
-    delta = addI32(delta, Math.trunc(SPIRIT_DEPLOY_EFFICIENCY_BONUS / 3));
+    delta = delta + Math.trunc(SPIRIT_DEPLOY_EFFICIENCY_BONUS / 3);
   }
-  delta = addI32(
-    delta,
-    mulI32(
-      subI32(after.mySpiritActionTargets, before.mySpiritActionTargets),
-      SPIRIT_ACTION_TARGET_DELTA_WEIGHT,
-    ),
-  );
-  delta = subI32(
-    delta,
-    mulI32(
-      subI32(
-        after.opponentSpiritActionTargets,
-        before.opponentSpiritActionTargets,
-      ),
-      Math.trunc(SPIRIT_ACTION_TARGET_DELTA_WEIGHT / 2),
-    ),
-  );
+  delta =
+    delta +
+    (after.mySpiritActionTargets - before.mySpiritActionTargets) *
+      SPIRIT_ACTION_TARGET_DELTA_WEIGHT;
+  delta =
+    delta -
+    (after.opponentSpiritActionTargets - before.opponentSpiritActionTargets) *
+      Math.trunc(SPIRIT_ACTION_TARGET_DELTA_WEIGHT / 2);
   return delta;
 }
 
@@ -639,40 +617,21 @@ function applyScoreWindowEfficiencyDelta(
   initialDelta: number,
 ): number {
   let delta = initialDelta;
-  delta = addI32(
-    delta,
-    mulI32(subI32(after.mySameTurnScoreValue, before.mySameTurnScoreValue), 55),
-  );
-  delta = subI32(
-    delta,
-    mulI32(
-      subI32(
-        after.opponentSameTurnScoreValue,
-        before.opponentSameTurnScoreValue,
-      ),
-      45,
-    ),
-  );
-  delta = addI32(
-    delta,
-    mulI32(
-      subI32(
-        after.mySameTurnOpponentManaScoreValue,
-        before.mySameTurnOpponentManaScoreValue,
-      ),
-      90,
-    ),
-  );
-  delta = subI32(
-    delta,
-    mulI32(
-      subI32(
-        after.opponentSameTurnOpponentManaScoreValue,
-        before.opponentSameTurnOpponentManaScoreValue,
-      ),
-      75,
-    ),
-  );
+  delta =
+    delta + (after.mySameTurnScoreValue - before.mySameTurnScoreValue) * 55;
+  delta =
+    delta -
+    (after.opponentSameTurnScoreValue - before.opponentSameTurnScoreValue) * 45;
+  delta =
+    delta +
+    (after.mySameTurnOpponentManaScoreValue -
+      before.mySameTurnOpponentManaScoreValue) *
+      90;
+  delta =
+    delta -
+    (after.opponentSameTurnOpponentManaScoreValue -
+      before.opponentSameTurnOpponentManaScoreValue) *
+      75;
   return delta;
 }
 
@@ -683,59 +642,55 @@ function applySafeProgressEfficiencyDelta(
 ): number {
   let delta = initialDelta;
   if (!before.mySafeSupermanaProgress && after.mySafeSupermanaProgress) {
-    delta = addI32(delta, 140);
+    delta = delta + 140;
   }
   if (
     !before.opponentSafeSupermanaProgress &&
     after.opponentSafeSupermanaProgress
   ) {
-    delta = subI32(delta, 120);
+    delta = delta - 120;
   }
   if (!before.mySafeOpponentManaProgress && after.mySafeOpponentManaProgress) {
-    delta = addI32(delta, 120);
+    delta = delta + 120;
   }
   if (
     !before.opponentSafeOpponentManaProgress &&
     after.opponentSafeOpponentManaProgress
   ) {
-    delta = subI32(delta, 110);
+    delta = delta - 110;
   }
-  delta = addI32(
-    delta,
+  delta =
+    delta +
     stepProgressDelta(
       before.mySafeSupermanaProgressSteps,
       after.mySafeSupermanaProgressSteps,
       26,
       40,
-    ),
-  );
-  delta = subI32(
-    delta,
+    );
+  delta =
+    delta -
     stepProgressDelta(
       before.opponentSafeSupermanaProgressSteps,
       after.opponentSafeSupermanaProgressSteps,
       22,
       36,
-    ),
-  );
-  delta = addI32(
-    delta,
+    );
+  delta =
+    delta +
     stepProgressDelta(
       before.mySafeOpponentManaProgressSteps,
       after.mySafeOpponentManaProgressSteps,
       22,
       34,
-    ),
-  );
-  delta = subI32(
-    delta,
+    );
+  delta =
+    delta -
     stepProgressDelta(
       before.opponentSafeOpponentManaProgressSteps,
       after.opponentSafeOpponentManaProgressSteps,
       18,
       30,
-    ),
-  );
+    );
   return delta;
 }
 
@@ -752,22 +707,21 @@ function applyRootEfficiencyPenalties(
     events.some((event) => event.kind === "mana-scored") ||
     eventsIncludeOpponentDrainerFainted(events, perspective);
   if (policy.applyRootManaHandoffGuard && !rootCompensatesHandoff) {
-    delta = subI32(
-      delta,
-      manaHandoffPenalty(events, perspective, policy.rootManaHandoffPenalty),
-    );
+    delta =
+      delta -
+      manaHandoffPenalty(events, perspective, policy.rootManaHandoffPenalty);
   }
   if (isNoEffectTurnTransition(game, simulatedGame, events)) {
-    delta = subI32(delta, NO_EFFECT_ROOT_PENALTY);
+    delta = delta - NO_EFFECT_ROOT_PENALTY;
   } else if (!hasMaterialEvent(events) && delta <= 0) {
-    delta = subI32(delta, LOW_IMPACT_ROOT_PENALTY);
+    delta = delta - LOW_IMPACT_ROOT_PENALTY;
   }
   if (
     policy.applyBacktrackPenalty &&
     policy.rootBacktrackPenalty > 0 &&
     hasRoundtripMonMove(events)
   ) {
-    delta = subI32(delta, policy.rootBacktrackPenalty);
+    delta = delta - policy.rootBacktrackPenalty;
   }
   return delta;
 }
@@ -806,6 +760,7 @@ export function moveEfficiencyDeltaFromBeforeSnapshotWithAfterSnapshot(
 }
 
 export function moveEfficiencyDeltaFromBeforeSnapshot(
+  context: AutomoveExecutionContext,
   game: MonsGame,
   simulatedGame: MonsGame,
   perspective: Color,
@@ -815,6 +770,7 @@ export function moveEfficiencyDeltaFromBeforeSnapshot(
   options: MoveEfficiencyDeltaOptions,
 ): number {
   const after = moveEfficiencySnapshotUncachedWithHash(
+    context,
     simulatedGame,
     perspective,
     options.includeTacticalExact && simulatedGame.activeColor === perspective,

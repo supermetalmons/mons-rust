@@ -1,77 +1,68 @@
-import { toI32 } from "./numerics.js";
+import {
+  Color,
+  Consumable,
+  Modifier,
+  MonKind,
+  type InputAction,
+  type Mana,
+  type Mon,
+} from "../api/types.js";
 import type { Location } from "./geometry.js";
 
-export enum Color {
-  White = 0,
-  Black = 1,
+export { Color, Consumable, Modifier, MonKind };
+export type { Mana, Mon, Square } from "../api/types.js";
+
+export const COLOR_IDS = Object.freeze({
+  [Color.White]: 0,
+  [Color.Black]: 1,
+} as const satisfies Readonly<Record<Color, number>>);
+
+export function colorId(color: Color): number {
+  return COLOR_IDS[color];
 }
 
-export enum MonKind {
-  Demon = 0,
-  Drainer = 1,
-  Angel = 2,
-  Spirit = 3,
-  Mystic = 4,
-}
+export const MON_KIND_IDS = Object.freeze({
+  [MonKind.Demon]: 0,
+  [MonKind.Drainer]: 1,
+  [MonKind.Angel]: 2,
+  [MonKind.Spirit]: 3,
+  [MonKind.Mystic]: 4,
+} as const satisfies Readonly<Record<MonKind, number>>);
 
-export enum Consumable {
-  Potion = 0,
-  Bomb = 1,
-  BombOrPotion = 2,
-}
+export const AvailableMoveKind = Object.freeze({
+  MonMove: "mon-move",
+  ManaMove: "mana-move",
+  Action: "action",
+  Potion: "potion",
+} as const);
+export type AvailableMoveKind =
+  (typeof AvailableMoveKind)[keyof typeof AvailableMoveKind];
 
-export enum AvailableMoveKind {
-  MonMove = 0,
-  ManaMove = 1,
-  Action = 2,
-  Potion = 3,
-}
+export const MODIFIER_RANK = Object.freeze({
+  [Modifier.SelectPotion]: 0,
+  [Modifier.SelectBomb]: 1,
+} as const satisfies Readonly<Record<Modifier, number>>);
 
-export enum Modifier {
-  SelectPotion = 0,
-  SelectBomb = 1,
-  Cancel = 2,
-}
+export const NextInputKind = Object.freeze({
+  MonMove: "mon-move",
+  ManaMove: "mana-move",
+  MysticAction: "mystic-action",
+  DemonAction: "demon-action",
+  DemonAdditionalStep: "demon-additional-step",
+  SpiritTargetCapture: "spirit-target-capture",
+  SpiritTargetMove: "spirit-target-move",
+  SelectConsumable: "select-consumable",
+  BombAttack: "bomb-attack",
+} as const satisfies Readonly<Record<string, InputAction>>);
+export type NextInputKind = InputAction;
 
-export enum NextInputKind {
-  MonMove = 0,
-  ManaMove = 1,
-  MysticAction = 2,
-  DemonAction = 3,
-  DemonAdditionalStep = 4,
-  SpiritTargetCapture = 5,
-  SpiritTargetMove = 6,
-  SelectConsumable = 7,
-  BombAttack = 8,
-}
+export type RegularMana = Extract<Mana, { readonly kind: "regular" }>;
 
-Object.freeze(Color);
-Object.freeze(MonKind);
-Object.freeze(Consumable);
-Object.freeze(AvailableMoveKind);
-Object.freeze(Modifier);
-Object.freeze(NextInputKind);
-
-export type Mon = {
-  kind: MonKind;
-  color: Color;
-  cooldown: number;
-};
-
-export type RegularMana = {
-  readonly kind: "regular";
-  readonly color: Color;
-};
-
-export type Supermana = {
-  readonly kind: "supermana";
-};
-
-export type Mana = RegularMana | Supermana;
+export type Supermana = Extract<Mana, { readonly kind: "supermana" }>;
 
 export type MonItem = {
   readonly kind: "mon";
-  mon: Mon;
+  readonly mon: Mon;
 };
 
 export type ManaItem = {
@@ -81,13 +72,13 @@ export type ManaItem = {
 
 export type MonWithManaItem = {
   readonly kind: "mon-with-mana";
-  mon: Mon;
+  readonly mon: Mon;
   readonly mana: Mana;
 };
 
 export type MonWithConsumableItem = {
   readonly kind: "mon-with-consumable";
-  mon: Mon;
+  readonly mon: Mon;
   readonly consumable: Consumable;
 };
 
@@ -99,22 +90,13 @@ export type ConsumableItem = {
 export type Item =
   MonItem | ManaItem | MonWithManaItem | MonWithConsumableItem | ConsumableItem;
 
-export type Square =
-  | { readonly kind: "regular" }
-  | { readonly kind: "consumable-base" }
-  | { readonly kind: "supermana-base" }
-  | { readonly kind: "mana-base"; readonly color: Color }
-  | { readonly kind: "mana-pool"; readonly color: Color }
-  | {
-      readonly kind: "mon-base";
-      readonly monKind: MonKind;
-      readonly color: Color;
-    };
-
 export type Input =
   | { readonly kind: "takeback" }
   | { readonly kind: "location"; readonly location: Location }
   | { readonly kind: "modifier"; readonly modifier: Modifier };
+
+/** Maximum number of semantic inputs consumed by one complete move. */
+export const MAX_INPUTS_PER_MOVE = 4;
 
 export type NextInput = {
   readonly input: Input;
@@ -221,11 +203,10 @@ export function otherColor(color: Color): Color {
 }
 
 export function createMon(kind: MonKind, color: Color, cooldown: number): Mon {
-  return { kind, color, cooldown: toI32(cooldown) };
-}
-
-export function cloneMon(mon: Mon): Mon {
-  return { kind: mon.kind, color: mon.color, cooldown: mon.cooldown };
+  if (!Number.isInteger(cooldown) || cooldown < 0 || cooldown > 2) {
+    throw new RangeError("mon cooldown must be an integer from 0 through 2");
+  }
+  return Object.freeze({ kind, color, cooldown });
 }
 
 export function monEquals(left: Mon, right: Mon): boolean {
@@ -240,29 +221,25 @@ export function isMonFainted(mon: Mon): boolean {
   return mon.cooldown > 0;
 }
 
-export function faintMon(mon: Mon): void {
-  mon.cooldown = 2;
+export function faintMon(mon: Mon): Mon {
+  return createMon(mon.kind, mon.color, 2);
 }
 
-export function decreaseMonCooldown(mon: Mon): void {
-  if (mon.cooldown > 0) {
-    mon.cooldown = toI32(mon.cooldown - 1);
-  }
+export function decreaseMonCooldown(mon: Mon): Mon {
+  return mon.cooldown > 0
+    ? createMon(mon.kind, mon.color, mon.cooldown - 1)
+    : immutableMon(mon);
 }
 
 export function regularMana(color: Color): RegularMana {
-  return { kind: "regular", color };
-}
-
-export function cloneMana(mana: Mana): Mana {
-  return mana.kind === "regular" ? regularMana(mana.color) : SUPERMANA;
+  return Object.freeze({ kind: "regular", color });
 }
 
 export function manaEquals(left: Mana, right: Mana): boolean {
-  return (
-    left.kind === right.kind &&
-    (left.kind === "supermana" || left.color === (right as RegularMana).color)
-  );
+  if (left.kind === "supermana") {
+    return right.kind === "supermana";
+  }
+  return right.kind === "regular" && left.color === right.color;
 }
 
 export function manaScore(mana: Mana, player: Color): number {
@@ -273,40 +250,241 @@ export function manaScore(mana: Mana, player: Color): number {
 }
 
 export function monItem(mon: Mon): MonItem {
-  return { kind: "mon", mon: cloneMon(mon) };
+  return Object.freeze({ kind: "mon", mon: immutableMon(mon) });
 }
 
 export function manaItem(mana: Mana): ManaItem {
-  return { kind: "mana", mana: cloneMana(mana) };
+  return Object.freeze({ kind: "mana", mana: immutableMana(mana) });
 }
 
 export function monWithManaItem(mon: Mon, mana: Mana): MonWithManaItem {
-  return { kind: "mon-with-mana", mon: cloneMon(mon), mana: cloneMana(mana) };
+  return Object.freeze({
+    kind: "mon-with-mana",
+    mon: immutableMon(mon),
+    mana: immutableMana(mana),
+  });
 }
 
 export function monWithConsumableItem(
   mon: Mon,
   consumable: Consumable,
 ): MonWithConsumableItem {
-  return { kind: "mon-with-consumable", mon: cloneMon(mon), consumable };
+  return Object.freeze({
+    kind: "mon-with-consumable",
+    mon: immutableMon(mon),
+    consumable,
+  });
 }
 
 export function consumableItem(consumable: Consumable): ConsumableItem {
-  return { kind: "consumable", consumable };
+  return Object.freeze({ kind: "consumable", consumable });
 }
 
-export function cloneItem(item: Item): Item {
+function immutableMon(mon: Mon): Mon {
+  return Object.isFrozen(mon)
+    ? mon
+    : createMon(mon.kind, mon.color, mon.cooldown);
+}
+
+function immutableMana(mana: Mana): Mana {
+  if (mana.kind === "supermana") return SUPERMANA;
+  return Object.isFrozen(mana) ? mana : regularMana(mana.color);
+}
+
+/** Normalize an item to a deeply frozen value safe to share between forks. */
+export function immutableItem(item: Item): Item {
   switch (item.kind) {
     case "mon":
-      return monItem(item.mon);
+      return Object.isFrozen(item) && Object.isFrozen(item.mon)
+        ? item
+        : monItem(item.mon);
     case "mana":
-      return manaItem(item.mana);
+      return Object.isFrozen(item) && Object.isFrozen(item.mana)
+        ? item
+        : manaItem(item.mana);
     case "mon-with-mana":
-      return monWithManaItem(item.mon, item.mana);
+      return Object.isFrozen(item) &&
+        Object.isFrozen(item.mon) &&
+        Object.isFrozen(item.mana)
+        ? item
+        : monWithManaItem(item.mon, item.mana);
     case "mon-with-consumable":
-      return monWithConsumableItem(item.mon, item.consumable);
+      return Object.isFrozen(item) && Object.isFrozen(item.mon)
+        ? item
+        : monWithConsumableItem(item.mon, item.consumable);
     case "consumable":
-      return consumableItem(item.consumable);
+      return Object.isFrozen(item) ? item : consumableItem(item.consumable);
+  }
+}
+
+function copyLocation(value: Location): Location {
+  return { i: value.i, j: value.j };
+}
+
+/**
+ * Copy an engine input's mutable wrapper and location layers.
+ *
+ * Frozen scalar domain values are normalized and shared by the related copy
+ * helpers below; callers remain free to mutate returned wrappers and locations.
+ */
+export function copyInput(input: Input): Input {
+  switch (input.kind) {
+    case "takeback":
+      return { kind: "takeback" };
+    case "location":
+      return { kind: "location", location: copyLocation(input.location) };
+    case "modifier":
+      return { kind: "modifier", modifier: input.modifier };
+  }
+}
+
+export function copyNextInput(nextInput: NextInput): NextInput {
+  const input = copyInput(nextInput.input);
+  if (nextInput.actorMonItem === undefined) {
+    return { input, kind: nextInput.kind };
+  }
+  return {
+    input,
+    kind: nextInput.kind,
+    actorMonItem: immutableItem(nextInput.actorMonItem),
+  };
+}
+
+export function copyEvent(event: Event): Event {
+  switch (event.kind) {
+    case "mon-move":
+      return {
+        kind: "mon-move",
+        item: immutableItem(event.item),
+        from: copyLocation(event.from),
+        to: copyLocation(event.to),
+      };
+    case "mana-move":
+      return {
+        kind: "mana-move",
+        mana: immutableMana(event.mana),
+        from: copyLocation(event.from),
+        to: copyLocation(event.to),
+      };
+    case "mana-scored":
+      return {
+        kind: "mana-scored",
+        mana: immutableMana(event.mana),
+        at: copyLocation(event.at),
+      };
+    case "mystic-action":
+      return {
+        kind: "mystic-action",
+        mystic: immutableMon(event.mystic),
+        from: copyLocation(event.from),
+        to: copyLocation(event.to),
+      };
+    case "demon-action":
+      return {
+        kind: "demon-action",
+        demon: immutableMon(event.demon),
+        from: copyLocation(event.from),
+        to: copyLocation(event.to),
+      };
+    case "demon-additional-step":
+      return {
+        kind: "demon-additional-step",
+        demon: immutableMon(event.demon),
+        from: copyLocation(event.from),
+        to: copyLocation(event.to),
+      };
+    case "spirit-target-move":
+      return {
+        kind: "spirit-target-move",
+        item: immutableItem(event.item),
+        from: copyLocation(event.from),
+        to: copyLocation(event.to),
+        by: copyLocation(event.by),
+      };
+    case "pickup-bomb":
+      return {
+        kind: "pickup-bomb",
+        by: immutableMon(event.by),
+        at: copyLocation(event.at),
+      };
+    case "pickup-potion":
+      return {
+        kind: "pickup-potion",
+        by: immutableItem(event.by),
+        at: copyLocation(event.at),
+      };
+    case "use-potion":
+      return {
+        kind: "use-potion",
+        from: copyLocation(event.from),
+        to: copyLocation(event.to),
+      };
+    case "pickup-mana":
+      return {
+        kind: "pickup-mana",
+        mana: immutableMana(event.mana),
+        by: immutableMon(event.by),
+        at: copyLocation(event.at),
+      };
+    case "mon-fainted":
+      return {
+        kind: "mon-fainted",
+        mon: immutableMon(event.mon),
+        from: copyLocation(event.from),
+        to: copyLocation(event.to),
+      };
+    case "mana-dropped":
+      return {
+        kind: "mana-dropped",
+        mana: immutableMana(event.mana),
+        at: copyLocation(event.at),
+      };
+    case "supermana-back-to-base":
+      return {
+        kind: "supermana-back-to-base",
+        from: copyLocation(event.from),
+        to: copyLocation(event.to),
+      };
+    case "bomb-attack":
+      return {
+        kind: "bomb-attack",
+        by: immutableMon(event.by),
+        from: copyLocation(event.from),
+        to: copyLocation(event.to),
+      };
+    case "mon-awake":
+      return {
+        kind: "mon-awake",
+        mon: immutableMon(event.mon),
+        at: copyLocation(event.at),
+      };
+    case "bomb-explosion":
+      return { kind: "bomb-explosion", at: copyLocation(event.at) };
+    case "next-turn":
+      return { kind: "next-turn", color: event.color };
+    case "game-over":
+      return { kind: "game-over", winner: event.winner };
+    case "takeback":
+      return { kind: "takeback" };
+  }
+}
+
+export function copyOutput(output: Output): Output {
+  switch (output.kind) {
+    case "invalid-input":
+      return { kind: "invalid-input" };
+    case "locations-to-start-from":
+      return {
+        kind: "locations-to-start-from",
+        locations: output.locations.map(copyLocation),
+      };
+    case "next-input-options":
+      return {
+        kind: "next-input-options",
+        nextInputs: output.nextInputs.map(copyNextInput),
+      };
+    case "events":
+      return { kind: "events", events: output.events.map(copyEvent) };
   }
 }
 
@@ -352,30 +530,27 @@ export function itemConsumable(item: Item): Consumable | undefined {
 }
 
 export function itemEquals(left: Item, right: Item): boolean {
-  if (left.kind !== right.kind) {
-    return false;
-  }
   switch (left.kind) {
     case "mon":
-      return monEquals(left.mon, (right as MonItem).mon);
+      return right.kind === "mon" && monEquals(left.mon, right.mon);
     case "mana":
-      return manaEquals(left.mana, (right as ManaItem).mana);
-    case "mon-with-mana": {
-      const typedRight = right as MonWithManaItem;
+      return right.kind === "mana" && manaEquals(left.mana, right.mana);
+    case "mon-with-mana":
       return (
-        monEquals(left.mon, typedRight.mon) &&
-        manaEquals(left.mana, typedRight.mana)
+        right.kind === "mon-with-mana" &&
+        monEquals(left.mon, right.mon) &&
+        manaEquals(left.mana, right.mana)
       );
-    }
-    case "mon-with-consumable": {
-      const typedRight = right as MonWithConsumableItem;
+    case "mon-with-consumable":
       return (
-        monEquals(left.mon, typedRight.mon) &&
-        left.consumable === typedRight.consumable
+        right.kind === "mon-with-consumable" &&
+        monEquals(left.mon, right.mon) &&
+        left.consumable === right.consumable
       );
-    }
     case "consumable":
-      return left.consumable === (right as ConsumableItem).consumable;
+      return (
+        right.kind === "consumable" && left.consumable === right.consumable
+      );
   }
 }
 
@@ -403,24 +578,6 @@ export function itemKey(item: Item): string {
   }
 }
 
-export function cloneInput(input: Input): Input {
-  switch (input.kind) {
-    case "takeback":
-      return { kind: "takeback" };
-    case "location":
-      return {
-        kind: "location",
-        location: { i: input.location.i, j: input.location.j },
-      };
-    case "modifier":
-      return { kind: "modifier", modifier: input.modifier };
-  }
-}
-
-export function cloneInputs(inputs: readonly Input[]): Input[] {
-  return inputs.map(cloneInput);
-}
-
 export function inputKey(input: Input): string {
   switch (input.kind) {
     case "takeback":
@@ -438,6 +595,19 @@ export function inputChainKey(inputs: readonly Input[]): string {
 
 export function inputEquals(left: Input, right: Input): boolean {
   return inputKey(left) === inputKey(right);
+}
+
+export function inputChainsShareFirstInput(
+  left: readonly Input[],
+  right: readonly Input[],
+): boolean {
+  const leftFirst = left[0];
+  const rightFirst = right[0];
+  return (
+    leftFirst !== undefined &&
+    rightFirst !== undefined &&
+    inputEquals(leftFirst, rightFirst)
+  );
 }
 
 export function inputChainsEqual(

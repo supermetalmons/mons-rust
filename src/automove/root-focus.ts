@@ -1,15 +1,15 @@
 import { BOARD_SIZE, MONS_MOVES_PER_TURN } from "../engine/config.js";
-import { inputChainsEqual, type Input } from "../engine/domain.js";
+import { inputChainsEqual, type Color, type Input } from "../engine/domain.js";
 import {
-  I32_MIN,
-  addI32,
-  divI32,
-  mulI32,
-  saturatingAddI32,
-  saturatingSubI32,
-  subI32,
-  toI32,
-} from "../engine/numerics.js";
+  MIN_SCORE,
+  saturatingScoreAdd,
+  saturatingScoreSubtract,
+} from "./score-math.js";
+import { patchAutomoveConfig } from "./selector-config.js";
+import {
+  AUTOMOVE_TURN_ENGINE_MODE,
+  type AutomoveConfig,
+} from "./selector-types.js";
 
 export const ROOT_FOCUS_CONSTANTS = Object.freeze({
   scoutDepth: 2,
@@ -31,10 +31,10 @@ export type RootFocusMoveClassFlags = {
   readonly quiet: boolean;
 };
 
-/** Structural subset of `ScoredRootMove` used by root focusing. */
+/** Structural subset of `RootCandidate` used by root focusing. */
 export type RootFocusCandidate = {
   readonly inputs: readonly Input[];
-  readonly game: { readonly activeColor: number };
+  readonly game: { readonly activeColor: Color };
   readonly heuristic: number;
   readonly efficiency: number;
   readonly winsImmediately: boolean;
@@ -59,29 +59,16 @@ export type RootFocusCandidate = {
   readonly classes: RootFocusMoveClassFlags;
 };
 
-/** Structural subset of `AutomoveSearchConfig` used by the two-pass allocator. */
-export type RootFocusConfig = {
-  readonly depth: number;
-  readonly maxVisitedNodes: number;
-  readonly enableTwoPassRootAllocation: boolean;
-  readonly enableSelectiveExtensions: boolean;
-  readonly enableQuietReductions: boolean;
-  readonly enableTwoPassVolatilityFocus: boolean;
-  readonly enableTurnEngineSelector: boolean;
-  readonly turnEngineMode: number;
-};
+export type RootFocusConfig = AutomoveConfig;
 
-export type RootFocusScoutContext<
-  Candidate extends RootFocusCandidate,
-  Config extends RootFocusConfig,
-> = {
+export type RootFocusScoutContext<Candidate extends RootFocusCandidate> = {
   readonly candidate: Candidate;
   readonly candidateIndex: number;
-  readonly perspective: number;
+  readonly perspective: Color;
   readonly depth: number;
   readonly alpha: number;
   readonly visitedNodes: number;
-  readonly config: Config;
+  readonly config: RootFocusConfig;
   readonly useTranspositionTable: boolean;
 };
 
@@ -91,22 +78,19 @@ export type RootFocusScoutEvaluation = {
   readonly visitedNodes: number;
 };
 
-export type RootFocusOptions<
-  Candidate extends RootFocusCandidate,
-  Config extends RootFocusConfig,
-> = {
+export type RootFocusOptions<Candidate extends RootFocusCandidate> = {
   readonly rootMoves: readonly Candidate[];
-  readonly perspective: number;
-  readonly config: Config;
+  readonly perspective: Color;
+  readonly config: RootFocusConfig;
   readonly useTranspositionTable: boolean;
   readonly priorityInputs?: readonly (readonly Input[])[];
   readonly forcedInputs?: readonly Input[];
   readonly evaluateDeeperScout: (
-    context: RootFocusScoutContext<Candidate, Config>,
+    context: RootFocusScoutContext<Candidate>,
   ) => RootFocusScoutEvaluation;
-  /** Mirrors the CurrentPro SpiritImpact plan plus nonnegative deny-gain gate. */
+  /** Mirrors the Production SpiritImpact plan plus nonnegative deny-gain gate. */
   readonly qualifiesPlainSpiritPlan?: (candidate: Candidate) => boolean;
-  /** Mirrors the CurrentPro DrainerSafetyRecovery plan-family gate. */
+  /** Mirrors the Production DrainerSafetyRecovery plan-family gate. */
   readonly qualifiesDrainerSafetyRecoveryPlan?: (
     candidate: Candidate,
   ) => boolean;
@@ -125,8 +109,11 @@ function rootProgressStepSoftBonus(
 ): number {
   const unknownSteps = BOARD_SIZE + 4;
   if (steps >= unknownSteps || perStepBonus <= 0) return 0;
-  const clampedSteps = Math.min(MONS_MOVES_PER_TURN, Math.max(0, toI32(steps)));
-  return mulI32(MONS_MOVES_PER_TURN - clampedSteps, toI32(perStepBonus));
+  const clampedSteps = Math.min(
+    MONS_MOVES_PER_TURN,
+    Math.max(0, Math.trunc(steps)),
+  );
+  return (MONS_MOVES_PER_TURN - clampedSteps) * Math.trunc(perStepBonus);
 }
 
 export function rootScoutProgressBonus(candidate: RootFocusCandidate): number {
@@ -138,8 +125,8 @@ export function rootScoutProgressBonus(candidate: RootFocusCandidate): number {
     !candidate.spiritSameTurnScoreSetupNow &&
     !candidate.spiritOwnManaSetupNow
   ) {
-    bonus = saturatingAddI32(
-      saturatingAddI32(bonus, 520),
+    bonus = saturatingScoreAdd(
+      saturatingScoreAdd(bonus, 520),
       rootProgressStepSoftBonus(candidate.safeSupermanaProgressSteps, 48),
     );
   }
@@ -150,8 +137,8 @@ export function rootScoutProgressBonus(candidate: RootFocusCandidate): number {
     !candidate.spiritSameTurnScoreSetupNow &&
     !candidate.spiritOwnManaSetupNow
   ) {
-    bonus = saturatingAddI32(
-      saturatingAddI32(bonus, 480),
+    bonus = saturatingScoreAdd(
+      saturatingScoreAdd(bonus, 480),
       rootProgressStepSoftBonus(candidate.safeOpponentManaProgressSteps, 40),
     );
   }
@@ -159,10 +146,10 @@ export function rootScoutProgressBonus(candidate: RootFocusCandidate): number {
 }
 
 export function rootFocusScoutScore(candidate: RootFocusCandidate): number {
-  return saturatingAddI32(
-    saturatingAddI32(
-      toI32(candidate.heuristic),
-      divI32(toI32(candidate.efficiency), 2),
+  return saturatingScoreAdd(
+    saturatingScoreAdd(
+      Math.trunc(candidate.heuristic),
+      Math.trunc(Math.trunc(candidate.efficiency) / 2),
     ),
     rootScoutProgressBonus(candidate),
   );
@@ -170,23 +157,20 @@ export function rootFocusScoutScore(candidate: RootFocusCandidate): number {
 
 export function rootVolatilityScore(candidate: RootFocusCandidate): number {
   let score = 0;
-  if (candidate.winsImmediately) score = addI32(score, 5_000);
+  if (candidate.winsImmediately) score = score + 5_000;
   if (candidate.attacksOpponentDrainer || candidate.classes.drainerAttack) {
-    score = addI32(score, 2_800);
+    score = score + 2_800;
   }
-  if (candidate.ownDrainerVulnerable) score = addI32(score, 2_200);
-  if (candidate.classes.immediateScore) score = addI32(score, 1_700);
+  if (candidate.ownDrainerVulnerable) score = score + 2_200;
+  if (candidate.classes.immediateScore) score = score + 1_700;
   if (candidate.classes.drainerSafetyRecover) {
-    score = addI32(score, 1_500);
+    score = score + 1_500;
   }
-  if (candidate.manaHandoffToOpponent) score = addI32(score, 900);
-  if (candidate.hasRoundtrip) score = addI32(score, 700);
-  if (candidate.classes.material) score = addI32(score, 240);
+  if (candidate.manaHandoffToOpponent) score = score + 900;
+  if (candidate.hasRoundtrip) score = score + 700;
+  if (candidate.classes.material) score = score + 240;
   if (candidate.efficiency < 0) {
-    score = addI32(
-      score,
-      Math.min(subI32(0, toI32(candidate.efficiency)), 400),
-    );
+    score = score + Math.min(0 - Math.trunc(candidate.efficiency), 400);
   }
   return score;
 }
@@ -218,6 +202,7 @@ export function rootScorePathStepsBetter(
 function isBetterTacticalRootCandidate(
   candidate: RootFocusCandidate,
   incumbent: RootFocusCandidate,
+  compareSpiritScorePath: boolean,
 ): boolean {
   if (candidate.winsImmediately !== incumbent.winsImmediately) {
     return candidate.winsImmediately;
@@ -291,6 +276,7 @@ function isBetterTacticalRootCandidate(
     );
   }
   if (
+    compareSpiritScorePath &&
     candidate.spiritOwnManaSetupNow &&
     incumbent.spiritOwnManaSetupNow &&
     candidate.scorePathBestSteps !== incumbent.scorePathBestSteps
@@ -346,13 +332,36 @@ function isBetterTacticalRootCandidate(
   return false;
 }
 
+function compareTacticalRootCandidateOrder(
+  candidate: RootFocusCandidate,
+  incumbent: RootFocusCandidate,
+  compareSpiritScorePath: boolean,
+): number {
+  if (
+    isBetterTacticalRootCandidate(candidate, incumbent, compareSpiritScorePath)
+  ) {
+    return -1;
+  }
+  if (
+    isBetterTacticalRootCandidate(incumbent, candidate, compareSpiritScorePath)
+  ) {
+    return 1;
+  }
+  return 0;
+}
+
 export function compareTacticalRootCandidates(
   candidate: RootFocusCandidate,
   incumbent: RootFocusCandidate,
 ): number {
-  if (isBetterTacticalRootCandidate(candidate, incumbent)) return -1;
-  if (isBetterTacticalRootCandidate(incumbent, candidate)) return 1;
-  return 0;
+  return compareTacticalRootCandidateOrder(candidate, incumbent, true);
+}
+
+export function compareTacticalRootCandidatesIgnoringScorePath(
+  candidate: RootFocusCandidate,
+  incumbent: RootFocusCandidate,
+): number {
+  return compareTacticalRootCandidateOrder(candidate, incumbent, false);
 }
 
 function compareScoresDescending(left: number, right: number): number {
@@ -430,8 +439,11 @@ function clampInteger(value: number, minimum: number, maximum: number): number {
   return Math.min(maximum, Math.max(minimum, Math.trunc(value)));
 }
 
-function isCurrentPro(config: RootFocusConfig): boolean {
-  return config.turnEngineMode === 1 && config.enableTurnEngineSelector;
+function isProductionMode(config: RootFocusConfig): boolean {
+  return (
+    config.planner.mode === AUTOMOVE_TURN_ENGINE_MODE.Production &&
+    config.planner.enabled
+  );
 }
 
 type RootScoutRun =
@@ -458,14 +470,14 @@ function prioritizedRootResult<Candidate extends RootFocusCandidate>(
   };
 }
 
-function createRootScoutConfig<Config extends RootFocusConfig>(
-  config: Config,
+function createRootScoutConfig(
+  config: RootFocusConfig,
   rootCount: number,
-): Config | undefined {
+): RootFocusConfig | undefined {
   const depth =
-    config.enableTwoPassVolatilityFocus || config.depth <= 3
+    config.search.volatilityFocus || config.budget.depth <= 3
       ? 1
-      : clampInteger(config.depth, 1, ROOT_FOCUS_CONSTANTS.scoutDepth);
+      : clampInteger(config.budget.depth, 1, ROOT_FOCUS_CONSTANTS.scoutDepth);
   const scoutShareBp = clampInteger(
     10_000 - ROOT_FOCUS_CONSTANTS.focusBudgetShareBp,
     500,
@@ -473,34 +485,28 @@ function createRootScoutConfig<Config extends RootFocusConfig>(
   );
   let budget = rootCount;
   if (depth > 1) {
-    const maximumBudget = Math.max(0, config.maxVisitedNodes - 1);
+    const maximumBudget = Math.max(0, config.budget.maxVisitedNodes - 1);
     if (maximumBudget < ROOT_FOCUS_CONSTANTS.scoutMinNodes) return undefined;
     budget = clampInteger(
-      Math.trunc((config.maxVisitedNodes * scoutShareBp) / 10_000),
+      Math.trunc((config.budget.maxVisitedNodes * scoutShareBp) / 10_000),
       ROOT_FOCUS_CONSTANTS.scoutMinNodes,
       maximumBudget,
     );
   }
   if (budget < rootCount) return undefined;
-  return {
-    ...config,
-    depth,
-    maxVisitedNodes: budget,
-    enableSelectiveExtensions: false,
-    enableQuietReductions: false,
-  };
+  return patchAutomoveConfig(config, {
+    budget: { depth, maxVisitedNodes: budget },
+    search: { selectiveExtensions: false, quietReductions: false },
+  });
 }
 
-function runRootScout<
-  Candidate extends RootFocusCandidate,
-  Config extends RootFocusConfig,
->(
-  options: RootFocusOptions<Candidate, Config>,
+function runRootScout<Candidate extends RootFocusCandidate>(
+  options: RootFocusOptions<Candidate>,
   rootMoves: readonly Candidate[],
-  scoutConfig: Config,
+  scoutConfig: RootFocusConfig,
 ): RootScoutRun {
   let visitedNodes = 0;
-  let alpha = I32_MIN;
+  let alpha = MIN_SCORE;
   const scores: (number | undefined)[] = Array.from(
     { length: rootMoves.length },
     () => undefined,
@@ -510,25 +516,28 @@ function runRootScout<
     if (options.checkpoint?.() === true) {
       return { status: "cancelled", visitedNodes };
     }
-    if (scoutConfig.depth > 1 && visitedNodes >= scoutConfig.maxVisitedNodes) {
+    if (
+      scoutConfig.budget.depth > 1 &&
+      visitedNodes >= scoutConfig.budget.maxVisitedNodes
+    ) {
       break;
     }
     let score: number;
-    if (scoutConfig.depth > 1) {
+    if (scoutConfig.budget.depth > 1) {
       visitedNodes += 1;
       const evaluation = options.evaluateDeeperScout({
         candidate,
         candidateIndex: index,
         perspective: options.perspective,
-        depth: scoutConfig.depth - 1,
+        depth: scoutConfig.budget.depth - 1,
         alpha,
         visitedNodes,
         config: scoutConfig,
         useTranspositionTable: options.useTranspositionTable,
       });
-      score = toI32(evaluation.score);
+      score = Math.trunc(evaluation.score);
       visitedNodes = Math.min(
-        scoutConfig.maxVisitedNodes,
+        scoutConfig.budget.maxVisitedNodes,
         Math.max(
           visitedNodes,
           nonnegativeInteger(evaluation.visitedNodes, visitedNodes),
@@ -572,19 +581,16 @@ function hasNarrowScoutSpread(
   focusCount: number,
 ): boolean {
   if (rankedIndices.length < focusCount) return false;
-  const bestScore = rankedIndices[0]?.[1] ?? I32_MIN;
-  const kthScore = rankedIndices[focusCount - 1]?.[1] ?? I32_MIN;
+  const bestScore = rankedIndices[0]?.[1] ?? MIN_SCORE;
+  const kthScore = rankedIndices[focusCount - 1]?.[1] ?? MIN_SCORE;
   return (
-    saturatingSubI32(bestScore, kthScore) <=
+    saturatingScoreSubtract(bestScore, kthScore) <=
     ROOT_FOCUS_CONSTANTS.narrowSpreadFallback
   );
 }
 
-function selectFocusedRootIndices<
-  Candidate extends RootFocusCandidate,
-  Config extends RootFocusConfig,
->(
-  options: RootFocusOptions<Candidate, Config>,
+function selectFocusedRootIndices<Candidate extends RootFocusCandidate>(
+  options: RootFocusOptions<Candidate>,
   rootMoves: readonly Candidate[],
   rankedIndices: readonly RankedRootIndex[],
   scoutScores: readonly (number | undefined)[],
@@ -599,7 +605,7 @@ function selectFocusedRootIndices<
     selected[index] = true;
   }
 
-  if (isCurrentPro(config) && focusCount <= 3) {
+  if (isProductionMode(config) && focusCount <= 3) {
     const topFocusHasPlainSpirit = rankedIndices
       .slice(0, focusCount)
       .some(([index]) => {
@@ -634,9 +640,7 @@ function selectFocusedRootIndices<
   }
 
   for (const [index, score] of rankedIndices) {
-    if (
-      addI32(score, ROOT_FOCUS_CONSTANTS.focusScoreMargin) < effectiveBestScore
-    ) {
+    if (score + ROOT_FOCUS_CONSTANTS.focusScoreMargin < effectiveBestScore) {
       continue;
     }
     selected[index] = true;
@@ -656,7 +660,7 @@ function selectFocusedRootIndices<
       selected[index] = true;
     }
     if (
-      isCurrentPro(config) &&
+      isProductionMode(config) &&
       candidate.ownDrainerVulnerable &&
       !candidate.ownDrainerWalkVulnerable &&
       !candidate.manaHandoffToOpponent &&
@@ -683,7 +687,7 @@ function selectFocusedRootIndices<
     if (index >= 0) selected[index] = true;
   }
 
-  if (config.enableTwoPassVolatilityFocus) {
+  if (config.search.volatilityFocus) {
     const volatilityRanked = rootMoves
       .map((candidate, index) => {
         const scoutScore = scoutScores[index];
@@ -710,13 +714,13 @@ function selectFocusedRootIndices<
     if (bestVolatility !== undefined) {
       for (const { index, volatility, scoutScore } of volatilityRanked) {
         if (
-          addI32(volatility, ROOT_FOCUS_CONSTANTS.volatilityMargin) <
+          volatility + ROOT_FOCUS_CONSTANTS.volatilityMargin <
           bestVolatility
         ) {
           break;
         }
         if (
-          addI32(scoutScore, ROOT_FOCUS_CONSTANTS.focusScoreMargin) <
+          scoutScore + ROOT_FOCUS_CONSTANTS.focusScoreMargin <
           effectiveBestScore
         ) {
           continue;
@@ -729,11 +733,8 @@ function selectFocusedRootIndices<
   return selected;
 }
 
-export function focusedRootCandidates<
-  Candidate extends RootFocusCandidate,
-  Config extends RootFocusConfig,
->(
-  options: RootFocusOptions<Candidate, Config>,
+export function focusedRootCandidates<Candidate extends RootFocusCandidate>(
+  options: RootFocusOptions<Candidate>,
 ): FocusedRootCandidatesResult<Candidate> {
   const { config, priorityInputs, forcedInputs } = options;
   const rootMoves = [...options.rootMoves];
@@ -741,9 +742,9 @@ export function focusedRootCandidates<
     return { candidates: [], scoutVisitedNodes: 0 };
   }
   if (
-    !config.enableTwoPassRootAllocation ||
+    !config.search.twoPassRootAllocation ||
     rootMoves.length <= ROOT_FOCUS_CONSTANTS.focusCount ||
-    config.depth <= 1
+    config.budget.depth <= 1
   ) {
     return prioritizedRootResult(rootMoves, priorityInputs, forcedInputs);
   }
@@ -774,7 +775,7 @@ export function focusedRootCandidates<
     rootMoves,
     rankedIndices,
     scout.scores,
-    rankedIndices[0]?.[1] ?? I32_MIN,
+    rankedIndices[0]?.[1] ?? MIN_SCORE,
     focusCount,
   );
 
@@ -795,6 +796,9 @@ export function focusedRootCandidates<
   const focused = focusedWithScores.map(([index]) => valueAt(rootMoves, index));
   return {
     candidates: prioritizeRootInputs(focused, priorityInputs, forcedInputs),
-    scoutVisitedNodes: Math.min(scout.visitedNodes, config.maxVisitedNodes),
+    scoutVisitedNodes: Math.min(
+      scout.visitedNodes,
+      config.budget.maxVisitedNodes,
+    ),
   };
 }

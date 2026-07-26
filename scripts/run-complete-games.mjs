@@ -3,14 +3,10 @@
 import { spawnSync } from "node:child_process";
 import { mkdirSync } from "node:fs";
 import path from "node:path";
-import { fileURLToPath } from "node:url";
 
 import { buildSync } from "esbuild";
 
-const repositoryRoot = path.resolve(
-  path.dirname(fileURLToPath(import.meta.url)),
-  "..",
-);
+const repositoryRoot = path.resolve(import.meta.dirname, "..");
 const targetDirectory = path.join(repositoryRoot, "target", "ts-regression");
 const outputFile = path.join(targetDirectory, "replay-complete-games.mjs");
 

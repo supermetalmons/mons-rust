@@ -1,9 +1,6 @@
 import { Color, type Input } from "../engine/domain.js";
-import { parseInputFen } from "../engine/fen.js";
+import { parseInputArrayFen } from "../engine/fen.js";
 import type { MonsGame } from "../engine/game.js";
-
-// The engine grammar consumes at most start, target, destination, and modifier.
-const MAX_INPUTS_PER_REPLAY_MOVE = 4;
 
 export type ReplayProgress = {
   readonly whiteMovesProcessed: number;
@@ -18,19 +15,7 @@ type AfterReplayMove = (game: MonsGame, progress: ReplayProgress) => boolean;
 
 function parseReplayMove(move: string): Input[] | undefined {
   if (move === "") return undefined;
-
-  const parts = move.split(";");
-  if (parts.length > MAX_INPUTS_PER_REPLAY_MOVE) return undefined;
-
-  const inputs: Input[] = [];
-  for (const part of parts) {
-    const input = parseInputFen(part);
-    if (input === undefined || (input.kind === "takeback" && part !== "z")) {
-      return undefined;
-    }
-    inputs.push(input);
-  }
-  return inputs;
+  return parseInputArrayFen(move);
 }
 
 /** Replay color-partitioned move histories in the game's active-color order. */

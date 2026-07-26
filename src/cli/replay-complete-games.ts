@@ -1,8 +1,12 @@
 import { createReadStream } from "node:fs";
 import path from "node:path";
-import { fileURLToPath } from "node:url";
+import { parseArgs } from "node:util";
 
-import { GameVariant } from "../engine/config.js";
+import completeGamesManifest from "../../test-data/complete-games/v1/manifest.json" with { type: "json" };
+import {
+  ALL_GAME_VARIANTS,
+  type GameVariant as VariantName,
+} from "../engine/config.js";
 import { MonsGame } from "../engine/game.js";
 import { parseInputArrayFen } from "../engine/fen.js";
 import { forEachByteLine } from "./byte-lines.js";
@@ -15,48 +19,18 @@ import {
   type TerminalEventKind,
 } from "./regression-support.js";
 
-const EXPECTED_BYTES = 2_273_026;
-const EXPECTED_SHA256 =
-  "5bc194f15516a9c275807415910c95b2e62ce63df9e575ac93e1dd93013197eb";
-const EXPECTED_GAME_COUNT = 1_527;
-const EXPECTED_TURN_COUNT = 25_185;
-const EXPECTED_INPUT_COUNT = 169_480;
+const EXPECTED_BYTES = completeGamesManifest.artifact.bytes;
+const EXPECTED_SHA256 = completeGamesManifest.artifact.sha256;
+const EXPECTED_GAME_COUNT = completeGamesManifest.statistics.recordCount;
+const EXPECTED_TURN_COUNT = completeGamesManifest.statistics.turnCount;
+const EXPECTED_INPUT_COUNT = completeGamesManifest.statistics.inputCount;
 const PROGRESS_INTERVAL = 250;
 const LOCATION_TOKEN = /^l(?:[0-9]|10),(?:[0-9]|10)$/u;
-const MODIFIER_TOKEN = /^m(?:p|b|c)$/u;
-
-const VARIANT_BY_NAME = Object.freeze({
-  Classic: GameVariant.Classic,
-  SwappedManaRows: GameVariant.SwappedManaRows,
-  OffsetArcManaRows: GameVariant.OffsetArcManaRows,
-  CenterSpokeManaRows: GameVariant.CenterSpokeManaRows,
-  AlternatingManaRows: GameVariant.AlternatingManaRows,
-  InnerWedgeManaRows: GameVariant.InnerWedgeManaRows,
-  OuterWedgeManaRows: GameVariant.OuterWedgeManaRows,
-  BentCenterManaRows: GameVariant.BentCenterManaRows,
-  OuterEdgeManaRows: GameVariant.OuterEdgeManaRows,
-  SplitFlankManaRows: GameVariant.SplitFlankManaRows,
-  ForwardBridgeManaRows: GameVariant.ForwardBridgeManaRows,
-  CornerChainManaRows: GameVariant.CornerChainManaRows,
-});
-
-type VariantName = keyof typeof VARIANT_BY_NAME;
+const MODIFIER_TOKEN = /^m(?:p|b)$/u;
 
 const EXPECTED_VARIANT_COUNTS: Readonly<Record<VariantName, number>> =
-  Object.freeze({
-    Classic: 1_486,
-    SwappedManaRows: 2,
-    OffsetArcManaRows: 4,
-    CenterSpokeManaRows: 3,
-    AlternatingManaRows: 6,
-    InnerWedgeManaRows: 3,
-    OuterWedgeManaRows: 2,
-    BentCenterManaRows: 6,
-    OuterEdgeManaRows: 2,
-    SplitFlankManaRows: 4,
-    ForwardBridgeManaRows: 6,
-    CornerChainManaRows: 3,
-  });
+  completeGamesManifest.statistics.variantGameCounts;
+const VARIANT_NAMES = new Set<string>(ALL_GAME_VARIANTS);
 
 type CompleteGameRecord = {
   readonly gameVariant: VariantName;
@@ -64,7 +38,7 @@ type CompleteGameRecord = {
 };
 
 function isVariantName(value: string): value is VariantName {
-  return Object.hasOwn(VARIANT_BY_NAME, value);
+  return VARIANT_NAMES.has(value);
 }
 
 function isCanonicalInputFen(inputFen: string): boolean {
@@ -131,7 +105,7 @@ function parseRecord(raw: string, line: number): CompleteGameRecord {
 }
 
 function replayGame(record: CompleteGameRecord, line: number): void {
-  const game = new MonsGame(false, VARIANT_BY_NAME[record.gameVariant]);
+  const game = new MonsGame(false, record.gameVariant);
 
   for (const [turnIndex, turn] of record.turns.entries()) {
     const lastTurn = turnIndex === record.turns.length - 1;
@@ -139,7 +113,7 @@ function replayGame(record: CompleteGameRecord, line: number): void {
       const lastInput = inputIndex === turn.length - 1;
       const before = game.fen();
       const parsedInputs = parseInputArrayFen(inputFen);
-      if (parsedInputs.length !== inputFen.split(";").length) {
+      if (parsedInputs === undefined) {
         fail(
           `line ${line} turn ${turnIndex + 1} input ${inputIndex + 1} did not parse completely: ${inputFen}`,
         );
@@ -185,43 +159,44 @@ function parseOptions(argv: readonly string[]): {
   readonly checkOnly: boolean;
   readonly corpusRoot: string;
 } {
-  const repositoryRoot = fileURLToPath(new URL("../../", import.meta.url));
-  let corpusRoot = path.join(
-    repositoryRoot,
-    "test-data",
-    "complete-games",
-    "v1",
-  );
-  let checkOnly = false;
-
-  for (let index = 0; index < argv.length; index += 1) {
-    const argument = argv[index];
-    if (argument === "--root") {
-      const value = argv[index + 1];
-      if (value === undefined) {
-        fail("--root requires a directory path");
-      }
-      corpusRoot = path.resolve(value);
-      index += 1;
-    } else if (argument === "--check-only") {
-      checkOnly = true;
-    } else if (argument === "--help" || argument === "-h") {
-      console.log(
-        "usage: node scripts/run-complete-games.mjs [--check-only] [--root <corpus-directory>]",
-      );
-      process.exit(0);
-    } else {
-      fail(`unknown argument: ${String(argument)}`);
-    }
+  const { values } = parseArgs({
+    args: argv,
+    allowPositionals: false,
+    options: {
+      "check-only": { type: "boolean" },
+      help: { type: "boolean", short: "h" },
+      root: { type: "string" },
+    },
+    strict: true,
+  });
+  if (values.help === true) {
+    console.log(
+      "usage: node scripts/run-complete-games.mjs [--check-only] [--root <corpus-directory>]",
+    );
+    process.exit(0);
   }
-  return { checkOnly, corpusRoot };
+
+  const defaultCorpusRoot = path.resolve(
+    import.meta.dirname,
+    "..",
+    "..",
+    path.dirname(completeGamesManifest.artifact.path),
+  );
+  return {
+    checkOnly: values["check-only"] ?? false,
+    corpusRoot:
+      values.root === undefined ? defaultCorpusRoot : path.resolve(values.root),
+  };
 }
 
 async function run(): Promise<void> {
   const { checkOnly, corpusRoot } = parseOptions(process.argv.slice(2));
-  const corpusPath = path.join(corpusRoot, "complete-games.jsonl");
+  const corpusPath = path.join(
+    corpusRoot,
+    path.basename(completeGamesManifest.artifact.path),
+  );
   const variantCounts = Object.fromEntries(
-    Object.keys(VARIANT_BY_NAME).map((name) => [name, 0]),
+    ALL_GAME_VARIANTS.map((name) => [name, 0]),
   ) as Record<VariantName, number>;
   let gameCount = 0;
   let turnCount = 0;
@@ -277,7 +252,7 @@ async function run(): Promise<void> {
   if (inputCount !== EXPECTED_INPUT_COUNT) {
     fail(`input count: expected ${EXPECTED_INPUT_COUNT}, got ${inputCount}`);
   }
-  for (const variant of Object.keys(VARIANT_BY_NAME) as VariantName[]) {
+  for (const variant of ALL_GAME_VARIANTS) {
     const actual = variantCounts[variant];
     const expected = EXPECTED_VARIANT_COUNTS[variant];
     if (actual !== expected) {
@@ -287,7 +262,7 @@ async function run(): Promise<void> {
 
   const action = checkOnly ? "corpus check" : "replay";
   console.log(
-    `complete games ${action} passed: ${gameCount} games, ${turnCount} turns, ${inputCount} inputs across 12 variants`,
+    `complete games ${action} passed: ${gameCount} games, ${turnCount} turns, ${inputCount} inputs across ${ALL_GAME_VARIANTS.length} variants`,
   );
 }
 

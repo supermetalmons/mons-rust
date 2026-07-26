@@ -5,7 +5,10 @@ const RULE_CASE_KEYS = [
   "outputFen",
 ] as const;
 
-const UTF8_DECODER = new TextDecoder("utf-8", { fatal: true });
+const UTF8_DECODER = new TextDecoder("utf-8", {
+  fatal: true,
+  ignoreBOM: false,
+});
 
 export type RuleTestCase = {
   readonly fenAfter: string;
@@ -28,7 +31,7 @@ export function fail(message: string): never {
   throw new Error(message);
 }
 
-/** Decode one complete UTF-8 record, rejecting malformed byte sequences. */
+/** Decode one complete UTF-8 record, rejecting malformed bytes and stripping a leading BOM. */
 export function decodeUtf8Strict(bytes: Uint8Array): string {
   return UTF8_DECODER.decode(bytes);
 }

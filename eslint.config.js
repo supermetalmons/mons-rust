@@ -52,10 +52,4 @@ export default tseslint.config(
       "@typescript-eslint/no-unsafe-return": "off",
     },
   },
-  {
-    files: ["mons-rules.d.ts"],
-    rules: {
-      "@typescript-eslint/no-misused-new": "off",
-    },
-  },
 );

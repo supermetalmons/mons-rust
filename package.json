@@ -1,7 +1,7 @@
 {
   "name": "mons-rules",
-  "version": "0.2.3",
-  "description": "super metal mons",
+  "version": "0.3.0",
+  "description": "TypeScript rules engine for Super Metal Mons",
   "type": "module",
   "license": "CC0-1.0",
   "repository": {
@@ -13,26 +13,29 @@
   },
   "files": [
     "dist/mons-rules.js",
-    "mons-rules.d.ts",
+    "dist/entrypoints/mons-rules.d.ts",
+    "dist/api/game.d.ts",
+    "dist/api/types.d.ts",
+    "dist/api/winner.d.ts",
     "LICENSE",
-    "README.md"
+    "README.md",
+    "MIGRATION.md"
   ],
   "main": "./dist/mons-rules.js",
-  "module": "./dist/mons-rules.js",
-  "browser": "./dist/mons-rules.js",
-  "types": "./mons-rules.d.ts",
+  "types": "./dist/entrypoints/mons-rules.d.ts",
+  "sideEffects": false,
   "exports": {
     ".": {
-      "types": "./mons-rules.d.ts",
-      "import": "./dist/mons-rules.js",
-      "require": "./dist/mons-rules.js",
-      "default": "./dist/mons-rules.js"
+      "types": "./dist/entrypoints/mons-rules.d.ts",
+      "import": "./dist/mons-rules.js"
     }
   },
   "scripts": {
-    "build": "esbuild ./src/entrypoints/mons-rules.ts --bundle --format=esm --platform=browser --target=es2020 --minify --keep-names --legal-comments=none --outfile=./dist/mons-rules.js",
+    "build": "npm run clean && tsc -p tsconfig.build.json && esbuild ./src/entrypoints/mons-rules.ts --bundle --format=esm --platform=browser --target=es2020 --minify --keep-names --legal-comments=none --outfile=./dist/mons-rules.js",
     "bump": "npm version patch --no-git-tag-version",
-    "check": "npm run format:check && npm run lint && npm run typecheck && npm test && ./scripts/run-rules-tests.sh && npm run test:complete-games && npm run build && node ./scripts/check-package.mjs .",
+    "check": "npm run format:check && npm run lint && npm run typecheck && npm test && ./scripts/run-rules-tests.sh && npm run test:complete-games && npm run check:corpora && npm run build && node ./scripts/check-package.mjs .",
+    "check:corpora": "node ./scripts/check-protected-corpora.mjs",
+    "clean": "node --input-type=module --eval \"import { rmSync } from 'node:fs'; rmSync('dist', { recursive: true, force: true });\"",
     "format": "prettier --write .",
     "format:check": "prettier --check .",
     "lint": "eslint .",

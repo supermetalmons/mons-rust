@@ -1,8 +1,10 @@
 import { describe, expect, it, vi } from "vitest";
 
 import { BOARD_SIZE } from "../../src/engine/config.js";
-import type { Input } from "../../src/engine/domain.js";
-import { I32_MIN } from "../../src/engine/numerics.js";
+import { GameVariant } from "../../src/engine/config.js";
+import { Color, type Input } from "../../src/engine/domain.js";
+import { MonsGame } from "../../src/engine/game.js";
+import { MIN_SCORE } from "../../src/automove/score-math.js";
 import {
   compareRankedRootIndices,
   compareTacticalRootCandidates,
@@ -14,6 +16,11 @@ import {
   type RootFocusConfig,
   type RootFocusMoveClassFlags,
 } from "../../src/automove/root-focus.js";
+import {
+  automoveConfigForGame,
+  patchAutomoveConfig,
+  type AutomoveConfigPatch,
+} from "../../src/automove/selector-config.js";
 
 type TestCandidate = RootFocusCandidate & {
   readonly id: string;
@@ -22,7 +29,7 @@ type TestCandidate = RootFocusCandidate & {
 type CandidateOverrides = Partial<
   Omit<TestCandidate, "id" | "inputs" | "game" | "classes">
 > & {
-  readonly activeColor?: number;
+  readonly activeColor?: Color;
   readonly classes?: Partial<RootFocusMoveClassFlags>;
 };
 
@@ -41,7 +48,7 @@ function candidate(
   overrides: CandidateOverrides = {},
 ): TestCandidate {
   const {
-    activeColor = 0,
+    activeColor = Color.White,
     classes: classOverrides,
     ...candidateOverrides
   } = overrides;
@@ -80,18 +87,25 @@ function candidate(
   };
 }
 
-function config(overrides: Partial<RootFocusConfig> = {}): RootFocusConfig {
-  return {
-    depth: 4,
-    maxVisitedNodes: 1_000,
-    enableTwoPassRootAllocation: true,
-    enableSelectiveExtensions: true,
-    enableQuietReductions: true,
-    enableTwoPassVolatilityFocus: false,
-    enableTurnEngineSelector: false,
-    turnEngineMode: 0,
-    ...overrides,
-  };
+function config(patch: AutomoveConfigPatch = {}): RootFocusConfig {
+  const base = automoveConfigForGame(
+    new MonsGame(false, GameVariant.Classic),
+    "pro",
+  );
+  return patchAutomoveConfig(base, {
+    budget: { depth: 4, maxVisitedNodes: 1_000, ...patch.budget },
+    search: {
+      twoPassRootAllocation: true,
+      selectiveExtensions: true,
+      quietReductions: true,
+      volatilityFocus: false,
+      ...patch.search,
+    },
+    planner: { enabled: false, ...patch.planner },
+    ...(patch.evaluation === undefined ? {} : { evaluation: patch.evaluation }),
+    ...(patch.replyRisk === undefined ? {} : { replyRisk: patch.replyRisk }),
+    ...(patch.policy === undefined ? {} : { policy: patch.policy }),
+  });
 }
 
 function ids(candidates: readonly TestCandidate[]): string[] {
@@ -176,7 +190,7 @@ describe("two-pass root allocation", () => {
     const alphaAtEntry: number[] = [];
     const result = focusedRootCandidates({
       rootMoves: roots,
-      perspective: 0,
+      perspective: Color.White,
       config: config(),
       useTranspositionTable: true,
       forcedInputs: roots[4]?.inputs ?? [],
@@ -184,10 +198,10 @@ describe("two-pass root allocation", () => {
         visitedAtEntry.push(context.visitedNodes);
         alphaAtEntry.push(context.alpha);
         expect(context.depth).toBe(1);
-        expect(context.config.depth).toBe(2);
-        expect(context.config.maxVisitedNodes).toBe(300);
-        expect(context.config.enableSelectiveExtensions).toBe(false);
-        expect(context.config.enableQuietReductions).toBe(false);
+        expect(context.config.budget.depth).toBe(2);
+        expect(context.config.budget.maxVisitedNodes).toBe(300);
+        expect(context.config.search.selectiveExtensions).toBe(false);
+        expect(context.config.search.quietReductions).toBe(false);
         return {
           score: context.candidate.heuristic,
           visitedNodes: context.visitedNodes + 9,
@@ -196,7 +210,7 @@ describe("two-pass root allocation", () => {
     });
 
     expect(visitedAtEntry).toEqual([1, 11, 21, 31, 41]);
-    expect(alphaAtEntry).toEqual([I32_MIN, 5_000, 5_000, 5_000, 5_000]);
+    expect(alphaAtEntry).toEqual([MIN_SCORE, 5_000, 5_000, 5_000, 5_000]);
     expect(result.scoutVisitedNodes).toBe(50);
     expect(ids(result.candidates)).toEqual(["e", "a", "b", "c"]);
   });
@@ -212,8 +226,8 @@ describe("two-pass root allocation", () => {
 
     const result = focusedRootCandidates({
       rootMoves: roots,
-      perspective: 0,
-      config: config({ maxVisitedNodes: 64 }),
+      perspective: Color.White,
+      config: config({ budget: { maxVisitedNodes: 64 } }),
       useTranspositionTable: true,
       forcedInputs: roots[3]?.inputs ?? [],
       evaluateDeeperScout: evaluate,
@@ -241,8 +255,8 @@ describe("two-pass root allocation", () => {
 
     const result = focusedRootCandidates({
       rootMoves: roots,
-      perspective: 0,
-      config: config({ maxVisitedNodes: 97 }),
+      perspective: Color.White,
+      config: config({ budget: { maxVisitedNodes: 97 } }),
       useTranspositionTable: true,
       evaluateDeeperScout: evaluate,
     });
@@ -256,14 +270,14 @@ describe("two-pass root allocation", () => {
     ]);
   });
 
-  it("does not treat a legitimate minimum i32 scout score as unvisited", () => {
+  it("does not treat a legitimate minimum signed scout score as unvisited", () => {
     const roots = [
       candidate("minimum", 0, { heuristic: 50_000 }),
       candidate("best", 1),
       candidate("second", 2),
       candidate("third", 3),
     ];
-    const scores = [I32_MIN, 10_000, 7_000, 4_000];
+    const scores = [MIN_SCORE, 10_000, 7_000, 4_000];
     const evaluate = vi.fn((context: { readonly candidateIndex: number }) => ({
       score: scores[context.candidateIndex] ?? 0,
       visitedNodes: context.candidateIndex + 1,
@@ -271,7 +285,7 @@ describe("two-pass root allocation", () => {
 
     const result = focusedRootCandidates({
       rootMoves: roots,
-      perspective: 0,
+      perspective: Color.White,
       config: config(),
       useTranspositionTable: true,
       evaluateDeeperScout: evaluate,
@@ -295,7 +309,7 @@ describe("two-pass root allocation", () => {
     }));
     const result = focusedRootCandidates({
       rootMoves: roots,
-      perspective: 0,
+      perspective: Color.White,
       config: config(),
       useTranspositionTable: true,
       evaluateDeeperScout: evaluate,
@@ -318,10 +332,10 @@ describe("two-pass root allocation", () => {
     ];
     const result = focusedRootCandidates({
       rootMoves: roots,
-      perspective: 0,
+      perspective: Color.White,
       config: config({
-        depth: 3,
-        enableTwoPassVolatilityFocus: true,
+        budget: { depth: 3 },
+        search: { volatilityFocus: true },
       }),
       useTranspositionTable: true,
       evaluateDeeperScout: vi.fn(),
@@ -335,7 +349,7 @@ describe("two-pass root allocation", () => {
     const evaluate = vi.fn();
     const result = focusedRootCandidates({
       rootMoves: [candidate("a", 0), candidate("b", 1)],
-      perspective: 0,
+      perspective: Color.White,
       config: config(),
       useTranspositionTable: true,
       evaluateDeeperScout: evaluate,

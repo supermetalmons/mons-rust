@@ -1,31 +1,34 @@
-import { installAutomoveRuntime } from "../automove/runtime.js";
-
-installAutomoveRuntime();
-
+export { Game } from "../api/game.js";
+export type { GameOptions, MoveHistory } from "../api/game.js";
+export { resolveMatch } from "../api/winner.js";
 export {
-  AvailableMoveKind,
+  AutomovePreference,
   Color,
   Consumable,
+  GameVariant,
   Modifier,
   MonKind,
-  NextInputKind,
-} from "../engine/domain.js";
-export { GameVariant } from "../engine/config.js";
-export {
-  EventModel,
-  EventModelKind,
-  ItemModel,
-  ItemModelKind,
-  Location,
-  ManaKind,
-  ManaModel,
+} from "../api/types.js";
+export type {
+  AvailableMoveCounts,
+  BoardItem,
+  Carryable,
+  CompleteInputResolution,
+  GameEvent,
+  Input,
+  InputAction,
+  InputOption,
+  InputResolution,
+  InvalidInputResolution,
+  Mana,
+  MatchResolution,
+  MatchSubmission,
   Mon,
-  NextInputModel,
-  OutputModel,
-  OutputModelKind,
-  SquareModel,
-  SquareModelKind,
-  VerboseTrackingEntityModel,
-} from "../api/models.js";
-export { MonsGameModel } from "../api/mons-game-model.js";
-export { winner } from "../api/winner.js";
+  MoveSuggestion,
+  MoveUsage,
+  PlayerSubmission,
+  PlayResult,
+  Position,
+  Square,
+  TrackingEntry,
+} from "../api/types.js";

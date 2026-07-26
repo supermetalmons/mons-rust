@@ -1,8 +1,9 @@
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, it } from "vitest";
 
 import {
   Color,
   Modifier,
+  NextInputKind,
   type Event,
   type Input,
   type Output,
@@ -22,10 +23,8 @@ import {
   hasMaterialEvent,
   isQuiescenceTacticalTransition,
 } from "../../src/automove/transitions.js";
-import {
-  takePreviousTimeout,
-  withDeadlineIfAbsent,
-} from "../../src/automove/deadline.js";
+import type { AutomoveExecutionContext } from "../../src/automove/execution-context.js";
+import { createTestAutomoveExecutionContext } from "./execution-context.test-helper.js";
 
 const FIRST_ENGINE_LOCATION = { i: 1, j: 0 };
 const SECOND_ENGINE_LOCATION = { i: 0, j: 0 };
@@ -64,7 +63,7 @@ function branchingGame(onApplyEvents?: () => void): MonsGame {
     { kind: "next-turn", color: Color.Black },
   ];
   const game = {
-    cloneForSimulation(): MonsGame {
+    fork(): MonsGame {
       return game as unknown as MonsGame;
     },
     processInputWithStartOptions(inputs: readonly Input[]): Output {
@@ -80,11 +79,11 @@ function branchingGame(onApplyEvents?: () => void): MonsGame {
           kind: "next-input-options",
           nextInputs: [
             {
-              kind: 0,
+              kind: NextInputKind.MonMove,
               input: locationInput(first.location.i, 2),
             },
             {
-              kind: 0,
+              kind: NextInputKind.MonMove,
               input: locationInput(first.location.i, 1),
             },
           ],
@@ -106,12 +105,13 @@ function inputFens(
   return transitions.map(({ inputs }) => inputArrayFen(inputs));
 }
 
-afterEach(() => {
-  vi.restoreAllMocks();
-  takePreviousTimeout();
-});
-
 describe("deterministic transition ordering", () => {
+  let execution: AutomoveExecutionContext;
+
+  beforeEach(() => {
+    execution = createTestAutomoveExecutionContext();
+  });
+
   it("orders input kinds, locations, modifiers, and chain prefixes", () => {
     const takeback: Input = { kind: "takeback" };
     const location00 = locationInput(0, 0);
@@ -132,18 +132,21 @@ describe("deterministic transition ordering", () => {
   it("bounds ordinary traversal before sorting and lexicographic traversal after per-level sorting", () => {
     const game = branchingGame();
 
-    expect(inputFens(enumerateLegalTransitions(game, 2))).toEqual([
+    expect(inputFens(enumerateLegalTransitions(execution, game, 2))).toEqual([
       "l1,0;l1,1",
       "l1,0;l1,2",
     ]);
     expect(
-      inputFens(enumerateLegalTransitionsLexicographicBounded(game, 2)),
+      inputFens(
+        enumerateLegalTransitionsLexicographicBounded(execution, game, 2),
+      ),
     ).toEqual(["l0,0;l0,1", "l0,0;l0,2"]);
   });
 
   it("partitions an already-bounded ordinary traversal by priority budget", () => {
     const game = branchingGame();
     const transitions = enumerateLegalTransitionsWithPriority(
+      execution,
       game,
       4,
       FOR_AUTOMOVE_START_INPUT_OPTIONS,
@@ -161,6 +164,7 @@ describe("deterministic transition ordering", () => {
   it("filters allowed first locations before lexicographic bounding", () => {
     const game = branchingGame();
     const transitions = enumerateLegalTransitionsLexicographicBounded(
+      execution,
       game,
       2,
       FOR_AUTOMOVE_START_INPUT_OPTIONS,
@@ -174,8 +178,9 @@ describe("deterministic transition ordering", () => {
     const game = new MonsGame(false, GameVariant.Classic);
     const before = game.fen();
 
-    const ordinary = enumerateLegalTransitions(game, 12);
+    const ordinary = enumerateLegalTransitions(execution, game, 12);
     const lexicographic = enumerateLegalTransitionsLexicographicBounded(
+      execution,
       game,
       12,
     );
@@ -202,7 +207,7 @@ describe("deterministic transition ordering", () => {
   it("isolates real transition games under further event application", () => {
     const game = new MonsGame(false, GameVariant.Classic);
     const sourceFen = game.fen();
-    const transitions = enumerateLegalTransitions(game, 2);
+    const transitions = enumerateLegalTransitions(execution, game, 2);
     const first = transitions[0];
     const second = transitions[1];
     expect(first).toBeDefined();
@@ -211,7 +216,7 @@ describe("deterministic transition ordering", () => {
 
     const firstFen = first.game.fen();
     const secondFen = second.game.fen();
-    const continuation = enumerateLegalTransitions(first.game, 1)[0];
+    const continuation = enumerateLegalTransitions(execution, first.game, 1)[0];
     expect(continuation).toBeDefined();
     if (continuation === undefined) return;
 
@@ -224,28 +229,33 @@ describe("deterministic transition ordering", () => {
 
   it("clears partial ordinary and lexicographic results after timeout", () => {
     let currentTime = 0;
-    vi.spyOn(globalThis.performance, "now").mockImplementation(
+    const timedExecution = createTestAutomoveExecutionContext(
       () => currentTime,
     );
     const game = branchingGame(() => {
       currentTime = 10;
     });
+    const { session } = timedExecution;
 
-    const ordinary = withDeadlineIfAbsent(10, () =>
-      enumerateLegalTransitions(game, 4),
+    const ordinary = session.withDeadlineIfAbsent(10, () =>
+      enumerateLegalTransitions(timedExecution, game, 4),
     );
     expect(ordinary).toEqual([]);
-    expect(takePreviousTimeout()).toBe(true);
+    expect(session.takePreviousTimeout()).toBe(true);
 
     currentTime = 20;
-    const lexicographic = withDeadlineIfAbsent(10, () => {
+    const lexicographic = session.withDeadlineIfAbsent(10, () => {
       const nextGame = branchingGame(() => {
         currentTime = 30;
       });
-      return enumerateLegalTransitionsLexicographicBounded(nextGame, 4);
+      return enumerateLegalTransitionsLexicographicBounded(
+        timedExecution,
+        nextGame,
+        4,
+      );
     });
     expect(lexicographic).toEqual([]);
-    expect(takePreviousTimeout()).toBe(true);
+    expect(session.takePreviousTimeout()).toBe(true);
   });
 });
 

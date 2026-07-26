@@ -1,296 +1,343 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, expectTypeOf, it } from "vitest";
 
 import * as api from "../../src/entrypoints/mons-rules.js";
-
-const EXPECTED_EXPORTS = [
-  "AvailableMoveKind",
-  "Color",
-  "Consumable",
-  "EventModel",
-  "EventModelKind",
-  "GameVariant",
-  "ItemModel",
-  "ItemModelKind",
-  "Location",
-  "ManaKind",
-  "ManaModel",
-  "Modifier",
-  "Mon",
-  "MonKind",
-  "MonsGameModel",
-  "NextInputKind",
-  "NextInputModel",
-  "OutputModel",
-  "OutputModelKind",
-  "SquareModel",
-  "SquareModelKind",
-  "VerboseTrackingEntityModel",
-  "winner",
-] as const;
-
-const EXPECTED_ENUMS = {
-  AvailableMoveKind: {
-    MonMove: 0,
-    ManaMove: 1,
-    Action: 2,
-    Potion: 3,
-  },
-  Color: { White: 0, Black: 1 },
-  Consumable: { Potion: 0, Bomb: 1, BombOrPotion: 2 },
-  EventModelKind: {
-    MonMove: 0,
-    ManaMove: 1,
-    ManaScored: 2,
-    MysticAction: 3,
-    DemonAction: 4,
-    DemonAdditionalStep: 5,
-    SpiritTargetMove: 6,
-    PickupBomb: 7,
-    PickupPotion: 8,
-    PickupMana: 9,
-    MonFainted: 10,
-    ManaDropped: 11,
-    SupermanaBackToBase: 12,
-    BombAttack: 13,
-    MonAwake: 14,
-    BombExplosion: 15,
-    NextTurn: 16,
-    GameOver: 17,
-    Takeback: 18,
-    UsePotion: 19,
-  },
-  GameVariant: {
-    Classic: 0,
-    SwappedManaRows: 1,
-    OffsetArcManaRows: 2,
-    CenterSpokeManaRows: 3,
-    AlternatingManaRows: 4,
-    InnerWedgeManaRows: 5,
-    OuterWedgeManaRows: 6,
-    BentCenterManaRows: 7,
-    OuterEdgeManaRows: 8,
-    SplitFlankManaRows: 9,
-    ForwardBridgeManaRows: 10,
-    CornerChainManaRows: 11,
-  },
-  ItemModelKind: {
-    Mon: 0,
-    Mana: 1,
-    MonWithMana: 2,
-    MonWithConsumable: 3,
-    Consumable: 4,
-  },
-  ManaKind: { Regular: 0, Supermana: 1 },
-  Modifier: { SelectPotion: 0, SelectBomb: 1, Cancel: 2 },
-  MonKind: { Demon: 0, Drainer: 1, Angel: 2, Spirit: 3, Mystic: 4 },
-  NextInputKind: {
-    MonMove: 0,
-    ManaMove: 1,
-    MysticAction: 2,
-    DemonAction: 3,
-    DemonAdditionalStep: 4,
-    SpiritTargetCapture: 5,
-    SpiritTargetMove: 6,
-    SelectConsumable: 7,
-    BombAttack: 8,
-  },
-  OutputModelKind: {
-    InvalidInput: 0,
-    LocationsToStartFrom: 1,
-    NextInputOptions: 2,
-    Events: 3,
-  },
-  SquareModelKind: {
-    Regular: 0,
-    ConsumableBase: 1,
-    SupermanaBase: 2,
-    ManaBase: 3,
-    ManaPool: 4,
-    MonBase: 5,
-  },
-} as const;
-
-const EXPECTED_CLASSES = {
-  EventModel: [
-    0,
-    {},
-    {
-      free: 0,
-      kind: null,
-      item: null,
-      mon: null,
-      mana: null,
-      loc1: null,
-      loc2: null,
-      color: null,
-    },
-  ],
-  ItemModel: [
-    0,
-    {},
-    { free: 0, kind: null, mon: null, mana: null, consumable: null },
-  ],
-  Location: [2, {}, { free: 0, i: null, j: null }],
-  ManaModel: [0, {}, { free: 0, kind: null, color: null }],
-  Mon: [
-    0,
-    { new: 3 },
-    {
-      free: 0,
-      kind: null,
-      color: null,
-      cooldown: null,
-      is_fainted: 0,
-      decrease_cooldown: 0,
-      faint: 0,
-    },
-  ],
-  MonsGameModel: [
-    0,
-    { newForSimulation: 1, fromFenForSimulation: 1, new: 1, from_fen: 1 },
-    {
-      free: 0,
-      black_score: 0,
-      remove_item: 1,
-      turn_number: 0,
-      white_score: 0,
-      active_color: 0,
-      can_takeback: 1,
-      verify_moves: 2,
-      winner_color: 0,
-      is_later_than: 1,
-      process_input: 2,
-      takeback_fens: 0,
-      clearTracking: 0,
-      smartAutomove: 1,
-      is_moves_verified: 0,
-      process_input_fen: 1,
-      without_last_turn: 1,
-      available_move_kinds: 0,
-      setVerboseTracking: 1,
-      locations_with_content: 0,
-      verbose_tracking_entities: 0,
-      inactive_player_items_counters: 0,
-      fen: 0,
-      item: 1,
-      square: 1,
-      automove: 0,
-      takeback: 0,
-    },
-  ],
-  NextInputModel: [
-    0,
-    {},
-    {
-      free: 0,
-      location: null,
-      modifier: null,
-      kind: null,
-      actor_mon_item: null,
-    },
-  ],
-  OutputModel: [
-    0,
-    {},
-    {
-      free: 0,
-      next_inputs: 0,
-      events: 0,
-      input_fen: 0,
-      locations: 0,
-      kind: null,
-    },
-  ],
-  SquareModel: [0, {}, { free: 0, kind: null, color: null, mon_kind: null }],
-  VerboseTrackingEntityModel: [
-    0,
-    {},
-    { free: 0, events_fen: 0, fen: 0, color: 0, events: 0 },
-  ],
-} as const;
-
-function namedEnum(value: object): Readonly<Record<string, number>> {
-  return Object.fromEntries(
-    Object.entries(value).filter(
-      (entry): entry is [string, number] => typeof entry[1] === "number",
-    ),
-  );
-}
-
-function memberArities(
-  owner: object,
-): readonly (readonly [string, number | null])[] {
-  return Object.getOwnPropertyNames(owner).map((key) => {
-    const descriptor = Object.getOwnPropertyDescriptor(owner, key);
-    if (descriptor === undefined) throw new Error(`missing ${key}`);
-    return [
-      key,
-      "value" in descriptor && typeof descriptor.value === "function"
-        ? descriptor.value.length
-        : null,
-    ];
-  });
-}
+import {
+  AutomovePreference,
+  Color,
+  Consumable,
+  Game,
+  GameVariant,
+  Modifier,
+  MonKind,
+  type GameOptions,
+  type GameEvent,
+  type Input,
+  type InputOption,
+  type InputResolution,
+  type MatchResolution,
+  type MoveSuggestion,
+  type Position,
+} from "../../src/entrypoints/mons-rules.js";
 
 describe("public API", () => {
-  it("exposes exactly the supported names and enum values", () => {
-    expect(Object.keys(api).sort()).toEqual(EXPECTED_EXPORTS);
-    for (const [name, expected] of Object.entries(EXPECTED_ENUMS)) {
-      expect(namedEnum(api[name as keyof typeof api] as object), name).toEqual(
-        expected,
-      );
-    }
-  });
-
-  it("keeps class names, member order, and function arities", () => {
-    for (const [
-      name,
-      [length, staticMembers, prototypeMembers],
-    ] of Object.entries(EXPECTED_CLASSES)) {
-      const constructor = api[name as keyof typeof api] as unknown as {
-        readonly length: number;
-        readonly name: string;
-        readonly prototype: object;
-      };
-      expect(constructor.name, name).toBe(name);
-      expect(constructor.length, name).toBe(length);
-      expect(
-        memberArities(constructor).filter(
-          ([key]) => !["length", "name", "prototype"].includes(key),
-        ),
-        `${name} static members`,
-      ).toEqual(Object.entries(staticMembers));
-      expect(
-        memberArities(constructor.prototype).filter(
-          ([key]) => key !== "constructor",
-        ),
-        `${name} prototype members`,
-      ).toEqual(Object.entries(prototypeMembers));
-    }
-  });
-
-  it("keeps winner identity and a basic game flow", () => {
-    expect(api.winner.name).toBe("winner");
-    expect(api.winner.length).toBe(4);
-
-    const game = api.MonsGameModel.new(api.GameVariant.Classic);
-    const initialFen = game.fen();
-    const starts = game.process_input([]);
-    expect(starts.kind).toBe(api.OutputModelKind.LocationsToStartFrom);
-    expect(starts.locations().map(({ i, j }) => [i, j])).toEqual([
-      [10, 3],
-      [10, 4],
-      [10, 5],
-      [10, 6],
-      [10, 7],
+  it("exports only the TypeScript-native runtime surface", () => {
+    expect(Object.keys(api).sort()).toEqual([
+      "AutomovePreference",
+      "Color",
+      "Consumable",
+      "Game",
+      "GameVariant",
+      "Modifier",
+      "MonKind",
+      "resolveMatch",
     ]);
 
-    const moved = game.process_input_fen("l10,3;l9,2");
-    expect(moved.kind).toBe(api.OutputModelKind.Events);
-    expect(moved.input_fen()).toBe("l10,3;l9,2");
-    expect(moved.events()[0]?.kind).toBe(api.EventModelKind.MonMove);
-    expect(game.fen()).not.toBe(initialFen);
-    game.free();
-    expect(game.fen()).not.toBe(initialFen);
+    expect(Color).toEqual({ White: "white", Black: "black" });
+    expect(MonKind).toEqual({
+      Demon: "demon",
+      Drainer: "drainer",
+      Angel: "angel",
+      Spirit: "spirit",
+      Mystic: "mystic",
+    });
+    expect(Consumable).toEqual({
+      Potion: "potion",
+      Bomb: "bomb",
+      BombOrPotion: "bomb-or-potion",
+    });
+    expect(Modifier).toEqual({
+      SelectPotion: "select-potion",
+      SelectBomb: "select-bomb",
+    });
+    expect(AutomovePreference).toEqual({
+      Random: "random",
+      Fast: "fast",
+      Normal: "normal",
+      Pro: "pro",
+    });
+    expect(GameVariant.Classic).toBe("Classic");
+    for (const values of [
+      AutomovePreference,
+      Color,
+      Consumable,
+      GameVariant,
+      Modifier,
+      MonKind,
+    ]) {
+      expect(Object.isFrozen(values)).toBe(true);
+    }
+    expect(Game).not.toHaveProperty("new");
+    expect(new Game()).not.toHaveProperty("free");
+
+    for (const removedExport of [
+      "MonsGameModel",
+      "Location",
+      "OutputModel",
+      "OutputModelKind",
+      "EventModel",
+      "EventModelKind",
+      "winner",
+    ]) {
+      expect(api).not.toHaveProperty(removedExport);
+    }
+  });
+
+  it("defaults only undefined variants and rejects an explicit null", () => {
+    expect(new Game().variant).toBe(GameVariant.Classic);
+    expect(
+      new Game({
+        variant: undefined,
+      } as unknown as GameOptions).variant,
+    ).toBe(GameVariant.Classic);
+    expect(
+      () =>
+        new Game({
+          variant: null,
+        } as unknown as GameOptions),
+    ).toThrow(new TypeError("unsupported game variant: null"));
+  });
+
+  it("previews without mutation and atomically applies complete input", () => {
+    const game = new Game({ variant: GameVariant.Classic });
+    const initialFen = game.toFen();
+
+    const starts = game.preview([]);
+    expect(starts).toEqual({
+      kind: "awaiting-start",
+      inputFen: "",
+      positions: [
+        { row: 10, column: 3 },
+        { row: 10, column: 4 },
+        { row: 10, column: 5 },
+        { row: 10, column: 6 },
+        { row: 10, column: 7 },
+      ],
+    });
+    expect(game.toFen()).toBe(initialFen);
+
+    const partial = game.preview([
+      { kind: "position", position: { row: 10, column: 3 } },
+    ]);
+    expect(partial.kind).toBe("awaiting-input");
+    expect(game.toFen()).toBe(initialFen);
+
+    expect(
+      game.play([{ kind: "position", position: { row: 10, column: 3 } }]),
+    ).toEqual({ kind: "invalid", inputFen: "l10,3" });
+    expect(game.toFen()).toBe(initialFen);
+
+    const applied = game.playFen("l10,3;l9,2");
+    expect(applied.kind).toBe("complete");
+    if (applied.kind !== "complete") {
+      throw new Error("expected a complete move");
+    }
+    expect(applied.inputFen).toBe("l10,3;l9,2");
+    expect(applied.events[0]?.kind).toBe("mon-move");
+    expect(game.toFen()).not.toBe(initialFen);
+    expect(game.activeColor).toBe(Color.White);
+    expect(game.turnNumber).toBe(1);
+    expect(game.moveUsage.monMoves).toBe(1);
+  });
+
+  it("leaves all state untouched when a complete prefix has an invalid suffix", () => {
+    const game = new Game();
+    const before = {
+      fen: game.toFen(),
+      takebackFens: game.takebackFens,
+      trackingEntries: game.trackingEntries,
+    };
+    const result = game.play([
+      { kind: "position", position: { row: 10, column: 3 } },
+      { kind: "position", position: { row: 9, column: 2 } },
+      { kind: "position", position: { row: 0, column: 0 } },
+    ]);
+
+    expect(result.kind).toBe("invalid");
+    expect(game.toFen()).toBe(before.fen);
+    expect(game.takebackFens).toEqual(before.takebackFens);
+    expect(game.trackingEntries).toEqual(before.trackingEntries);
+  });
+
+  it("returns detached board and event values", () => {
+    const game = new Game();
+    const result = game.playFen("l10,3;l9,2");
+    expect(result.kind).toBe("complete");
+    if (result.kind !== "complete") return;
+
+    const item = game.itemAt({ row: 9, column: 2 });
+    expect(item?.kind).toBe("mon");
+    if (item?.kind !== "mon") return;
+    const expectedCooldown = item.mon.cooldown;
+    (item as { mon: { cooldown: number } }).mon.cooldown = 99;
+    expect(game.itemAt({ row: 9, column: 2 })).toMatchObject({
+      kind: "mon",
+      mon: { cooldown: expectedCooldown },
+    });
+
+    const first = result.events[0];
+    if (first?.kind === "mon-move") {
+      (first as { to: { row: number } }).to.row = 0;
+    }
+    expect(game.itemAt({ row: 9, column: 2 })?.kind).toBe("mon");
+
+    const scores = game.scores as Record<string, number>;
+    const potions = game.potions as Record<string, number>;
+    const takebackFens = game.takebackFens as string[];
+    const trackingEntries = game.trackingEntries as unknown as {
+      fen: string;
+    }[];
+    scores["white"] = 99;
+    potions["black"] = 99;
+    takebackFens.push("not-a-fen");
+    if (trackingEntries[0] !== undefined) {
+      trackingEntries[0].fen = "not-a-fen";
+    }
+    expect(game.scores[Color.White]).not.toBe(99);
+    expect(game.potions[Color.Black]).not.toBe(99);
+    expect(game.takebackFens).not.toContain("not-a-fen");
+    expect(game.trackingEntries).not.toContainEqual(
+      expect.objectContaining({ fen: "not-a-fen" }),
+    );
+  });
+
+  it("uses strict all-or-nothing input parsing and strict positions", () => {
+    const game = new Game();
+    const initialFen = game.toFen();
+
+    for (const malformed of [
+      "l10,3;garbage;l9,2",
+      "zjunk",
+      "l010,3;l9,2",
+      "l10,3;",
+      "l10,3;mc",
+      "l10,3;💣",
+    ]) {
+      expect(game.previewFen(malformed), malformed).toEqual({
+        kind: "invalid",
+        inputFen: malformed,
+      });
+      expect(game.toFen(), malformed).toBe(initialFen);
+    }
+
+    expect(() => game.itemAt({ row: -1, column: 14 })).toThrow(RangeError);
+    expect(() =>
+      game.preview([{ kind: "position", position: { row: 0.5, column: 1 } }]),
+    ).toThrow(RangeError);
+
+    const completeMoveWithTrailingInput = [
+      { kind: "position", position: { row: 10, column: 3 } },
+      { kind: "position", position: { row: 9, column: 2 } },
+      { kind: "position", position: { row: 10, column: 4 } },
+      { kind: "position", position: { row: 9, column: 3 } },
+      { kind: "takeback" },
+    ] as const satisfies readonly Input[];
+    expect(game.preview(completeMoveWithTrailingInput)).toEqual({
+      kind: "invalid",
+      inputFen: "l10,3;l9,2;l10,4;l9,3;z",
+    });
+    expect(game.toFen()).toBe(initialFen);
+  });
+
+  it("round-trips canonical FEN and exposes semantic snapshots", () => {
+    const game = new Game({ variant: GameVariant.CornerChainManaRows });
+    const restored = Game.fromFen(game.toFen());
+    expect(restored?.variant).toBe(GameVariant.CornerChainManaRows);
+    expect(restored?.scores).toEqual({ white: 0, black: 0 });
+    expect(restored?.potions).toEqual({ white: 0, black: 0 });
+    expect(restored?.winner).toBeUndefined();
+    expect(restored?.contentPositions()).toEqual(game.contentPositions());
+    expect(Game.fromFen(` ${game.toFen()}`)).toBeUndefined();
+  });
+
+  it("suggests a predicted move without mutating its source", () => {
+    const game = new Game();
+    const before = {
+      fen: game.toFen(),
+      takebackFens: game.takebackFens,
+      trackingEntries: game.trackingEntries,
+    };
+    const suggestion = game.suggestMove(AutomovePreference.Random);
+
+    expect(suggestion).toBeDefined();
+    if (suggestion === undefined) return;
+    expect(suggestion.inputFen).not.toBe("");
+    expect(game.toFen()).toBe(before.fen);
+    expect(game.takebackFens).toEqual(before.takebackFens);
+    expect(game.trackingEntries).toEqual(before.trackingEntries);
+
+    const preview = game.preview(suggestion.inputs);
+    expect(preview).toEqual({
+      kind: "complete",
+      inputFen: suggestion.inputFen,
+      events: suggestion.events,
+    });
+    expect(game.toFen()).toBe(before.fen);
+  });
+
+  it("provides discriminated result and event types", () => {
+    const consumeResolution = (resolution: InputResolution): string => {
+      switch (resolution.kind) {
+        case "invalid":
+          return resolution.inputFen;
+        case "awaiting-start":
+          return String(resolution.positions.length);
+        case "awaiting-input":
+          return String(resolution.options.length);
+        case "complete":
+          return String(resolution.events.length);
+      }
+    };
+    const consumeEvent = (event: GameEvent): string => event.kind;
+    const consumeOption = (option: InputOption): Position | Modifier => {
+      switch (option.action) {
+        case "select-consumable":
+          return option.input.modifier;
+        case "mon-move":
+        case "mana-move":
+        case "mystic-action":
+        case "demon-action":
+        case "demon-additional-step":
+        case "spirit-target-capture":
+        case "spirit-target-move":
+        case "bomb-attack":
+          return option.input.position;
+      }
+    };
+    const consumeMatch = (resolution: MatchResolution): string => {
+      switch (resolution.kind) {
+        case "ongoing":
+        case "invalid":
+          return resolution.kind;
+        case "winner":
+          return resolution.winner;
+      }
+    };
+    const position: Position = { row: 10, column: 3 };
+
+    expectTypeOf<Input>().toEqualTypeOf<
+      | { readonly kind: "takeback" }
+      | { readonly kind: "position"; readonly position: Position }
+      | { readonly kind: "modifier"; readonly modifier: Modifier }
+    >();
+    expectTypeOf<MoveSuggestion["inputs"]>().toEqualTypeOf<readonly Input[]>();
+    expectTypeOf<readonly [number, number]>().not.toExtend<Position>();
+
+    expect(consumeResolution(new Game().preview([]))).toBe("5");
+    expect(consumeMatch({ kind: "winner", winner: Color.White })).toBe(
+      Color.White,
+    );
+    expect(position).toEqual({ row: 10, column: 3 });
+    expect(
+      consumeOption({
+        action: "mon-move",
+        input: { kind: "position", position },
+      }),
+    ).toEqual(position);
+    expect(
+      consumeEvent({
+        kind: "next-turn",
+        color: Color.Black,
+      }),
+    ).toBe("next-turn");
   });
 });

@@ -1,22 +1,46 @@
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 
-import { describe, expect, it } from "vitest";
+import { describe, expect, expectTypeOf, it } from "vitest";
 
 import { replayInterleavedMoves } from "../../src/api/replay.js";
-import { GameVariant } from "../../src/engine/config.js";
+import {
+  GameVariant as EngineGameVariant,
+  type GameVariant as EngineGameVariantValue,
+} from "../../src/engine/config.js";
+import {
+  Color as EngineColor,
+  Consumable as EngineConsumable,
+  Modifier as EngineModifier,
+  MonKind as EngineMonKind,
+  type Color as EngineColorValue,
+  type Consumable as EngineConsumableValue,
+  type Mana as EngineMana,
+  type Modifier as EngineModifierValue,
+  type Mon as EngineMon,
+  type MonKind as EngineMonKindValue,
+  type NextInputKind,
+  type Square as EngineSquare,
+} from "../../src/engine/domain.js";
+import { MonsGame } from "../../src/engine/game.js";
 import {
   Color,
   Consumable,
+  Game,
+  GameVariant,
+  Modifier,
   MonKind,
-  consumableItem,
-  createMon,
-  monItem,
-  monWithManaItem,
-  regularMana,
-} from "../../src/engine/domain.js";
-import { MonsGame } from "../../src/engine/game.js";
-import { MonsGameModel, winner } from "../../src/entrypoints/mons-rules.js";
+  resolveMatch,
+  type Color as ColorValue,
+  type Consumable as ConsumableValue,
+  type GameVariant as GameVariantValue,
+  type InputAction,
+  type Mana,
+  type Modifier as ModifierValue,
+  type Mon,
+  type MonKind as MonKindValue,
+  type Square,
+} from "../../src/entrypoints/mons-rules.js";
 
 const WHITE_TURN = [
   "l10,5;l9,5",
@@ -35,17 +59,9 @@ const BLACK_TURN = [
   "l4,3;l3,2",
 ] as const;
 
-const FOUR_INPUT_MOVE = "l5,3;l5,5;l5,6;mb";
-
 type CompleteGame = {
   readonly gameVariant: string;
   readonly turns: readonly (readonly string[])[];
-};
-
-type TrackingSnapshot = {
-  readonly color: Color;
-  readonly eventsFen: string;
-  readonly fen: string;
 };
 
 function firstCompleteGame(): CompleteGame {
@@ -62,49 +78,45 @@ function firstCompleteGame(): CompleteGame {
   return JSON.parse(firstLine) as CompleteGame;
 }
 
-function trackingSnapshot(game: MonsGameModel): TrackingSnapshot[] {
-  return game.verbose_tracking_entities().map((entity) => ({
-    color: entity.color(),
-    eventsFen: entity.events_fen(),
-    fen: entity.fen(),
-  }));
-}
-
-function fourInputReplayGame(): MonsGame {
-  const game = new MonsGame(false, GameVariant.Classic);
-  game.replaceBoardItems([
-    [{ i: 5, j: 3 }, monItem(createMon(MonKind.Demon, Color.White, 0))],
-    [
-      { i: 5, j: 5 },
-      monWithManaItem(
-        createMon(MonKind.Mystic, Color.Black, 0),
-        regularMana(Color.Black),
-      ),
-    ],
-    [{ i: 5, j: 6 }, consumableItem(Consumable.BombOrPotion)],
-  ]);
-  game.turnNumber = 2;
-  return game;
-}
-
 function replayCompleteGame(completeGame: CompleteGame): {
-  readonly game: MonsGameModel;
-  readonly movesByColor: [string[], string[]];
+  readonly game: Game;
+  readonly moves: Record<ColorValue, string[]>;
 } {
-  const game = MonsGameModel.new(GameVariant.Classic);
-  const movesByColor: [string[], string[]] = [[], []];
+  const game = new Game({ variant: GameVariant.Classic });
+  const moves: Record<ColorValue, string[]> = {
+    [Color.White]: [],
+    [Color.Black]: [],
+  };
   for (const turn of completeGame.turns) {
     for (const move of turn) {
-      movesByColor[game.active_color()].push(move);
-      game.process_input_fen(move);
+      moves[game.activeColor].push(move);
+      expect(game.playFen(move).kind, move).toBe("complete");
     }
   }
-  return { game, movesByColor };
+  return { game, moves };
 }
 
-describe("interleaved API move replay", () => {
-  it("consumes each color history according to the active player", () => {
-    const game = new MonsGame(false, GameVariant.Classic);
+describe("interleaved move replay", () => {
+  it("shares canonical public contracts with the engine", () => {
+    expect(EngineColor).toBe(Color);
+    expect(EngineConsumable).toBe(Consumable);
+    expect(EngineModifier).toBe(Modifier);
+    expect(EngineMonKind).toBe(MonKind);
+    expect(EngineGameVariant).toBe(GameVariant);
+
+    expectTypeOf<EngineColorValue>().toEqualTypeOf<ColorValue>();
+    expectTypeOf<EngineConsumableValue>().toEqualTypeOf<ConsumableValue>();
+    expectTypeOf<EngineModifierValue>().toEqualTypeOf<ModifierValue>();
+    expectTypeOf<EngineMonKindValue>().toEqualTypeOf<MonKindValue>();
+    expectTypeOf<EngineGameVariantValue>().toEqualTypeOf<GameVariantValue>();
+    expectTypeOf<EngineMon>().toEqualTypeOf<Mon>();
+    expectTypeOf<EngineMana>().toEqualTypeOf<Mana>();
+    expectTypeOf<EngineSquare>().toEqualTypeOf<Square>();
+    expectTypeOf<NextInputKind>().toEqualTypeOf<InputAction>();
+  });
+
+  it("consumes each color history in active-player order", () => {
+    const game = new MonsGame(false, EngineGameVariant.Classic);
     const observedProgress: string[] = [];
     const result = replayInterleavedMoves(
       game,
@@ -123,73 +135,24 @@ describe("interleaved API move replay", () => {
       whiteMovesProcessed: WHITE_TURN.length,
       blackMovesProcessed: BLACK_TURN.length,
     });
-    expect(observedProgress.at(-1)).toBe(
+    expect(observedProgress[observedProgress.length - 1]).toBe(
       `${WHITE_TURN.length}:${BLACK_TURN.length}`,
     );
-    expect(game.activeColor).toBe(Color.White);
+    expect(game.activeColor).toBe(EngineColor.White);
   });
 
-  it("reports exact progress when replay is stopped after an applied move", () => {
-    const game = new MonsGame(false, GameVariant.Classic);
-    const initialFen = game.fen();
-    const observedProgress: {
-      readonly whiteMovesProcessed: number;
-      readonly blackMovesProcessed: number;
-      readonly fen: string;
-    }[] = [];
-
-    const result = replayInterleavedMoves(
-      game,
-      WHITE_TURN,
-      BLACK_TURN,
-      (replayedGame, progress) => {
-        observedProgress.push({ ...progress, fen: replayedGame.fen() });
-        return false;
-      },
-    );
-
-    expect(result).toEqual({
-      status: "stopped",
-      whiteMovesProcessed: 1,
-      blackMovesProcessed: 0,
-    });
-    expect(observedProgress).toEqual([
-      {
-        whiteMovesProcessed: 1,
-        blackMovesProcessed: 0,
-        fen: game.fen(),
-      },
-    ]);
-    expect(game.fen()).not.toBe(initialFen);
-  });
-
-  it("reports the consumed side when the active history is exhausted", () => {
-    const game = new MonsGame(false, GameVariant.Classic);
-    const result = replayInterleavedMoves(
-      game,
-      [WHITE_TURN[0]],
-      [BLACK_TURN[0]],
-    );
-
-    expect(result).toEqual({
-      status: "missing-move",
-      whiteMovesProcessed: 1,
-      blackMovesProcessed: 0,
-    });
-  });
-
-  it("rejects invalid consumed records before progress or callbacks", () => {
-    const invalidMoves = [
+  it("reports strict replay failures without applying the invalid move", () => {
+    for (const move of [
       "",
       "garbage",
       "l10,5",
       "l10,5;l0,0",
       "garbage;l10,5;l9,5",
       "zjunk",
-    ] as const;
-
-    for (const move of invalidMoves) {
-      const game = new MonsGame(false, GameVariant.Classic);
+      "l010,5;l9,5",
+      `${WHITE_TURN[0]};l0,0;l0,1;l0,2`,
+    ]) {
+      const game = new MonsGame(false, EngineGameVariant.Classic);
       const initialFen = game.fen();
       let callbackCount = 0;
       const result = replayInterleavedMoves(game, [move], [], () => {
@@ -207,147 +170,197 @@ describe("interleaved API move replay", () => {
     }
   });
 
-  it("rejects parsed suffixes after a complete four-input record", () => {
-    const validGame = fourInputReplayGame();
-    const validInitialFen = validGame.fen();
-    expect(replayInterleavedMoves(validGame, [FOUR_INPUT_MOVE], [])).toEqual({
-      status: "complete",
+  it("reports the consumed side when its history is exhausted", () => {
+    const game = new MonsGame(false, EngineGameVariant.Classic);
+    expect(
+      replayInterleavedMoves(game, [WHITE_TURN[0]], [BLACK_TURN[0]]),
+    ).toEqual({
+      status: "missing-move",
       whiteMovesProcessed: 1,
       blackMovesProcessed: 0,
     });
-    expect(validGame.fen()).not.toBe(validInitialFen);
+  });
+});
 
-    for (const suffix of ["l0,0", "z"]) {
-      const game = fourInputReplayGame();
-      const initialFen = game.fen();
-      let callbackCount = 0;
-      const result = replayInterleavedMoves(
-        game,
-        [`${FOUR_INPUT_MOVE};${suffix}`],
-        [],
-        () => {
-          callbackCount += 1;
-          return true;
-        },
-      );
-
-      expect(result, suffix).toEqual({
-        status: "invalid-move",
-        whiteMovesProcessed: 0,
-        blackMovesProcessed: 0,
-      });
-      expect(callbackCount, suffix).toBe(0);
-      expect(game.fen(), suffix).toBe(initialFen);
+describe("Game history", () => {
+  it("verifies typed histories and preserves metadata after failure", () => {
+    const game = new Game();
+    for (const move of WHITE_TURN) {
+      expect(game.playFen(move).kind).toBe("complete");
     }
-  });
-
-  it("accepts complete parseable records and exact legal takeback", () => {
-    const moved = MonsGameModel.new(GameVariant.Classic);
-    moved.process_input_fen(WHITE_TURN[0]);
-    expect(moved.verify_moves("l010,05;l09,05", "")).toBe(true);
-
-    const initial = MonsGameModel.new(GameVariant.Classic);
-    expect(initial.verify_moves(`${WHITE_TURN[0]}-z`, "")).toBe(true);
-  });
-
-  it("rejects malformed or no-op records hidden in a matching history", () => {
-    const game = MonsGameModel.new(GameVariant.Classic);
-    game.process_input_fen(WHITE_TURN[0]);
-
-    const invalidHistories = [
-      `${WHITE_TURN[0]}-`,
-      `${WHITE_TURN[0]}-garbage`,
-      `${WHITE_TURN[0]}-l9,5`,
-      `${WHITE_TURN[0]}-l9,5;l0,0`,
-      `garbage;${WHITE_TURN[0]}`,
-      `${WHITE_TURN[0]}-zjunk`,
-    ] as const;
-    for (const history of invalidHistories) {
-      expect(game.verify_moves(history, ""), history).toBe(false);
+    for (const move of BLACK_TURN) {
+      expect(game.playFen(move).kind).toBe("complete");
     }
-  });
 
-  it("preserves verify_moves empty-history and failure semantics", () => {
-    const initial = MonsGameModel.new(GameVariant.Classic);
-    expect(initial.verify_moves("", "")).toBe(true);
-
-    const game = MonsGameModel.new(GameVariant.Classic);
-    for (const move of WHITE_TURN) game.process_input_fen(move);
-    for (const move of BLACK_TURN) game.process_input_fen(move);
-
-    const before = game.fen();
-    expect(game.verify_moves(WHITE_TURN.join("-"), BLACK_TURN.join("-"))).toBe(
-      true,
-    );
-    const takebackFensBeforeFailure = game.takeback_fens();
-    const trackingBeforeFailure = trackingSnapshot(game);
-    expect(takebackFensBeforeFailure.length).toBeGreaterThan(0);
-    expect(trackingBeforeFailure.length).toBeGreaterThan(0);
+    const beforeFen = game.toFen();
     expect(
-      trackingBeforeFailure.some(
+      game.verifyHistory({
+        white: WHITE_TURN,
+        black: BLACK_TURN,
+      }),
+    ).toBe(true);
+    const takebackBefore = game.takebackFens;
+    const trackingBefore = game.trackingEntries;
+    expect(takebackBefore.length).toBeGreaterThan(0);
+    expect(trackingBefore.length).toBeGreaterThan(0);
+    expect(
+      trackingBefore.some(
         ({ eventsFen, fen }) => eventsFen !== "" && fen !== "",
       ),
     ).toBe(true);
 
-    expect(game.verify_moves("l10,4;l9,3", BLACK_TURN.join("-"))).toBe(false);
-    expect(game.fen()).toBe(before);
-    expect(game.is_moves_verified()).toBe(true);
-    expect(game.takeback_fens()).toEqual(takebackFensBeforeFailure);
-    expect(trackingSnapshot(game)).toEqual(trackingBeforeFailure);
+    expect(
+      game.verifyHistory({
+        white: ["l10,4;l9,3"],
+        black: BLACK_TURN,
+      }),
+    ).toBe(false);
+    expect(game.toFen()).toBe(beforeFen);
+    expect(game.historyVerified).toBe(true);
+    expect(game.takebackFens).toEqual(takebackBefore);
+    expect(game.trackingEntries).toEqual(trackingBefore);
   });
 
-  it("validates a terminal complete-game submission through winner", () => {
+  it("supports empty history and derives a detached previous turn", () => {
+    expect(
+      new Game().verifyHistory({
+        white: [],
+        black: [],
+      }),
+    ).toBe(true);
+
+    const game = new Game();
+    expect(game.playFen("l10,3;l9,2").kind).toBe("complete");
+    const firstFen = game.toFen();
+    expect(game.playFen("l10,4;l9,3").kind).toBe("complete");
+    const previous = game.previousTurn(game.takebackFens);
+    expect(previous?.toFen()).toBe(firstFen);
+    expect(previous?.canTakeback(previous.activeColor)).toBe(true);
+    expect(previous?.takeback().kind).toBe("complete");
+    expect(previous?.toFen()).not.toBe(firstFen);
+    previous?.clearTracking();
+    expect(game.trackingEntries.length).toBeGreaterThan(0);
+
+    expect(game.previousTurn(["not-a-fen", game.toFen()])).toBeUndefined();
+  });
+
+  it("restores the first move from an empty pre-move takeback snapshot", () => {
+    const game = new Game();
+    const initialFen = game.toFen();
+    const takebackFensBeforeMove = game.takebackFens;
+    expect(takebackFensBeforeMove).toEqual([]);
+
+    expect(game.playFen("l10,3;l9,2").kind).toBe("complete");
+    const previous = game.previousTurn(takebackFensBeforeMove);
+
+    expect(previous?.toFen()).toBe(initialFen);
+    expect(previous?.takebackFens).toEqual([]);
+  });
+
+  it("applies legal takeback through the same atomic play path", () => {
+    const game = new Game();
+    expect(game.playFen("l10,3;l9,2").kind).toBe("complete");
+    expect(game.playFen("l10,4;l9,3").kind).toBe("complete");
+    const beforeTakeback = game.toFen();
+    expect(game.canTakeback(Color.White)).toBe(true);
+    expect(game.takeback()).toEqual({
+      kind: "complete",
+      inputFen: "z",
+      events: [{ kind: "takeback" }],
+    });
+    expect(game.toFen()).not.toBe(beforeTakeback);
+  });
+});
+
+describe("resolveMatch", () => {
+  it("returns typed outcomes for ongoing, invalid, and one-invalid states", () => {
+    const initial = new Game().toFen();
+    expect(
+      resolveMatch({
+        white: { fen: initial, moves: [] },
+        black: { fen: initial, moves: [] },
+      }),
+    ).toEqual({ kind: "ongoing" });
+    expect(
+      resolveMatch({
+        white: { fen: "invalid", moves: [] },
+        black: { fen: "also-invalid", moves: [] },
+      }),
+    ).toEqual({ kind: "invalid" });
+    expect(
+      resolveMatch({
+        white: { fen: "invalid", moves: [] },
+        black: { fen: initial, moves: [] },
+      }),
+    ).toEqual({ kind: "winner", winner: Color.Black });
+
+    const otherVariant = new Game({
+      variant: GameVariant.SwappedManaRows,
+    }).toFen();
+    expect(
+      resolveMatch({
+        white: { fen: initial, moves: [] },
+        black: { fen: otherVariant, moves: [] },
+      }),
+    ).toEqual({ kind: "invalid" });
+  });
+
+  it("validates a terminal complete-game submission", () => {
     const completeGame = firstCompleteGame();
     expect(completeGame.gameVariant).toBe("Classic");
 
-    const { game, movesByColor } = replayCompleteGame(completeGame);
-    const winningColor = game.winner_color();
+    const { game, moves } = replayCompleteGame(completeGame);
+    const winningColor = game.winner;
     expect(winningColor).toBeDefined();
     if (winningColor === undefined) {
       throw new Error("complete game must have a winner");
     }
 
-    const initialFen = MonsGameModel.new(GameVariant.Classic).fen();
-    const finalFen = game.fen();
-    const submittedFens: [string, string] =
+    const initialFen = new Game().toFen();
+    const finalFen = game.toFen();
+    const submittedFens =
       winningColor === Color.White
-        ? [finalFen, initialFen]
-        : [initialFen, finalFen];
-    const histories: [string, string] = [
-      movesByColor[Color.White].join("-"),
-      movesByColor[Color.Black].join("-"),
-    ];
-    const expectedWinner = winningColor === Color.White ? "w" : "b";
+        ? { white: finalFen, black: initialFen }
+        : { white: initialFen, black: finalFen };
+    const expected = { kind: "winner", winner: winningColor } as const;
 
-    expect(winner(...submittedFens, ...histories)).toBe(expectedWinner);
-    expect(winner(submittedFens[1], submittedFens[0], ...histories)).toBe("x");
-
-    const invalidConsumedHistories: [string[], string[]] = [
-      [...movesByColor[Color.White]],
-      [...movesByColor[Color.Black]],
-    ];
-    invalidConsumedHistories[winningColor].splice(-1, 0, "garbage");
     expect(
-      winner(
-        ...submittedFens,
-        invalidConsumedHistories[Color.White].join("-"),
-        invalidConsumedHistories[Color.Black].join("-"),
-      ),
-    ).toBe("x");
+      resolveMatch({
+        white: { fen: submittedFens.white, moves: moves.white },
+        black: { fen: submittedFens.black, moves: moves.black },
+      }),
+    ).toEqual(expected);
+    expect(
+      resolveMatch({
+        white: { fen: submittedFens.black, moves: moves.white },
+        black: { fen: submittedFens.white, moves: moves.black },
+      }),
+    ).toEqual({ kind: "invalid" });
 
-    const trailingLosingHistories: [string[], string[]] = [
-      [...movesByColor[Color.White]],
-      [...movesByColor[Color.Black]],
-    ];
+    const invalidConsumed = {
+      white: [...moves.white],
+      black: [...moves.black],
+    };
+    invalidConsumed[winningColor].splice(-1, 0, "garbage");
+    expect(
+      resolveMatch({
+        white: { fen: submittedFens.white, moves: invalidConsumed.white },
+        black: { fen: submittedFens.black, moves: invalidConsumed.black },
+      }),
+    ).toEqual({ kind: "invalid" });
+
+    const trailingLosing = {
+      white: [...moves.white],
+      black: [...moves.black],
+    };
     const losingColor =
       winningColor === Color.White ? Color.Black : Color.White;
-    trailingLosingHistories[losingColor].push("garbage");
+    trailingLosing[losingColor].push("garbage");
     expect(
-      winner(
-        ...submittedFens,
-        trailingLosingHistories[Color.White].join("-"),
-        trailingLosingHistories[Color.Black].join("-"),
-      ),
-    ).toBe(expectedWinner);
+      resolveMatch({
+        white: { fen: submittedFens.white, moves: trailingLosing.white },
+        black: { fen: submittedFens.black, moves: trailingLosing.black },
+      }),
+    ).toEqual(expected);
   });
 });

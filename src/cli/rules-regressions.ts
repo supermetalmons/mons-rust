@@ -1,7 +1,9 @@
 import { createHash } from "node:crypto";
 import { createReadStream } from "node:fs";
+import { parseArgs } from "node:util";
 import { createGunzip } from "node:zlib";
 
+import rulesManifest from "../../test-data/rules-regressions.manifest.json" with { type: "json" };
 import { MonsGame } from "../engine/game.js";
 import { outputFen, parseInputArrayFen } from "../engine/fen.js";
 import { forEachByteLine } from "./byte-lines.js";
@@ -13,13 +15,11 @@ import {
   type RuleTestCase,
 } from "./regression-support.js";
 
-const EXPECTED_CASE_COUNT = 699_994;
-const EXPECTED_COMPRESSED_BYTES = 27_021_978;
-const EXPECTED_COMPRESSED_SHA256 =
-  "02942e8107a3de160cfa1bf99dc6d1bcc070c94ba4aca650cb0c67530ee2e280";
-const EXPECTED_UNCOMPRESSED_BYTES = 274_843_626;
-const EXPECTED_UNCOMPRESSED_SHA256 =
-  "4b5b092987eafe9dad6b2f265b194fcb0f95380f120a6a217d3f5795a1f70f81";
+const EXPECTED_CASE_COUNT = rulesManifest.artifact.caseCount;
+const EXPECTED_COMPRESSED_BYTES = rulesManifest.artifact.compressedBytes;
+const EXPECTED_COMPRESSED_SHA256 = rulesManifest.artifact.compressedSha256;
+const EXPECTED_UNCOMPRESSED_BYTES = rulesManifest.artifact.uncompressedBytes;
+const EXPECTED_UNCOMPRESSED_SHA256 = rulesManifest.artifact.uncompressedSha256;
 const PROGRESS_INTERVAL = 100_000;
 
 function replayCase(line: number, testCase: RuleTestCase): void {
@@ -33,11 +33,11 @@ function replayCase(line: number, testCase: RuleTestCase): void {
 
   let actualOutputFen: string;
   try {
-    const output = game.processInput(
-      parseInputArrayFen(testCase.inputFen),
-      false,
-      false,
-    );
+    const inputs = parseInputArrayFen(testCase.inputFen);
+    if (inputs === undefined) {
+      fail(`fixture line ${line} has invalid inputFen: ${testCase.inputFen}`);
+    }
+    const output = game.processInput(inputs, false, false);
     actualOutputFen = outputFen(output);
   } catch (error) {
     fail(
@@ -64,12 +64,12 @@ function replayCase(line: number, testCase: RuleTestCase): void {
 }
 
 async function run(): Promise<void> {
-  const unexpectedArgument = process.argv[2];
-  if (unexpectedArgument !== undefined) {
-    fail(
-      `rules regression runner accepts no arguments (unexpected ${JSON.stringify(unexpectedArgument)})`,
-    );
-  }
+  parseArgs({
+    args: process.argv.slice(2),
+    allowPositionals: false,
+    options: {},
+    strict: true,
+  });
   const corpusPath = process.env["MONS_RULES_CORPUS_PATH"];
   if (corpusPath === undefined || corpusPath === "") {
     fail("MONS_RULES_CORPUS_PATH is not set");

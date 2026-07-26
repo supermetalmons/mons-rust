@@ -8,7 +8,6 @@ import {
   clearSearchCaches,
   compareRankedChildren,
   enforceTacticalChildTop2,
-  flattenRootEvaluations,
   isPriorityChild,
   isQuietReductionCandidate,
   isSelectiveExtensionCandidate,
@@ -22,7 +21,11 @@ import {
   rankRootCandidates,
   type MoveClassFlags,
 } from "../../src/automove/root-candidates.js";
-import { searchExecutionConfigForGame } from "../../src/automove/selector-config.js";
+import {
+  automoveConfigForGame,
+  patchAutomoveConfig,
+} from "../../src/automove/selector-config.js";
+import { createTestAutomoveExecutionContext } from "./execution-context.test-helper.js";
 
 const QUIET_CLASSES: MoveClassFlags = Object.freeze({
   immediateScore: false,
@@ -56,12 +59,12 @@ function child(id: number, overrides: ChildOverrides = {}): RankedChild {
 function selectedInput(result: SearchResult): string | undefined {
   return result.best === undefined
     ? undefined
-    : inputArrayFen(result.best.candidate.inputs);
+    : inputArrayFen(result.best.inputs);
 }
 
 function observations(result: SearchResult): readonly object[] {
   return result.evaluations.map((evaluation) => ({
-    inputs: inputArrayFen(evaluation.candidate.inputs),
+    inputs: inputArrayFen(evaluation.inputs),
     score: evaluation.score,
     nodesAfter: evaluation.nodesAfter,
   }));
@@ -139,30 +142,50 @@ describe("ranked search children", () => {
 
 describe("root search orchestration", () => {
   it("is deterministic, cumulative, priority-aware, and source-immutable", () => {
+    const execution = createTestAutomoveExecutionContext();
     const game = new MonsGame(false, GameVariant.Classic);
     const before = game.fen();
-    const base = searchExecutionConfigForGame(game, "fast");
-    const config = {
-      ...base,
-      depth: 1,
-      maxVisitedNodes: 64,
-      enableTwoPassRootAllocation: false,
-    };
-    const candidates = rankRootCandidates(game, Color.White, config).slice(
-      0,
-      6,
-    );
+    const base = automoveConfigForGame(game, "fast");
+    const config = patchAutomoveConfig(base, {
+      budget: {
+        depth: 1,
+        maxVisitedNodes: 64,
+      },
+      search: {
+        twoPassRootAllocation: false,
+      },
+    });
+    const candidates = rankRootCandidates(
+      execution,
+      game,
+      Color.White,
+      config,
+    ).slice(0, 6);
     expect(candidates.length).toBeGreaterThan(3);
     const priorityInputs: readonly (readonly Input[])[] = [
       candidates.at(-1)?.inputs ?? [],
     ];
 
-    const first = searchRootCandidates(game, Color.White, config, candidates, {
-      priorityInputs,
-    });
-    const second = searchRootCandidates(game, Color.White, config, candidates, {
-      priorityInputs,
-    });
+    const first = searchRootCandidates(
+      execution,
+      game,
+      Color.White,
+      config,
+      candidates,
+      {
+        priorityInputs,
+      },
+    );
+    const second = searchRootCandidates(
+      execution,
+      game,
+      Color.White,
+      config,
+      candidates,
+      {
+        priorityInputs,
+      },
+    );
 
     expect(game.fen()).toBe(before);
     expect(observations(second)).toEqual(observations(first));
@@ -171,52 +194,64 @@ describe("root search orchestration", () => {
     expect(first.evaluations.map(({ nodesAfter }) => nodesAfter)).toEqual(
       first.evaluations.map((_evaluation, index) => index + 1),
     );
-    expect(inputArrayFen(first.evaluations[0]?.candidate.inputs ?? [])).toBe(
+    expect(inputArrayFen(first.evaluations[0]?.inputs ?? [])).toBe(
       inputArrayFen(priorityInputs[0] ?? []),
-    );
-
-    const flattened = flattenRootEvaluations(first.evaluations);
-    expect(flattened.map(({ score }) => score)).toEqual(
-      first.evaluations.map(({ score }) => score),
-    );
-    expect(flattened.map(({ nodesAfter }) => nodesAfter)).toEqual(
-      first.evaluations.map(({ nodesAfter }) => nodesAfter),
     );
   });
 
   it("keeps a deeper two-pass search deterministic without mutating any game", () => {
+    const execution = createTestAutomoveExecutionContext();
     const game = new MonsGame(false, GameVariant.Classic);
     const sourceFen = game.fen();
-    const base = searchExecutionConfigForGame(game, "fast");
-    const config = {
-      ...base,
-      depth: 4,
-      maxVisitedNodes: 256,
-      rootEnumLimit: 24,
-      rootBranchLimit: 8,
-      nodeEnumLimit: 12,
-      nodeBranchLimit: 4,
-      enableTwoPassRootAllocation: true,
-      enableTwoPassVolatilityFocus: false,
-      enableSelectiveExtensions: false,
-      enableQuietReductions: false,
-      enableQuiescenceSearch: false,
-      enableFutilityPruning: false,
-      enableTurnEngineSelector: false,
-    };
-    const candidates = rankRootCandidates(game, Color.White, config).slice(
-      0,
-      6,
-    );
+    const base = automoveConfigForGame(game, "fast");
+    const config = patchAutomoveConfig(base, {
+      budget: {
+        depth: 4,
+        maxVisitedNodes: 256,
+      },
+      search: {
+        rootEnumerationLimit: 24,
+        rootBranchLimit: 8,
+        nodeEnumerationLimit: 12,
+        nodeBranchLimit: 4,
+        twoPassRootAllocation: true,
+        volatilityFocus: false,
+        selectiveExtensions: false,
+        quietReductions: false,
+        quiescence: false,
+        futilityPruning: false,
+      },
+      planner: {
+        enabled: false,
+      },
+    });
+    const candidates = rankRootCandidates(
+      execution,
+      game,
+      Color.White,
+      config,
+    ).slice(0, 6);
     expect(candidates.length).toBeGreaterThan(3);
     const candidateFens = candidates.map(({ game: candidateGame }) =>
       candidateGame.fen(),
     );
 
-    clearSearchCaches();
-    const first = searchRootCandidates(game, Color.White, config, candidates);
-    clearSearchCaches();
-    const second = searchRootCandidates(game, Color.White, config, candidates);
+    clearSearchCaches(execution);
+    const first = searchRootCandidates(
+      execution,
+      game,
+      Color.White,
+      config,
+      candidates,
+    );
+    clearSearchCaches(execution);
+    const second = searchRootCandidates(
+      execution,
+      game,
+      Color.White,
+      config,
+      candidates,
+    );
 
     expect(game.fen()).toBe(sourceFen);
     expect(

@@ -6,22 +6,18 @@ import {
   Hash64Table,
   hash64,
   hash64Add,
-  hash64And,
   hash64Bucket,
-  hash64FromI32,
-  hash64FromIntegerNumber,
-  hash64FromU32,
+  hash64FromNonnegativeInteger,
+  hash64FromLowWord,
   hash64Mul,
-  hash64Or,
   hash64RotateLeft,
-  hash64ShiftLeft,
   hash64ShiftRight,
   hash64Xor,
   type Hash64,
 } from "../../src/automove/hash64.js";
 
-const U64_BITS = 64n;
-const U64_MASK = (1n << U64_BITS) - 1n;
+const HASH_BITS = 64n;
+const HASH_MASK = (1n << HASH_BITS) - 1n;
 
 function asBigInt(value: Hash64): bigint {
   return (BigInt(value.hi) << 32n) | BigInt(value.lo);
@@ -48,7 +44,7 @@ describe("Hash64 arithmetic", () => {
     hash64(0xffff_ffff, 0xffff_ffff),
   ] as const;
 
-  it("matches wrapped BigInt arithmetic and bitwise operations", () => {
+  it("matches wrapped BigInt arithmetic and xor", () => {
     for (const left of values) {
       for (const right of values) {
         const leftBig = asBigInt(left);
@@ -56,13 +52,11 @@ describe("Hash64 arithmetic", () => {
         expect(hash64Add(left, right)).toEqual(asHash64(leftBig + rightBig));
         expect(hash64Mul(left, right)).toEqual(asHash64(leftBig * rightBig));
         expect(hash64Xor(left, right)).toEqual(asHash64(leftBig ^ rightBig));
-        expect(hash64Or(left, right)).toEqual(asHash64(leftBig | rightBig));
-        expect(hash64And(left, right)).toEqual(asHash64(leftBig & rightBig));
       }
     }
   });
 
-  it("preserves rotate and shift behavior at word and u64 boundaries", () => {
+  it("preserves rotate and right-shift behavior at word boundaries", () => {
     const value = hash64(0x0123_4567, 0x89ab_cdef);
     for (const bits of [0, 1, 31, 32, 33, 63, 64, 65, -1]) {
       const shift = normalizedShift(bits);
@@ -71,38 +65,30 @@ describe("Hash64 arithmetic", () => {
       const rotated =
         shift === 0
           ? source
-          : ((source << distance) | (source >> BigInt(64 - shift))) & U64_MASK;
+          : ((source << distance) | (source >> BigInt(64 - shift))) & HASH_MASK;
       expect(hash64RotateLeft(value, bits)).toEqual(asHash64(rotated));
-      expect(hash64ShiftLeft(value, bits)).toEqual(
-        asHash64(source << distance),
-      );
       expect(hash64ShiftRight(value, bits)).toEqual(
         asHash64(source >> distance),
       );
     }
   });
 
-  it("matches signed and integral Number conversion semantics", () => {
-    expect(hash64FromU32(-1)).toEqual(hash64(0, 0xffff_ffff));
-    expect(hash64FromI32(-1)).toEqual(hash64(0xffff_ffff, 0xffff_ffff));
-    expect(hash64FromI32(0x8000_0000)).toEqual(
-      hash64(0xffff_ffff, 0x8000_0000),
+  it("converts validated nonnegative integer inputs", () => {
+    expect(hash64FromLowWord(0xffff_ffff)).toEqual(hash64(0, 0xffff_ffff));
+    expect(() => hash64FromLowWord(-1)).toThrow(
+      "hash low word must be an unsigned 32-bit integer",
     );
 
-    for (const value of [
-      0,
-      -1,
-      0x1_0000_0001,
-      -0x1_0000_0001,
-      Number.MAX_SAFE_INTEGER,
-      Number.MIN_SAFE_INTEGER,
-    ]) {
-      expect(hash64FromIntegerNumber(value)).toEqual(asHash64(BigInt(value)));
+    for (const value of [0, 0x1_0000_0001, Number.MAX_SAFE_INTEGER]) {
+      expect(hash64FromNonnegativeInteger(value)).toEqual(
+        asHash64(BigInt(value)),
+      );
     }
-    expect(() => hash64FromIntegerNumber(1.5)).toThrow(RangeError);
-    expect(() => hash64FromIntegerNumber(Number.POSITIVE_INFINITY)).toThrow(
-      RangeError,
-    );
+    for (const invalid of [-1, Number.MIN_SAFE_INTEGER, 1.5, Infinity]) {
+      expect(() => hash64FromNonnegativeInteger(invalid)).toThrow(
+        "hash integer must be a nonnegative safe integer",
+      );
+    }
   });
 });
 
@@ -150,9 +136,9 @@ describe("Hash64 collections", () => {
   });
 
   it("clears the whole table before inserting beyond capacity", () => {
-    const first = hash64FromU32(1);
-    const second = hash64FromU32(2);
-    const third = hash64FromU32(3);
+    const first = hash64FromLowWord(1);
+    const second = hash64FromLowWord(2);
+    const third = hash64FromLowWord(3);
     const table = new Hash64Table<string>(2);
 
     table.set(first, "first");

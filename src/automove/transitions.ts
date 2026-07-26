@@ -1,17 +1,21 @@
-import { cancelled, checkpoint } from "./deadline.js";
 import {
   FOR_AUTOMOVE_START_INPUT_OPTIONS,
   MonsGame,
   type SuggestedStartInputOptions,
 } from "../engine/game.js";
-import { cloneInput, type Event, type Input } from "../engine/domain.js";
+import {
+  MAX_INPUTS_PER_MOVE,
+  MODIFIER_RANK,
+  type Event,
+  type Input,
+} from "../engine/domain.js";
 import {
   BOARD_CELLS,
   locationIndex,
   type Location,
 } from "../engine/geometry.js";
-
-export const SMART_MAX_INPUT_CHAIN = 8;
+import type { SearchControl } from "./deadline.js";
+import type { AutomoveExecutionContext } from "./execution-context.js";
 
 export type LegalInputTransition = {
   readonly inputs: readonly Input[];
@@ -68,7 +72,10 @@ export function compareInputs(left: Input, right: Input): number {
     );
   }
   if (left.kind === "modifier" && right.kind === "modifier") {
-    return compareNumber(left.modifier, right.modifier);
+    return compareNumber(
+      MODIFIER_RANK[left.modifier],
+      MODIFIER_RANK[right.modifier],
+    );
   }
   return 0;
 }
@@ -94,29 +101,31 @@ function appendAppliedTransition(
   events: readonly Event[],
   transitions: LegalInputTransition[],
 ): void {
-  const afterGame = game.cloneForSimulation();
+  const afterGame = game.fork();
   const appliedEvents = afterGame.applyAndAddResultingEvents(events);
+  if (appliedEvents === undefined) return;
   transitions.push({
-    inputs: inputs.map(cloneInput),
+    inputs: inputs.slice(),
     game: afterGame,
     events: appliedEvents,
   });
 }
 
 function collectLegalTransitions(
+  control: SearchControl,
   game: MonsGame,
   partialInputs: Input[],
   transitions: LegalInputTransition[],
   maxMoves: number,
   startOptions: SuggestedStartInputOptions,
 ): void {
-  if (checkpoint()) {
+  if (control.checkpoint()) {
     transitions.length = 0;
     return;
   }
   if (
     transitions.length >= maxMoves ||
-    partialInputs.length > SMART_MAX_INPUT_CHAIN
+    partialInputs.length > MAX_INPUTS_PER_MOVE
   )
     return;
 
@@ -141,6 +150,7 @@ function collectLegalTransitions(
           location: { i: at.i, j: at.j },
         });
         collectLegalTransitions(
+          control,
           game,
           partialInputs,
           transitions,
@@ -153,8 +163,9 @@ function collectLegalTransitions(
     case "next-input-options":
       for (const option of output.nextInputs) {
         if (transitions.length >= maxMoves) break;
-        partialInputs.push(cloneInput(option.input));
+        partialInputs.push(option.input);
         collectLegalTransitions(
+          control,
           game,
           partialInputs,
           transitions,
@@ -167,20 +178,22 @@ function collectLegalTransitions(
 }
 
 export function enumerateLegalTransitions(
+  context: AutomoveExecutionContext,
   game: MonsGame,
   maxMoves: number,
   startOptions: SuggestedStartInputOptions = FOR_AUTOMOVE_START_INPUT_OPTIONS,
 ): LegalInputTransition[] {
-  if (checkpoint() || maxMoves <= 0) return [];
+  if (context.session.checkpoint() || maxMoves <= 0) return [];
   const transitions: LegalInputTransition[] = [];
   collectLegalTransitions(
-    game.cloneForSimulation(),
+    context.session,
+    game.fork(),
     [],
     transitions,
     maxMoves,
     startOptions,
   );
-  if (cancelled()) return [];
+  if (context.session.cancelled) return [];
   transitions.sort((left, right) =>
     compareInputChains(left.inputs, right.inputs),
   );
@@ -204,13 +217,14 @@ function startsAtMaskedLocation(
 }
 
 export function enumerateLegalTransitionsWithPriority(
+  context: AutomoveExecutionContext,
   game: MonsGame,
   maxMoves: number,
   startOptions: SuggestedStartInputOptions,
   priorityLocations: readonly Location[],
 ): LegalInputTransition[] {
   if (priorityLocations.length === 0) {
-    return enumerateLegalTransitions(game, maxMoves, startOptions);
+    return enumerateLegalTransitions(context, game, maxMoves, startOptions);
   }
 
   const priorityMask = locationMask(priorityLocations);
@@ -222,6 +236,7 @@ export function enumerateLegalTransitionsWithPriority(
   const priority: LegalInputTransition[] = [];
   const others: LegalInputTransition[] = [];
   for (const transition of enumerateLegalTransitions(
+    context,
     game,
     maxMoves,
     startOptions,
@@ -242,6 +257,7 @@ export function enumerateLegalTransitionsWithPriority(
 }
 
 function collectLexicographicBounded(
+  control: SearchControl,
   game: MonsGame,
   partialInputs: Input[],
   transitions: LegalInputTransition[],
@@ -249,13 +265,13 @@ function collectLexicographicBounded(
   startOptions: SuggestedStartInputOptions,
   allowedFirstLocations: Uint8Array | undefined,
 ): void {
-  if (checkpoint()) {
+  if (control.checkpoint()) {
     transitions.length = 0;
     return;
   }
   if (
     transitions.length >= maxMoves ||
-    partialInputs.length > SMART_MAX_INPUT_CHAIN
+    partialInputs.length > MAX_INPUTS_PER_MOVE
   )
     return;
 
@@ -279,7 +295,7 @@ function collectLexicographicBounded(
           kind: "location",
           location: { i: at.i, j: at.j },
         }))
-      : output.nextInputs.map((next) => cloneInput(next.input));
+      : output.nextInputs.map((next) => next.input);
   childInputs.sort(compareInputs);
   for (const input of childInputs) {
     if (transitions.length >= maxMoves) break;
@@ -293,6 +309,7 @@ function collectLexicographicBounded(
     }
     partialInputs.push(input);
     collectLexicographicBounded(
+      control,
       game,
       partialInputs,
       transitions,
@@ -305,26 +322,28 @@ function collectLexicographicBounded(
 }
 
 export function enumerateLegalTransitionsLexicographicBounded(
+  context: AutomoveExecutionContext,
   game: MonsGame,
   maxMoves: number,
   startOptions: SuggestedStartInputOptions = FOR_AUTOMOVE_START_INPUT_OPTIONS,
   allowedFirstLocations?: readonly Location[],
 ): LegalInputTransition[] {
-  if (maxMoves <= 0 || checkpoint()) return [];
+  if (maxMoves <= 0 || context.session.checkpoint()) return [];
   const mask =
     allowedFirstLocations === undefined
       ? undefined
       : locationMask(allowedFirstLocations);
   const transitions: LegalInputTransition[] = [];
   collectLexicographicBounded(
-    game.cloneForSimulation(),
+    context.session,
+    game.fork(),
     [],
     transitions,
     maxMoves,
     startOptions,
     mask,
   );
-  return checkpoint() ? [] : transitions;
+  return context.session.checkpoint() ? [] : transitions;
 }
 
 export function applyInputsForSearch(
@@ -338,7 +357,7 @@ export function applyInputsForSearchWithEvents(
   game: MonsGame,
   inputs: readonly Input[],
 ): { game: MonsGame; events: readonly Event[] } | undefined {
-  const simulatedGame = game.cloneForSimulation();
+  const simulatedGame = game.fork();
   const output = simulatedGame.processInput(inputs, false, false);
   return output.kind === "events"
     ? { game: simulatedGame, events: output.events }

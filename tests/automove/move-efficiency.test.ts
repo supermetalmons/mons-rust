@@ -20,6 +20,8 @@ import {
   moveEfficiencySnapshotWithHash,
 } from "../../src/automove/move-efficiency.js";
 import { applyInputsForSearchWithEvents } from "../../src/automove/transitions.js";
+import { createTestAutomoveExecutionContext } from "./execution-context.test-helper.js";
+import type { AutomoveExecutionContext } from "../../src/automove/execution-context.js";
 
 const OPENING_MOVE: readonly Input[] = [
   { kind: "location", location: { i: 10, j: 5 } },
@@ -27,12 +29,15 @@ const OPENING_MOVE: readonly Input[] = [
 ];
 
 describe("move-efficiency snapshots", () => {
+  let execution: AutomoveExecutionContext;
+
   beforeEach(() => {
-    clearMoveEfficiencyCache();
+    execution = createTestAutomoveExecutionContext();
+    clearMoveEfficiencyCache(execution);
   });
 
   afterEach(() => {
-    clearMoveEfficiencyCache();
+    clearMoveEfficiencyCache(execution);
   });
 
   it("characterizes cache identity, cache tags, and uncached snapshots", () => {
@@ -40,6 +45,7 @@ describe("move-efficiency snapshots", () => {
     const hash = exactSearchStateHash(game);
 
     const approximate = moveEfficiencySnapshotWithHash(
+      execution,
       game,
       Color.White,
       false,
@@ -47,10 +53,18 @@ describe("move-efficiency snapshots", () => {
       hash,
     );
     expect(
-      moveEfficiencySnapshotWithHash(game, Color.White, false, false, hash),
+      moveEfficiencySnapshotWithHash(
+        execution,
+        game,
+        Color.White,
+        false,
+        false,
+        hash,
+      ),
     ).toBe(approximate);
 
     const exact = moveEfficiencySnapshotWithHash(
+      execution,
       game,
       Color.White,
       true,
@@ -58,6 +72,7 @@ describe("move-efficiency snapshots", () => {
       hash,
     );
     const opponent = moveEfficiencySnapshotWithHash(
+      execution,
       game,
       Color.Black,
       false,
@@ -65,6 +80,7 @@ describe("move-efficiency snapshots", () => {
       hash,
     );
     const uncached = moveEfficiencySnapshotUncachedWithHash(
+      execution,
       game,
       Color.White,
       false,
@@ -108,8 +124,9 @@ describe("move-efficiency snapshots", () => {
     expect(uncached).not.toBe(approximate);
     expect(uncached).toEqual(approximate);
 
-    clearMoveEfficiencyCache();
+    clearMoveEfficiencyCache(execution);
     const rebuilt = moveEfficiencySnapshotWithHash(
+      execution,
       game,
       Color.White,
       false,
@@ -129,6 +146,7 @@ describe("move-efficiency snapshots", () => {
     const whiteCarrierFar = { i: 4, j: 4 };
     const blackCarrier = { i: 8, j: 8 };
     const faintedWhiteCarrier = { i: 1, j: 1 };
+    const board = game.board.fork();
 
     for (const location of [
       whiteSpiritAway,
@@ -137,43 +155,45 @@ describe("move-efficiency snapshots", () => {
       blackCarrier,
       faintedWhiteCarrier,
     ]) {
-      game.board.removeItem(location);
+      board.delete(location);
     }
-    game.board.removeItem(whiteSpiritBase);
-    game.board.put(
-      monWithConsumableItem(whiteSpirit, Consumable.Bomb),
+    board.delete(whiteSpiritBase);
+    board.set(
       whiteSpiritAway,
+      monWithConsumableItem(whiteSpirit, Consumable.Bomb),
     );
-    game.board.put(
+    board.set(
+      whiteCarrierNear,
       monWithManaItem(
         createMon(MonKind.Drainer, Color.White, 0),
         regularMana(Color.White),
       ),
-      whiteCarrierNear,
     );
-    game.board.put(
+    board.set(
+      whiteCarrierFar,
       monWithManaItem(
         createMon(MonKind.Angel, Color.White, 0),
         regularMana(Color.Black),
       ),
-      whiteCarrierFar,
     );
-    game.board.put(
+    board.set(
+      blackCarrier,
       monWithManaItem(
         createMon(MonKind.Mystic, Color.Black, 0),
         regularMana(Color.Black),
       ),
-      blackCarrier,
     );
-    game.board.put(
+    board.set(
+      faintedWhiteCarrier,
       monWithManaItem(
         createMon(MonKind.Demon, Color.White, 2),
         regularMana(Color.White),
       ),
-      faintedWhiteCarrier,
     );
+    game.replaceBoardItems(board.entries());
 
     const snapshot = moveEfficiencySnapshotUncachedWithHash(
+      execution,
       game,
       Color.White,
       false,
@@ -196,6 +216,7 @@ describe("move-efficiency snapshots", () => {
     if (applied === undefined) return;
 
     const before = moveEfficiencySnapshotWithHash(
+      execution,
       game,
       Color.White,
       true,
@@ -203,6 +224,7 @@ describe("move-efficiency snapshots", () => {
       exactSearchStateHash(game),
     );
     const delta = moveEfficiencyDeltaFromBeforeSnapshot(
+      execution,
       game,
       applied.game,
       Color.White,

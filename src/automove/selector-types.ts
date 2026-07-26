@@ -1,3 +1,4 @@
+import type { AutomovePreference } from "../api/types.js";
 import {
   MonKind,
   isMonFainted,
@@ -8,113 +9,115 @@ import {
 import type { MonsGame } from "../engine/game.js";
 import type { ScoringWeights } from "./scoring.js";
 
-export type SmartAutomovePreference = "fast" | "normal" | "pro";
+export type SmartAutomovePreference = Exclude<AutomovePreference, "random">;
 
-/**
- * Numeric modes used by the turn engine.
- *
- * This value-shaped representation keeps the selector configuration acyclic;
- * the turn-engine module's public enum has the same ordinals.
- */
+/** Value-shaped modes keep selector configuration independent of the engine. */
 export const AUTOMOVE_TURN_ENGINE_MODE = Object.freeze({
-  ProV1: 0,
-  CurrentPro: 1,
+  Baseline: "baseline",
+  Production: "production",
 } as const);
 
 export type AutomoveTurnEngineMode =
   (typeof AUTOMOVE_TURN_ENGINE_MODE)[keyof typeof AUTOMOVE_TURN_ENGINE_MODE];
 
-/** Selector configuration shared by search and runtime execution. */
-export type AutomoveSearchConfig = {
+export type AutomoveBudgetConfig = {
+  readonly preference: SmartAutomovePreference;
   readonly depth: number;
   readonly maxVisitedNodes: number;
-  readonly rootEnumLimit: number;
-  readonly rootBranchLimit: number;
-  readonly nodeEnumLimit: number;
-  readonly nodeBranchLimit: number;
-  readonly scoringWeights: ScoringWeights;
-  readonly enableTwoPassRootAllocation: boolean;
-  readonly enableSelectiveExtensions: boolean;
-  readonly enableQuietReductions: boolean;
-  readonly enableTargetedDrainerAttackFallback: boolean;
-  readonly enableForcedTacticalPrepass: boolean;
-  readonly enableTurnHeadRerank: boolean;
-  readonly enableTurnEngineSelector: boolean;
-  readonly enableTurnEngineLowBudgetGuard: boolean;
-  readonly enableTurnEngineMidTurnTacticalGuard: boolean;
-  readonly enableTurnEngineSecondaryAnalysis: boolean;
-  readonly enableTurnEngineSelectedFollowupProjection: boolean;
-  readonly enableTurnEngineLateSafeManaRootPreference: boolean;
-  readonly turnEngineMode: AutomoveTurnEngineMode;
-  readonly turnEngineSeedCap: number;
-  readonly turnEngineBeamWidth: number;
-  readonly turnEnginePerNodeFamilyCap: number;
-  readonly turnEngineStepCap: number;
-  readonly turnEngineOpponentSeedCap: number;
-  readonly turnEngineOpponentBeamWidth: number;
-  readonly turnEngineReplySeedCap: number;
-  readonly turnEngineReplyBeamWidth: number;
-  readonly turnEngineExpansionCap: number;
-  readonly turnEngineEnableSpiritFamily: boolean;
-  readonly enableExactLiteChecks: boolean;
-  readonly exactLiteRootCallBudget: number;
-  readonly exactLiteStaticCallBudget: number;
-  readonly enableRootSpiritDevelopmentPref: boolean;
-  readonly enableRootReplyRiskGuard: boolean;
-  readonly rootReplyRiskScoreMargin: number;
-  readonly rootReplyRiskShortlistMax: number;
-  readonly rootReplyRiskReplyLimit: number;
-  readonly rootReplyRiskNodeShareBp: number;
-  readonly rootAntiHelpScoreMargin: number;
-  readonly rootAntiHelpReplyLimit: number;
-  readonly enableTwoPassVolatilityFocus: boolean;
-  readonly enableNormalRootSafetyRerank: boolean;
-  readonly enableNormalRootSafetyDeepFloor: boolean;
-  readonly enableInterviewHardSpiritDeploy: boolean;
-  readonly enableInterviewDeterministicTiebreak: boolean;
-  readonly preferCleanReplyRiskRoots: boolean;
-  readonly rootDrainerSafetyScoreMargin: number;
-  readonly rootManaHandoffPenalty: number;
-  readonly rootBacktrackPenalty: number;
-  readonly rootEfficiencyScoreMargin: number;
-  readonly potionSpendPenaltyFast: number;
-  readonly potionSpendPenaltyNormal: number;
-  readonly interviewSoftSupermanaProgressBonus: number;
-  readonly interviewSoftSupermanaScoreBonus: number;
-  readonly interviewSoftOpponentManaProgressBonus: number;
-  readonly interviewSoftOpponentManaScoreBonus: number;
-  readonly interviewSoftManaHandoffPenalty: number;
-  readonly interviewSoftRoundtripPenalty: number;
-  readonly enableSupermanaPrepassException: boolean;
-  readonly enableQuiescenceSearch: boolean;
-  readonly quietReductionDepthThreshold: number;
-  readonly enableFutilityPruning: boolean;
+  readonly exactLiteRootCalls: number;
+  readonly exactLiteStaticCalls: number;
+  readonly extensionNodeShareBp: number;
+  readonly quiescenceNodes: number;
 };
 
-/**
- * A lossless bridge from selector configuration to the current search
- * implementation's constant-backed fields and naming.
- */
-export type AutomoveSearchExecutionConfig = AutomoveSearchConfig & {
-  readonly preference: SmartAutomovePreference;
-  readonly scoringKey: string;
-  /** Per-search execution switch. */
-  readonly useTranspositionTable: boolean;
-  readonly enableExactRootAnalysis: boolean;
+export type AutomoveTreeSearchConfig = {
+  readonly rootEnumerationLimit: number;
+  readonly rootBranchLimit: number;
+  readonly nodeEnumerationLimit: number;
+  readonly nodeBranchLimit: number;
+  readonly twoPassRootAllocation: boolean;
+  readonly volatilityFocus: boolean;
+  readonly selectiveExtensions: boolean;
   readonly maxExtensionsPerPath: number;
-  readonly extensionNodeShareBp: number;
-  readonly quiescenceNodeBudget: number;
-  readonly quiescenceEnumLimit: number;
+  readonly quietReductions: boolean;
+  readonly quietReductionDepthThreshold: number;
+  readonly quiescence: boolean;
+  readonly quiescenceEnumerationLimit: number;
+  readonly futilityPruning: boolean;
   readonly futilityMargin: number;
+  readonly transpositionTable: boolean;
   readonly transpositionCapacity: number;
-  readonly preferabilityCacheCapacity: number;
+  readonly exactLiteChecks: boolean;
+  readonly exactRootAnalysis: boolean;
+};
+
+export type AutomovePlannerConfig = {
+  readonly enabled: boolean;
+  readonly rerankHeads: boolean;
+  readonly lowBudgetGuard: boolean;
+  readonly midTurnTacticalGuard: boolean;
+  readonly secondaryAnalysis: boolean;
+  readonly selectedFollowupProjection: boolean;
+  readonly mode: AutomoveTurnEngineMode;
+  readonly ownSeedCap: number;
+  readonly ownBeam: number;
+  readonly perNodeFamilyCap: number;
+  readonly stepCap: number;
+  readonly opponentSeedCap: number;
+  readonly opponentBeam: number;
+  readonly replySeedCap: number;
+  readonly replyBeam: number;
+  readonly expansionCap: number;
+  readonly spiritFamily: boolean;
+};
+
+export type AutomoveEvaluationConfig = {
+  readonly weights: ScoringWeights;
+  readonly cacheCapacity: number;
+  readonly rootManaHandoffPenalty: number;
+  readonly rootBacktrackPenalty: number;
   readonly potionSpendPenalty: number;
-  readonly softSupermanaProgressBonus: number;
-  readonly softSupermanaScoreBonus: number;
-  readonly softOpponentManaProgressBonus: number;
-  readonly softOpponentManaScoreBonus: number;
+  readonly supermanaProgressBonus: number;
+  readonly supermanaScoreBonus: number;
+  readonly opponentManaProgressBonus: number;
+  readonly opponentManaScoreBonus: number;
   readonly softManaHandoffPenalty: number;
   readonly softRoundtripPenalty: number;
+};
+
+export type AutomoveReplyRiskConfig = {
+  readonly enabled: boolean;
+  readonly scoreMargin: number;
+  readonly shortlistLimit: number;
+  readonly replyLimit: number;
+  readonly nodeShareBp: number;
+  readonly antiHelpScoreMargin: number;
+  readonly antiHelpReplyLimit: number;
+  readonly safetyRerank: boolean;
+  readonly deepSafetyFloor: boolean;
+  readonly deterministicTiebreak: boolean;
+  readonly preferCleanRoots: boolean;
+  readonly lateSafeManaRootPreference: boolean;
+};
+
+export type AutomovePolicyConfig = {
+  readonly targetedDrainerAttackFallback: boolean;
+  readonly forcedTacticalPrepass: boolean;
+  readonly preferSpiritDevelopment: boolean;
+  readonly hardSpiritDeployment: boolean;
+  readonly supermanaPrepassException: boolean;
+  readonly drainerSafetyScoreMargin: number;
+  readonly efficiencyScoreMargin: number;
+};
+
+/** Complete immutable configuration shared by every automove stage. */
+export type AutomoveConfig = {
+  readonly budget: AutomoveBudgetConfig;
+  readonly search: AutomoveTreeSearchConfig;
+  readonly planner: AutomovePlannerConfig;
+  readonly evaluation: AutomoveEvaluationConfig;
+  readonly replyRisk: AutomoveReplyRiskConfig;
+  readonly policy: AutomovePolicyConfig;
 };
 
 export type MoveClassFlags = {
@@ -126,7 +129,8 @@ export type MoveClassFlags = {
   readonly quiet: boolean;
 };
 
-type RootObservation = {
+/** Observations shared by ranked candidates and completed root evaluations. */
+export type RootObservation = {
   readonly rootRank: number;
   readonly inputs: readonly Input[];
   readonly game: MonsGame;
@@ -152,37 +156,19 @@ type RootObservation = {
   readonly spiritOwnManaSetupNow: boolean;
   readonly supermanaProgress: boolean;
   readonly opponentManaProgress: boolean;
-  readonly interviewSoftPriority: number;
+  readonly policyPriority: number;
   readonly classes: MoveClassFlags;
 };
 
-/** Shared scored root move shape. */
-export type ScoredRootMove = RootObservation & {
-  readonly heuristic: number;
-};
-
-/** Shared root evaluation shape. */
-export type RootEvaluation = RootObservation & {
-  readonly score: number;
-};
-
-type CurrentProConfig = {
-  readonly currentPro?: boolean;
-  readonly turnEngineMode?: AutomoveTurnEngineMode;
-};
-
-export function currentProEnabled(config: CurrentProConfig): boolean {
-  return (
-    config.currentPro ??
-    config.turnEngineMode === AUTOMOVE_TURN_ENGINE_MODE.CurrentPro
-  );
+export function productionEnabled(config: AutomoveConfig): boolean {
+  return config.planner.mode === AUTOMOVE_TURN_ENGINE_MODE.Production;
 }
 
 export function hasAwakeSpiritOnBase(
   game: MonsGame,
   perspective: Color,
 ): boolean {
-  const item = game.board.item(
+  const item = game.board.get(
     game.board.base({
       kind: MonKind.Spirit,
       color: perspective,
@@ -208,9 +194,7 @@ export function shouldPreferSpiritDevelopment(
   );
 }
 
-export function hasConcreteScoreSurface(
-  root: ScoredRootMove | RootEvaluation,
-): boolean {
+export function hasConcreteScoreSurface(root: RootObservation): boolean {
   return (
     root.winsImmediately ||
     root.scoresSupermanaThisTurn ||
@@ -220,9 +204,7 @@ export function hasConcreteScoreSurface(
   );
 }
 
-export function hasProgressSurface(
-  root: ScoredRootMove | RootEvaluation,
-): boolean {
+export function hasProgressSurface(root: RootObservation): boolean {
   return (
     root.safeSupermanaPickupNow ||
     root.safeOpponentManaPickupNow ||
@@ -231,7 +213,7 @@ export function hasProgressSurface(
   );
 }
 
-export function rootIsUnsafe(root: ScoredRootMove | RootEvaluation): boolean {
+export function rootIsUnsafe(root: RootObservation): boolean {
   return (
     root.manaHandoffToOpponent ||
     (root.ownDrainerVulnerable &&
@@ -241,9 +223,7 @@ export function rootIsUnsafe(root: ScoredRootMove | RootEvaluation): boolean {
   );
 }
 
-export function isPlainSpiritDevelopmentRoot(
-  root: ScoredRootMove | RootEvaluation,
-): boolean {
+export function isPlainSpiritDevelopmentRoot(root: RootObservation): boolean {
   return (
     root.spiritDevelopment &&
     !root.spiritSameTurnScoreSetupNow &&

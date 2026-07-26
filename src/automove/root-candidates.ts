@@ -3,12 +3,10 @@ import {
   Color,
   Consumable,
   MonKind,
-  cloneInputs,
   inputChainKey,
   isMonFainted,
   itemMon,
   manaEquals,
-  manaScore,
   otherColor,
   type Event,
   type Input,
@@ -23,8 +21,14 @@ import {
   mysticReachableLocations,
   type Location,
 } from "../engine/geometry.js";
-import { saturatingAddI32, saturatingSubI32 } from "../engine/numerics.js";
-import { cacheWriteAllowed, cancelled, checkpoint } from "./deadline.js";
+import { scoreForColor } from "../engine/legality.js";
+import {
+  TERMINAL_SEARCH_SCORE,
+  clampHeuristicScore,
+  saturatingScoreAdd,
+  saturatingScoreSubtract,
+} from "./score-math.js";
+import type { AutomoveExecutionContext } from "./execution-context.js";
 import {
   canAttackOpponentDrainerThisTurn,
   canAttackTargetOnBoardWithHash,
@@ -39,19 +43,20 @@ import {
 } from "./exact.js";
 import { Hash64Set, type Hash64 } from "./hash64.js";
 import { evaluatePreferabilityWithWeightsAndExactPolicy } from "./scoring.js";
-import { searchExecutionConfigForGame } from "./selector-config.js";
+import { patchAutomoveConfig } from "./selector-config.js";
 import {
   hasAwakeSpiritOnBase,
   shouldPreferSpiritDevelopment,
-  type AutomoveSearchExecutionConfig,
+  type AutomoveConfig,
   type MoveClassFlags as SelectorMoveClassFlags,
-  type ScoredRootMove as SelectorScoredRootMove,
-  type SmartAutomovePreference,
+  type RootObservation,
 } from "./selector-types.js";
 import {
+  approximateSameTurnScoreWindowValue,
   distanceToAnyPoolStepsForEfficiency as distanceToAnyPoolSteps,
   distanceToColorPoolStepsForEfficiency as distanceToColorPool,
   hasRoundtripMonMove as hasRoundtrip,
+  manaHandoffPenalty,
   moveEfficiencyDeltaFromBeforeSnapshot,
   moveEfficiencySnapshotWithHash,
   type MoveEfficiencySnapshot,
@@ -65,7 +70,6 @@ import {
   type LegalInputTransition,
 } from "./transitions.js";
 
-const SMART_TERMINAL_SCORE = 0x0fff_ffff;
 const UNKNOWN_PROGRESS_STEPS = BOARD_SIZE + 4;
 const UNKNOWN_SCORE_PATH_STEPS = BOARD_SIZE * 3;
 const FORCED_ATTACK_FAST_CANDIDATES = 4;
@@ -75,33 +79,23 @@ const FORCED_ATTACK_NORMAL_NODE_BUDGET = 1_800;
 const FORCED_ATTACK_FAST_ENUM_LIMIT = 220;
 const FORCED_ATTACK_NORMAL_ENUM_LIMIT = 280;
 
-export type SearchPreference = SmartAutomovePreference;
-export type SearchConfig = AutomoveSearchExecutionConfig;
+export type SearchConfig = AutomoveConfig;
 export type MoveClassFlags = SelectorMoveClassFlags;
 
-export type RootCandidate = SelectorScoredRootMove & {
+/** A fully observed and ranked root before bounded search evaluation. */
+export type RootCandidate = RootObservation & {
+  readonly heuristic: number;
   readonly events: readonly Event[];
   readonly stateHash: Hash64;
 };
 
 type RootCandidateDraft = Omit<RootCandidate, "rootRank">;
 
-function scoreForColor(game: MonsGame, color: Color): number {
-  return color === Color.White ? game.whiteScore : game.blackScore;
-}
-
-export function searchConfigForPreference(
-  game: MonsGame,
-  preference: SearchPreference,
-): SearchConfig {
-  return searchExecutionConfigForGame(game, preference);
-}
-
 function findDrainer(
   game: MonsGame,
   color: Color,
 ): { readonly location: Location; readonly mon: Mon } | undefined {
-  for (const [location, item] of game.board.occupied()) {
+  for (const [location, item] of game.board.entries()) {
     const mon = itemMon(item);
     if (mon?.color === color && mon.kind === MonKind.Drainer) {
       return { location, mon };
@@ -110,13 +104,18 @@ function findDrainer(
   return undefined;
 }
 
-export function isOwnDrainerVulnerable(game: MonsGame, color: Color): boolean {
+export function isOwnDrainerVulnerable(
+  context: AutomoveExecutionContext,
+  game: MonsGame,
+  color: Color,
+): boolean {
   const found = findDrainer(game, color);
   if (found === undefined) return false;
   if (isMonFainted(found.mon)) return true;
   if (game.isFirstTurn()) return false;
   const hash = exactBoardHash(game.board);
   return canAttackTargetOnBoardWithHash(
+    context,
     game.board,
     hash,
     otherColor(color),
@@ -132,7 +131,7 @@ function opponentAwakeDrainerLocation(
   perspective: Color,
 ): Location | undefined {
   const opponent = otherColor(perspective);
-  for (const [location, item] of game.board.occupied()) {
+  for (const [location, item] of game.board.entries()) {
     const mon = itemMon(item);
     if (
       mon?.color === opponent &&
@@ -148,7 +147,7 @@ function opponentAwakeDrainerLocation(
 function minimumStepsToAttackSource(
   from: Location,
   target: Location,
-  kind: MonKind.Mystic | MonKind.Demon,
+  kind: typeof MonKind.Mystic | typeof MonKind.Demon,
 ): number {
   const sources =
     kind === MonKind.Mystic
@@ -174,7 +173,7 @@ function potentialDrainerAttackerLocations(
   const angel = game.board.findAwakeAngel(opponent);
   const guarded = angel !== undefined && locationDistance(angel, target) === 1;
   const bombPickupLocations: Location[] = [];
-  for (const [location, item] of game.board.occupied()) {
+  for (const [location, item] of game.board.entries()) {
     if (
       item.kind === "consumable" &&
       item.consumable === Consumable.BombOrPotion
@@ -183,7 +182,7 @@ function potentialDrainerAttackerLocations(
     }
   }
 
-  for (const [location, item] of game.board.occupied()) {
+  for (const [location, item] of game.board.entries()) {
     const mon = itemMon(item);
     if (mon?.color !== perspective || isMonFainted(mon)) {
       continue;
@@ -235,6 +234,7 @@ function approximateCanAttackOpponentDrainerThisTurn(
 }
 
 export function isOwnDrainerWalkVulnerable(
+  context: AutomoveExecutionContext,
   game: MonsGame,
   color: Color,
 ): boolean {
@@ -242,7 +242,7 @@ export function isOwnDrainerWalkVulnerable(
   if (
     found === undefined ||
     isMonFainted(found.mon) ||
-    isOwnDrainerVulnerable(game, color)
+    isOwnDrainerVulnerable(context, game, color)
   ) {
     return false;
   }
@@ -251,6 +251,7 @@ export function isOwnDrainerWalkVulnerable(
   const angelNearby =
     angel !== undefined && locationDistance(angel, found.location) === 1;
   return isDrainerUnderWalkThreatWithHash(
+    context,
     game.board,
     hash,
     color,
@@ -265,7 +266,7 @@ function carrierSnapshot(
 ): readonly [number, number] {
   let count = 0;
   let bestSteps = UNKNOWN_PROGRESS_STEPS;
-  for (const [location, item] of game.board.occupied()) {
+  for (const [location, item] of game.board.entries()) {
     if (
       item.kind !== "mon-with-mana" ||
       item.mon.color !== color ||
@@ -302,7 +303,7 @@ function spiritBase(game: MonsGame, color: Color): Location {
 
 function hasAwakeSpiritOffBase(game: MonsGame, color: Color): boolean {
   const base = spiritBase(game, color);
-  for (const [location, item] of game.board.occupied()) {
+  for (const [location, item] of game.board.entries()) {
     const mon = itemMon(item);
     if (
       !locationEquals(location, base) &&
@@ -350,11 +351,16 @@ function attacksDrainer(events: readonly Event[], actorColor: Color): boolean {
 }
 
 export function classifyTransition(
+  context: AutomoveExecutionContext,
   before: MonsGame,
   transition: LegalInputTransition,
   actorColor: Color,
-  vulnerableBefore = isOwnDrainerVulnerable(before, actorColor),
-  vulnerableAfter = isOwnDrainerVulnerable(transition.game, actorColor),
+  vulnerableBefore = isOwnDrainerVulnerable(context, before, actorColor),
+  vulnerableAfter = isOwnDrainerVulnerable(
+    context,
+    transition.game,
+    actorColor,
+  ),
 ): MoveClassFlags {
   const immediateScore = isImmediateScore(
     before,
@@ -470,42 +476,14 @@ function spiritMovesManaToward(
   );
 }
 
-function manaHandoffPenalty(
-  events: readonly Event[],
-  perspective: Color,
-  perStepPenalty: number,
-): number {
-  let penalty = 0;
-  const opponent = otherColor(perspective);
-  for (const event of events) {
-    if (event.kind !== "mana-move") continue;
-    const myProgress = Math.max(
-      0,
-      distanceToColorPool(event.from, perspective) -
-        distanceToColorPool(event.to, perspective),
-    );
-    const opponentProgress = Math.max(
-      0,
-      distanceToColorPool(event.from, opponent) -
-        distanceToColorPool(event.to, opponent),
-    );
-    if (opponentProgress > myProgress) {
-      penalty +=
-        (opponentProgress - myProgress) *
-        manaScore(event.mana, opponent) *
-        perStepPenalty;
-    }
-  }
-  return penalty;
-}
-
 function safeCarrierForMana(
+  context: AutomoveExecutionContext,
   game: MonsGame,
   color: Color,
   desiredMana: Mana,
 ): boolean {
   const boardHash = exactBoardHash(game.board);
-  for (const [location, item] of game.board.occupied()) {
+  for (const [location, item] of game.board.entries()) {
     if (
       item.kind === "mon-with-mana" &&
       item.mon.kind === MonKind.Drainer &&
@@ -514,6 +492,7 @@ function safeCarrierForMana(
       manaEquals(item.mana, desiredMana)
     ) {
       return isDrainerExactlySafeNextTurnOnBoardWithHash(
+        context,
         game.board,
         boardHash,
         color,
@@ -525,6 +504,7 @@ function safeCarrierForMana(
 }
 
 function spiritManaSetup(
+  context: AutomoveExecutionContext,
   game: MonsGame,
   events: readonly Event[],
   color: Color,
@@ -540,7 +520,7 @@ function spiritManaSetup(
         event.item.kind === "mana" &&
         manaEquals(event.item.mana, mana),
     ) &&
-      safeCarrierForMana(game, color, mana))
+      safeCarrierForMana(context, game, color, mana))
   );
 }
 
@@ -550,7 +530,7 @@ function approximateSpecificManaProgressSteps(
   wanted: Mana,
 ): number | undefined {
   let bestSteps: number | undefined;
-  for (const [drainerLocation, item] of game.board.occupied()) {
+  for (const [drainerLocation, item] of game.board.entries()) {
     if (
       item.kind === "mon-with-mana" &&
       item.mon.color === color &&
@@ -569,7 +549,7 @@ function approximateSpecificManaProgressSteps(
     ) {
       continue;
     }
-    for (const [manaLocation, manaItem] of game.board.occupied()) {
+    for (const [manaLocation, manaItem] of game.board.entries()) {
       if (manaItem.kind !== "mana" || !manaEquals(manaItem.mana, wanted)) {
         continue;
       }
@@ -585,7 +565,7 @@ function approximateBestCarrierSteps(
   color: Color,
 ): number | undefined {
   let bestSteps: number | undefined;
-  for (const [at, item] of game.board.occupied()) {
+  for (const [at, item] of game.board.entries()) {
     if (
       item.kind !== "mon-with-mana" ||
       item.mon.color !== color ||
@@ -599,35 +579,14 @@ function approximateBestCarrierSteps(
   return bestSteps;
 }
 
-function approximateSameTurnScoreWindowValue(
-  game: MonsGame,
-  color: Color,
-): number {
-  if (game.activeColor !== color) return 0;
-  const remainingMoves = Math.max(0, MONS_MOVES_PER_TURN - game.monsMovesCount);
-  let best = 0;
-  for (const [at, item] of game.board.occupied()) {
-    if (
-      item.kind !== "mon-with-mana" ||
-      item.mon.color !== color ||
-      isMonFainted(item.mon)
-    ) {
-      continue;
-    }
-    const steps = Math.max(0, distanceToAnyPoolSteps(at) - 1);
-    if (steps <= remainingMoves)
-      best = Math.max(best, manaScore(item.mana, color));
-  }
-  return best;
-}
-
 function approximateActiveTurnSummary(
+  context: AutomoveExecutionContext,
   game: MonsGame,
   color: Color,
   allowExactStrategic = false,
 ): ExactTurnSummary {
   const strategic = allowExactStrategic
-    ? exactStrategicAnalysis(game).colorSummary(color)
+    ? exactStrategicAnalysis(context, game).colorSummary(color)
     : undefined;
   const remainingMoves = Math.max(0, MONS_MOVES_PER_TURN - game.monsMovesCount);
   const safeSupermanaProgressSteps = approximateSpecificManaProgressSteps(
@@ -663,9 +622,12 @@ function approximateActiveTurnSummary(
   };
 }
 
-export function hasProTacticalPotential(game: MonsGame): boolean {
+export function hasProTacticalPotential(
+  context: AutomoveExecutionContext,
+  game: MonsGame,
+): boolean {
   const activeColor = game.activeColor;
-  const summary = approximateActiveTurnSummary(game, activeColor);
+  const summary = approximateActiveTurnSummary(context, game, activeColor);
   return (
     summary.sameTurnScoreWindowValue > 0 ||
     approximateCanAttackOpponentDrainerThisTurn(game, activeColor) ||
@@ -675,6 +637,7 @@ export function hasProTacticalPotential(game: MonsGame): boolean {
 }
 
 function rootTurnSummary(
+  context: AutomoveExecutionContext,
   game: MonsGame,
   color: Color,
   exactRootEnabled: boolean,
@@ -682,8 +645,8 @@ function rootTurnSummary(
 ): ExactTurnSummary | undefined {
   if (game.activeColor !== color) return undefined;
   return exactRootEnabled
-    ? exactTurnSummary(game, color)
-    : approximateActiveTurnSummary(game, color, exactStaticEnabled);
+    ? exactTurnSummary(context, game, color)
+    : approximateActiveTurnSummary(context, game, color, exactStaticEnabled);
 }
 
 function liveSpiritSetupGain(
@@ -737,40 +700,46 @@ function rootSoftPriority(
 ): number {
   let score = 0;
   if (values.scoresSupermanaThisTurn) {
-    score = saturatingAddI32(
+    score = saturatingScoreAdd(
       score,
-      Math.max(0, config.softSupermanaScoreBonus),
+      Math.max(0, config.evaluation.supermanaScoreBonus),
     );
   } else if (values.supermanaProgress && !values.ownDrainerVulnerable) {
-    score = saturatingAddI32(
+    score = saturatingScoreAdd(
       score,
-      Math.max(0, config.softSupermanaProgressBonus),
+      Math.max(0, config.evaluation.supermanaProgressBonus),
     );
-    score = saturatingAddI32(
+    score = saturatingScoreAdd(
       score,
       rootProgressBonus(values.safeSupermanaProgressSteps, 8),
     );
   }
   if (values.scoresOpponentManaThisTurn) {
-    score = saturatingAddI32(
+    score = saturatingScoreAdd(
       score,
-      Math.max(0, config.softOpponentManaScoreBonus),
+      Math.max(0, config.evaluation.opponentManaScoreBonus),
     );
   } else if (values.opponentManaProgress && !values.ownDrainerVulnerable) {
-    score = saturatingAddI32(
+    score = saturatingScoreAdd(
       score,
-      Math.max(0, config.softOpponentManaProgressBonus),
+      Math.max(0, config.evaluation.opponentManaProgressBonus),
     );
-    score = saturatingAddI32(
+    score = saturatingScoreAdd(
       score,
       rootProgressBonus(values.safeOpponentManaProgressSteps, 6),
     );
   }
   if (values.manaHandoffToOpponent) {
-    score = saturatingSubI32(score, Math.max(0, config.softManaHandoffPenalty));
+    score = saturatingScoreSubtract(
+      score,
+      Math.max(0, config.evaluation.softManaHandoffPenalty),
+    );
   }
   if (values.hasRoundtrip) {
-    score = saturatingSubI32(score, Math.max(0, config.softRoundtripPenalty));
+    score = saturatingScoreSubtract(
+      score,
+      Math.max(0, config.evaluation.softRoundtripPenalty),
+    );
   }
   return score;
 }
@@ -818,10 +787,10 @@ function withExactLiteBudgetedTransitionConfig(
   transition: LegalInputTransition,
   budget: ExactLiteBudget,
 ): SearchConfig {
-  let rootCallBudget = config.exactLiteRootCallBudget;
-  let staticCallBudget = config.exactLiteStaticCallBudget;
+  let rootCallBudget = config.budget.exactLiteRootCalls;
+  let staticCallBudget = config.budget.exactLiteStaticCalls;
   if (
-    config.enableExactLiteChecks &&
+    config.search.exactLiteChecks &&
     rootCallBudget > 0 &&
     transitionRequiresExactLite(transition.events)
   ) {
@@ -829,7 +798,7 @@ function withExactLiteBudgetedTransitionConfig(
     else rootCallBudget = 0;
   }
   if (
-    config.enableExactLiteChecks &&
+    config.search.exactLiteChecks &&
     staticCallBudget > 0 &&
     transition.game.activeColor === perspective
   ) {
@@ -838,22 +807,27 @@ function withExactLiteBudgetedTransitionConfig(
   }
   rootCallBudget = Math.min(rootCallBudget, budget.rootCalls);
   staticCallBudget = Math.min(staticCallBudget, budget.staticCalls);
-  return {
-    ...config,
-    exactLiteRootCallBudget: rootCallBudget,
-    exactLiteStaticCallBudget: staticCallBudget,
-    enableExactRootAnalysis: config.enableExactLiteChecks
-      ? rootCallBudget > 0 && transitionRequiresExactLite(transition.events)
-      : config.enableExactRootAnalysis,
-  };
+  return patchAutomoveConfig(config, {
+    budget: {
+      exactLiteRootCalls: rootCallBudget,
+      exactLiteStaticCalls: staticCallBudget,
+    },
+    search: {
+      exactRootAnalysis: config.search.exactLiteChecks
+        ? rootCallBudget > 0 && transitionRequiresExactLite(transition.events)
+        : config.search.exactRootAnalysis,
+    },
+  });
 }
 
 function rootCandidateSourceSnapshot(
+  context: AutomoveExecutionContext,
   game: MonsGame,
   perspective: Color,
 ): MoveEfficiencySnapshot {
   const stateHash = exactSearchStateHash(game);
   return moveEfficiencySnapshotWithHash(
+    context,
     game,
     perspective,
     false,
@@ -863,6 +837,7 @@ function rootCandidateSourceSnapshot(
 }
 
 function buildRootCandidate(
+  context: AutomoveExecutionContext,
   before: MonsGame,
   transition: LegalInputTransition,
   perspective: Color,
@@ -870,10 +845,11 @@ function buildRootCandidate(
   vulnerableBefore: boolean,
   getSourceSnapshot: () => MoveEfficiencySnapshot,
 ): RootCandidateDraft | undefined {
-  if (checkpoint()) return undefined;
+  if (context.session.checkpoint()) return undefined;
   const after = transition.game;
   const stateHash = exactSearchStateHash(after);
   const efficiency = moveEfficiencyDeltaFromBeforeSnapshot(
+    context,
     before,
     after,
     perspective,
@@ -886,14 +862,19 @@ function buildRootCandidate(
       applyRootManaHandoffGuard: true,
       includeTacticalExact: false,
       includeStrategicExact: false,
-      rootBacktrackPenalty: config.rootBacktrackPenalty,
-      rootManaHandoffPenalty: config.rootManaHandoffPenalty,
+      rootBacktrackPenalty: config.evaluation.rootBacktrackPenalty,
+      rootManaHandoffPenalty: config.evaluation.rootManaHandoffPenalty,
     },
   );
-  if (checkpoint()) return undefined;
-  const ownDrainerVulnerable = isOwnDrainerVulnerable(after, perspective);
+  if (context.session.checkpoint()) return undefined;
+  const ownDrainerVulnerable = isOwnDrainerVulnerable(
+    context,
+    after,
+    perspective,
+  );
   const ownDrainerWalkVulnerable = false;
   const classes = classifyTransition(
+    context,
     before,
     transition,
     perspective,
@@ -917,27 +898,30 @@ function buildRootCandidate(
     (mana) => mana.kind === "regular" && mana.color !== perspective,
   );
   const summary = rootTurnSummary(
+    context,
     after,
     perspective,
-    config.enableExactRootAnalysis,
-    config.enableExactLiteChecks && config.exactLiteStaticCallBudget > 0,
+    config.search.exactRootAnalysis,
+    config.search.exactLiteChecks && config.budget.exactLiteStaticCalls > 0,
   );
   const safeSupermanaPickupNow =
     picksSupermana &&
-    safeCarrierForMana(after, perspective, { kind: "supermana" });
+    safeCarrierForMana(context, after, perspective, { kind: "supermana" });
   const safeOpponentManaPickupNow =
     picksOpponentMana &&
-    safeCarrierForMana(after, perspective, {
+    safeCarrierForMana(context, after, perspective, {
       kind: "regular",
       color: otherColor(perspective),
     });
   const spiritSupermanaSetup = spiritManaSetup(
+    context,
     after,
     transition.events,
     perspective,
     { kind: "supermana" },
   );
   const spiritOpponentManaSetup = spiritManaSetup(
+    context,
     after,
     transition.events,
     perspective,
@@ -1010,10 +994,10 @@ function buildRootCandidate(
     manaHandoffPenalty(
       transition.events,
       perspective,
-      Math.max(0, config.rootManaHandoffPenalty),
+      Math.max(0, config.evaluation.rootManaHandoffPenalty),
     ) > 0;
   const roundtrip = hasRoundtrip(transition.events);
-  const interviewSoftPriority = rootSoftPriority(config, {
+  const policyPriority = rootSoftPriority(config, {
     supermanaProgress,
     opponentManaProgress,
     safeSupermanaProgressSteps,
@@ -1024,24 +1008,26 @@ function buildRootCandidate(
     manaHandoffToOpponent,
     hasRoundtrip: roundtrip,
   });
+  const terminalScore = terminalSearchScore(
+    after,
+    perspective,
+    Math.max(0, config.budget.depth - 1),
+    config.budget.depth,
+  );
   let heuristic =
-    terminalSearchScore(
-      after,
-      perspective,
-      Math.max(0, config.depth - 1),
-      config.depth,
-    ) ??
+    terminalScore ??
     evaluatePreferabilityWithWeightsAndExactPolicy(
+      context,
       after,
       perspective,
-      config.scoringWeights,
+      config.evaluation.weights,
       false,
     );
-  heuristic = saturatingAddI32(
+  heuristic = saturatingScoreAdd(
     heuristic,
     orderingEventBonus(before.activeColor, perspective, transition.events),
   );
-  heuristic = saturatingAddI32(heuristic, interviewSoftPriority);
+  heuristic = saturatingScoreAdd(heuristic, policyPriority);
   const spentPotion = transition.events.some(
     (event) => event.kind === "use-potion",
   );
@@ -1055,10 +1041,13 @@ function buildRootCandidate(
     summary?.spiritAssistedScore === true ||
     (!ownDrainerVulnerable && (supermanaProgress || opponentManaProgress));
   if (spentPotion && !compensatedPotion) {
-    heuristic = saturatingSubI32(
+    heuristic = saturatingScoreSubtract(
       heuristic,
-      Math.max(0, config.potionSpendPenalty),
+      Math.max(0, config.evaluation.potionSpendPenalty),
     );
+  }
+  if (terminalScore === undefined) {
+    heuristic = clampHeuristicScore(heuristic);
   }
   return {
     inputs: transition.inputs,
@@ -1090,22 +1079,24 @@ function buildRootCandidate(
     spiritOwnManaSetupNow,
     supermanaProgress,
     opponentManaProgress,
-    interviewSoftPriority,
+    policyPriority,
     classes,
   };
 }
 
 /** Build a scored root candidate when the advisor has no engine head. */
 export function buildRootCandidateForInputs(
+  context: AutomoveExecutionContext,
   game: MonsGame,
   perspective: Color,
   config: SearchConfig,
   inputs: readonly Input[],
 ): RootCandidate | undefined {
-  const copiedInputs = cloneInputs(inputs);
+  const copiedInputs = [...inputs];
   const applied = applyInputsForSearchWithEvents(game, copiedInputs);
   if (applied === undefined) return undefined;
   const candidate = buildRootCandidate(
+    context,
     game,
     {
       inputs: copiedInputs,
@@ -1114,8 +1105,8 @@ export function buildRootCandidateForInputs(
     },
     perspective,
     config,
-    isOwnDrainerVulnerable(game, perspective),
-    () => rootCandidateSourceSnapshot(game, perspective),
+    isOwnDrainerVulnerable(context, game, perspective),
+    () => rootCandidateSourceSnapshot(context, game, perspective),
   );
   return candidate === undefined ? undefined : { ...candidate, rootRank: 0 };
 }
@@ -1367,47 +1358,47 @@ function appendUniqueTransitions(
 }
 
 function forcedAttackCandidatesLimit(config: SearchConfig): number {
-  return config.depth >= 3
+  return config.budget.depth >= 3
     ? FORCED_ATTACK_NORMAL_CANDIDATES
     : FORCED_ATTACK_FAST_CANDIDATES;
 }
 
 function forcedAttackNodeBudget(config: SearchConfig): number {
-  return config.depth >= 3
+  return config.budget.depth >= 3
     ? FORCED_ATTACK_NORMAL_NODE_BUDGET
     : FORCED_ATTACK_FAST_NODE_BUDGET;
 }
 
 function forcedAttackEnumLimit(config: SearchConfig): number {
-  return config.depth >= 3
+  return config.budget.depth >= 3
     ? FORCED_ATTACK_NORMAL_ENUM_LIMIT
     : FORCED_ATTACK_FAST_ENUM_LIMIT;
 }
 
 function spiritSetupFallbackCandidatesLimit(config: SearchConfig): number {
-  return config.depth >= 3 ? 8 : 4;
+  return config.budget.depth >= 3 ? 8 : 4;
 }
 
 function spiritSetupFallbackEnumLimit(config: SearchConfig): number {
-  return config.depth >= 3 ? 256 : 128;
+  return config.budget.depth >= 3 ? 256 : 128;
 }
 
 function safeDrainerPickupFallbackCandidatesLimit(
   config: SearchConfig,
 ): number {
-  return config.depth >= 3 ? 8 : 4;
+  return config.budget.depth >= 3 ? 8 : 4;
 }
 
 function drainerSafetyFallbackCandidatesLimit(config: SearchConfig): number {
-  return config.depth >= 3 ? 8 : 4;
+  return config.budget.depth >= 3 ? 8 : 4;
 }
 
 function drainerSafetyFallbackEnumLimit(config: SearchConfig): number {
-  return config.depth >= 3 ? 192 : 96;
+  return config.budget.depth >= 3 ? 192 : 96;
 }
 
 function genericRootFallbackEnumLimit(config: SearchConfig): number {
-  return config.depth >= 3 ? 24 : 12;
+  return config.budget.depth >= 3 ? 24 : 12;
 }
 
 function awakeMonLocations(
@@ -1416,7 +1407,7 @@ function awakeMonLocations(
   kind?: MonKind,
 ): Location[] {
   const locations: Location[] = [];
-  for (const [location, item] of game.board.occupied()) {
+  for (const [location, item] of game.board.entries()) {
     const mon = itemMon(item);
     if (
       mon?.color === perspective &&
@@ -1430,6 +1421,7 @@ function awakeMonLocations(
 }
 
 function hasSpiritScoringManaSetup(
+  context: AutomoveExecutionContext,
   after: MonsGame,
   events: readonly Event[],
   perspective: Color,
@@ -1440,8 +1432,10 @@ function hasSpiritScoringManaSetup(
       perspective,
       (mana) => mana.kind === "regular" && mana.color === perspective,
     ) ||
-    spiritManaSetup(after, events, perspective, { kind: "supermana" }) ||
-    spiritManaSetup(after, events, perspective, {
+    spiritManaSetup(context, after, events, perspective, {
+      kind: "supermana",
+    }) ||
+    spiritManaSetup(context, after, events, perspective, {
       kind: "regular",
       color: otherColor(perspective),
     })
@@ -1449,31 +1443,34 @@ function hasSpiritScoringManaSetup(
 }
 
 function collectTargetedSpiritSetupInputs(
+  context: AutomoveExecutionContext,
   game: MonsGame,
   perspective: Color,
   config: SearchConfig,
   maxCandidates: number,
 ): LegalInputTransition[] {
-  if (checkpoint() || !game.playerCanUseAction()) return [];
+  if (context.session.checkpoint() || !game.playerCanUseAction()) return [];
   const spiritLocations = awakeMonLocations(game, perspective, MonKind.Spirit);
   if (spiritLocations.length === 0) return [];
   const limit = Math.max(1, maxCandidates);
   const collected: LegalInputTransition[] = [];
   for (const spiritLocation of spiritLocations) {
-    if (checkpoint()) return [];
+    if (context.session.checkpoint()) return [];
     if (collected.length >= limit) break;
     const transitions = enumerateLegalTransitionsLexicographicBounded(
+      context,
       game,
       spiritSetupFallbackEnumLimit(config),
       FOR_AUTOMOVE_START_INPUT_OPTIONS,
       [spiritLocation],
     );
-    if (cancelled()) return [];
+    if (context.session.cancelled) return [];
     for (const transition of transitions) {
-      if (checkpoint()) return [];
+      if (context.session.checkpoint()) return [];
       if (collected.length >= limit) break;
       if (
         hasSpiritScoringManaSetup(
+          context,
           transition.game,
           transition.events,
           perspective,
@@ -1487,31 +1484,34 @@ function collectTargetedSpiritSetupInputs(
 }
 
 function collectTargetedDrainerSafetyInputs(
+  context: AutomoveExecutionContext,
   game: MonsGame,
   perspective: Color,
   config: SearchConfig,
   maxCandidates: number,
 ): LegalInputTransition[] {
-  if (checkpoint()) return [];
+  if (context.session.checkpoint()) return [];
   const actorLocations = awakeMonLocations(game, perspective);
   if (actorLocations.length === 0) return [];
   const limit = Math.max(1, maxCandidates);
   const collected: LegalInputTransition[] = [];
   const seen = new Set<string>();
   for (const actorLocation of actorLocations) {
-    if (checkpoint()) return [];
+    if (context.session.checkpoint()) return [];
     if (collected.length >= limit) break;
     const transitions = enumerateLegalTransitionsLexicographicBounded(
+      context,
       game,
       drainerSafetyFallbackEnumLimit(config),
       FOR_AUTOMOVE_START_INPUT_OPTIONS,
       [actorLocation],
     );
-    if (cancelled()) return [];
+    if (context.session.cancelled) return [];
     for (const transition of transitions) {
-      if (checkpoint()) return [];
+      if (context.session.checkpoint()) return [];
       if (collected.length >= limit) break;
-      if (isOwnDrainerVulnerable(transition.game, perspective)) continue;
+      if (isOwnDrainerVulnerable(context, transition.game, perspective))
+        continue;
       const key = inputChainKey(transition.inputs);
       if (!seen.has(key)) {
         seen.add(key);
@@ -1544,23 +1544,25 @@ function eventsScoreWantedMana(
 }
 
 function transitionHasSafeDrainerPickup(
+  context: AutomoveExecutionContext,
   transition: LegalInputTransition,
   perspective: Color,
   wanted: Mana,
 ): boolean {
   return (
     eventsPickupWantedMana(transition.events, wanted) &&
-    safeCarrierForMana(transition.game, perspective, wanted)
+    safeCarrierForMana(context, transition.game, perspective, wanted)
   );
 }
 
 function collectTargetedSafeDrainerPickupInputs(
+  context: AutomoveExecutionContext,
   game: MonsGame,
   perspective: Color,
   maxCandidates: number,
   wanted: Mana,
 ): LegalInputTransition[] {
-  if (checkpoint() || !game.playerCanMoveMon()) return [];
+  if (context.session.checkpoint() || !game.playerCanMoveMon()) return [];
   const drainerLocations = awakeMonLocations(
     game,
     perspective,
@@ -1571,15 +1573,16 @@ function collectTargetedSafeDrainerPickupInputs(
   const collected: LegalInputTransition[] = [];
   const seen = new Set<string>();
   for (const drainerLocation of drainerLocations) {
-    if (checkpoint()) return [];
+    if (context.session.checkpoint()) return [];
     if (collected.length >= limit) break;
     const path = exactSecureSpecificManaPathFrom(
+      context,
       game,
       perspective,
       drainerLocation,
       wanted,
     );
-    if (cancelled()) return [];
+    if (context.session.cancelled) return [];
     if (path === undefined || path.length === 0) continue;
     const inputs: Input[] = [
       {
@@ -1595,7 +1598,7 @@ function collectTargetedSafeDrainerPickupInputs(
     if (applied === undefined) continue;
     if (
       eventsPickupWantedMana(applied.events, wanted) &&
-      (safeCarrierForMana(applied.game, perspective, wanted) ||
+      (safeCarrierForMana(context, applied.game, perspective, wanted) ||
         eventsScoreWantedMana(applied.events, wanted))
     ) {
       const key = inputChainKey(inputs);
@@ -1626,13 +1629,14 @@ function canAttemptForcedDrainerAttackFallback(
 }
 
 function canAttackOpponentDrainerBeforeTurnEnds(
+  context: AutomoveExecutionContext,
   game: MonsGame,
   perspective: Color,
   budget: { remaining: number },
   memo: Hash64Set,
 ): boolean {
   if (
-    checkpoint() ||
+    context.session.checkpoint() ||
     game.activeColor !== perspective ||
     budget.remaining === 0
   ) {
@@ -1641,19 +1645,24 @@ function canAttackOpponentDrainerBeforeTurnEnds(
   const stateHash = exactSearchStateHash(game);
   if (memo.has(stateHash)) return true;
   budget.remaining = Math.max(0, budget.remaining - 1);
-  const canAttack = canAttackOpponentDrainerThisTurn(game, perspective);
-  if (canAttack && cacheWriteAllowed()) memo.add(stateHash);
+  const canAttack = canAttackOpponentDrainerThisTurn(
+    context,
+    game,
+    perspective,
+  );
+  if (canAttack && context.session.cacheWriteAllowed) memo.add(stateHash);
   return canAttack;
 }
 
 function collectDrainerAttackInputs(
+  context: AutomoveExecutionContext,
   game: MonsGame,
   perspective: Color,
   config: SearchConfig,
   maxCandidates: number,
   targeted: boolean,
 ): LegalInputTransition[] {
-  if (checkpoint()) return [];
+  if (context.session.checkpoint()) return [];
   const attackerLocations = targeted
     ? potentialDrainerAttackerLocations(game, perspective)
     : undefined;
@@ -1665,16 +1674,17 @@ function collectDrainerAttackInputs(
   };
   const memo = new Hash64Set(Math.max(1, budget.remaining));
   const transitions = enumerateLegalTransitionsLexicographicBounded(
+    context,
     game,
     enumLimit,
     FOR_AUTOMOVE_START_INPUT_OPTIONS,
     attackerLocations,
   );
-  if (checkpoint()) return [];
+  if (context.session.checkpoint()) return [];
   const limit = Math.max(1, maxCandidates);
   const collected: LegalInputTransition[] = [];
   for (const transition of transitions) {
-    if (checkpoint()) return [];
+    if (context.session.checkpoint()) return [];
     if (collected.length >= limit) break;
     if (attacksDrainer(transition.events, perspective)) {
       collected.push(transition);
@@ -1683,6 +1693,7 @@ function collectDrainerAttackInputs(
     if (
       transition.game.activeColor === perspective &&
       canAttackOpponentDrainerBeforeTurnEnds(
+        context,
         transition.game,
         perspective,
         budget,
@@ -1696,27 +1707,31 @@ function collectDrainerAttackInputs(
 }
 
 export function rankRootCandidates(
+  context: AutomoveExecutionContext,
   game: MonsGame,
   perspective: Color,
   config: SearchConfig,
 ): RootCandidate[] {
-  if (checkpoint()) return [];
+  if (context.session.checkpoint()) return [];
   const sourceFen = game.fen();
-  const vulnerableBefore = isOwnDrainerVulnerable(game, perspective);
+  const vulnerableBefore = isOwnDrainerVulnerable(context, game, perspective);
   const rootTransitions = enumerateLegalTransitions(
+    context,
     game,
-    config.rootEnumLimit,
+    config.search.rootEnumerationLimit,
     FOR_AUTOMOVE_START_INPUT_OPTIONS,
   );
   if (
     vulnerableBefore &&
     !rootTransitions.some(
-      (transition) => !isOwnDrainerVulnerable(transition.game, perspective),
+      (transition) =>
+        !isOwnDrainerVulnerable(context, transition.game, perspective),
     )
   ) {
     appendUniqueTransitions(
       rootTransitions,
       collectTargetedDrainerSafetyInputs(
+        context,
         game,
         perspective,
         config,
@@ -1724,26 +1739,37 @@ export function rankRootCandidates(
       ),
     );
   }
-  if (cancelled()) return [];
+  if (context.session.checkpoint()) return [];
 
-  const turnBefore = approximateActiveTurnSummary(game, perspective, false);
+  const turnBefore = approximateActiveTurnSummary(
+    context,
+    game,
+    perspective,
+    false,
+  );
   const spiritSetupGainBefore = liveSpiritSetupGain(
     turnBefore,
     false,
     false,
     false,
   );
-  if (checkpoint()) return [];
+  if (context.session.checkpoint()) return [];
   const supermana: Mana = { kind: "supermana" };
   if (
     turnBefore.safeSupermanaProgress &&
     !rootTransitions.some((transition) =>
-      transitionHasSafeDrainerPickup(transition, perspective, supermana),
+      transitionHasSafeDrainerPickup(
+        context,
+        transition,
+        perspective,
+        supermana,
+      ),
     )
   ) {
     appendUniqueTransitions(
       rootTransitions,
       collectTargetedSafeDrainerPickupInputs(
+        context,
         game,
         perspective,
         safeDrainerPickupFallbackCandidatesLimit(config),
@@ -1751,7 +1777,7 @@ export function rankRootCandidates(
       ),
     );
   }
-  if (cancelled()) return [];
+  if (context.session.checkpoint()) return [];
   const opponentMana: Mana = {
     kind: "regular",
     color: otherColor(perspective),
@@ -1759,12 +1785,18 @@ export function rankRootCandidates(
   if (
     turnBefore.safeOpponentManaProgress &&
     !rootTransitions.some((transition) =>
-      transitionHasSafeDrainerPickup(transition, perspective, opponentMana),
+      transitionHasSafeDrainerPickup(
+        context,
+        transition,
+        perspective,
+        opponentMana,
+      ),
     )
   ) {
     appendUniqueTransitions(
       rootTransitions,
       collectTargetedSafeDrainerPickupInputs(
+        context,
         game,
         perspective,
         safeDrainerPickupFallbackCandidatesLimit(config),
@@ -1772,16 +1804,17 @@ export function rankRootCandidates(
       ),
     );
   }
-  if (cancelled()) return [];
+  if (context.session.checkpoint()) return [];
   if (
-    (config.enableInterviewHardSpiritDeploy ||
-      config.enableRootSpiritDevelopmentPref) &&
+    (config.policy.hardSpiritDeployment ||
+      config.policy.preferSpiritDevelopment) &&
     (shouldPreferSpiritDevelopment(game, perspective) ||
       spiritSetupGainBefore > 0 ||
       turnBefore.spiritAssistedSupermanaProgress ||
       turnBefore.spiritAssistedOpponentManaProgress) &&
     !rootTransitions.some((transition) =>
       hasSpiritScoringManaSetup(
+        context,
         transition.game,
         transition.events,
         perspective,
@@ -1791,6 +1824,7 @@ export function rankRootCandidates(
     appendUniqueTransitions(
       rootTransitions,
       collectTargetedSpiritSetupInputs(
+        context,
         game,
         perspective,
         config,
@@ -1798,15 +1832,15 @@ export function rankRootCandidates(
       ),
     );
   }
-  if (cancelled()) return [];
+  if (context.session.cancelled) return [];
 
   const exactLiteBudget: ExactLiteBudget = {
-    rootCalls: config.exactLiteRootCallBudget,
-    staticCalls: config.exactLiteStaticCallBudget,
+    rootCalls: config.budget.exactLiteRootCalls,
+    staticCalls: config.budget.exactLiteStaticCalls,
   };
   let sourceSnapshot: MoveEfficiencySnapshot | undefined;
   const getSourceSnapshot = (): MoveEfficiencySnapshot => {
-    sourceSnapshot ??= rootCandidateSourceSnapshot(game, perspective);
+    sourceSnapshot ??= rootCandidateSourceSnapshot(context, game, perspective);
     return sourceSnapshot;
   };
   const drafts: RootCandidateDraft[] = [];
@@ -1814,7 +1848,7 @@ export function rankRootCandidates(
     transitions: readonly LegalInputTransition[],
   ): boolean => {
     for (const transition of transitions) {
-      if (checkpoint()) return false;
+      if (context.session.checkpoint()) return false;
       const transitionConfig = withExactLiteBudgetedTransitionConfig(
         config,
         perspective,
@@ -1822,6 +1856,7 @@ export function rankRootCandidates(
         exactLiteBudget,
       );
       const candidate = buildRootCandidate(
+        context,
         game,
         transition,
         perspective,
@@ -1829,7 +1864,7 @@ export function rankRootCandidates(
         vulnerableBefore,
         getSourceSnapshot,
       );
-      if (cancelled()) return false;
+      if (context.session.checkpoint()) return false;
       if (candidate !== undefined) drafts.push(candidate);
     }
     return true;
@@ -1837,11 +1872,13 @@ export function rankRootCandidates(
   if (!appendCandidates(rootTransitions)) return [];
   if (drafts.length === 0) {
     const fallbackTransitions = enumerateLegalTransitions(
+      context,
       game,
       genericRootFallbackEnumLimit(config),
       FOR_AUTOMOVE_START_INPUT_OPTIONS,
     );
-    if (cancelled() || !appendCandidates(fallbackTransitions)) return [];
+    if (context.session.checkpoint() || !appendCandidates(fallbackTransitions))
+      return [];
   }
   let ranked = drafts.map((candidate, rank): RootCandidate => ({
     ...candidate,
@@ -1859,13 +1896,14 @@ export function rankRootCandidates(
     canAttemptForcedDrainerAttackFallback(game, perspective)
   ) {
     const fallbackTransitions = collectDrainerAttackInputs(
+      context,
       game,
       perspective,
       config,
       forcedAttackCandidatesLimit(config),
-      config.enableTargetedDrainerAttackFallback,
+      config.policy.targetedDrainerAttackFallback,
     );
-    if (cancelled()) return [];
+    if (context.session.checkpoint()) return [];
     if (fallbackTransitions.length > 0) {
       forcedAttackInputKeys = new Set(
         fallbackTransitions.map((transition) =>
@@ -1876,7 +1914,7 @@ export function rankRootCandidates(
         ranked.map((candidate) => inputChainKey(candidate.inputs)),
       );
       for (const transition of fallbackTransitions) {
-        if (checkpoint()) return [];
+        if (context.session.checkpoint()) return [];
         const key = inputChainKey(transition.inputs);
         if (seen.has(key)) continue;
         seen.add(key);
@@ -1887,6 +1925,7 @@ export function rankRootCandidates(
           exactLiteBudget,
         );
         const draft = buildRootCandidate(
+          context,
           game,
           transition,
           perspective,
@@ -1894,7 +1933,7 @@ export function rankRootCandidates(
           vulnerableBefore,
           getSourceSnapshot,
         );
-        if (cancelled()) return [];
+        if (context.session.checkpoint()) return [];
         if (draft !== undefined) {
           ranked.push({ ...draft, rootRank: 0 });
         }
@@ -1916,7 +1955,7 @@ export function rankRootCandidates(
       forcedAttackInputKeys.has(inputChainKey(candidate.inputs)),
     );
   }
-  ranked = truncateWithClassCoverage(ranked, config.rootBranchLimit);
+  ranked = truncateWithClassCoverage(ranked, config.search.rootBranchLimit);
   ranked = ranked.map((candidate, rank) => ({
     ...candidate,
     rootRank: rank,
@@ -1924,7 +1963,7 @@ export function rankRootCandidates(
   if (game.fen() !== sourceFen) {
     throw new Error("root candidate enumeration mutated its source game");
   }
-  return checkpoint() ? [] : ranked;
+  return context.session.checkpoint() ? [] : ranked;
 }
 
 export function terminalSearchScore(
@@ -1937,6 +1976,6 @@ export function terminalSearchScore(
   if (winner === undefined) return undefined;
   const ply = Math.max(0, searchDepth - depth);
   return winner === perspective
-    ? SMART_TERMINAL_SCORE - ply
-    : -SMART_TERMINAL_SCORE + ply;
+    ? TERMINAL_SEARCH_SCORE - ply
+    : -TERMINAL_SEARCH_SCORE + ply;
 }

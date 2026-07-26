@@ -1,8 +1,8 @@
-import { Color, MonKind, type Input } from "../engine/domain.js";
+import { Color, MonKind, colorId, type Input } from "../engine/domain.js";
 import { MonsGame } from "../engine/game.js";
-import { saturatingAddI32, saturatingSubI32 } from "../engine/numerics.js";
-import { cacheWriteAllowed, cancelled, checkpoint } from "./deadline.js";
+import { saturatingScoreAdd, saturatingScoreSubtract } from "./score-math.js";
 import { clearExactStateAnalysisCache, exactSearchStateHash } from "./exact.js";
+import type { AutomoveExecutionContext } from "./execution-context.js";
 import {
   HASH64_ZERO,
   Hash64Table,
@@ -29,8 +29,11 @@ import {
   moveEfficiencySnapshotWithHash,
 } from "./move-efficiency.js";
 import { focusedRootCandidates } from "./root-focus.js";
-import { evaluatePreferabilityWithWeightsAndExactPolicy } from "./scoring.js";
-import type { RootEvaluation as SelectorRootEvaluation } from "./selector-types.js";
+import {
+  evaluatePreferabilityWithWeightsAndExactPolicy,
+  scoringProfileId,
+} from "./scoring.js";
+import { patchAutomoveConfig } from "./selector-config.js";
 import {
   enumerateLegalTransitions,
   isQuiescenceTacticalTransition,
@@ -38,6 +41,7 @@ import {
 
 const TT_BEST_CHILD_BONUS = 2_400;
 const CHILD_CLASS_SCORE_MARGIN = 110;
+const PREFERABILITY_CACHE_MAX_ENTRIES = 32_768;
 
 type TranspositionBound = "exact" | "lower" | "upper";
 
@@ -66,6 +70,7 @@ type SearchNodeAccounting = {
 };
 
 type SearchContext = {
+  readonly execution: AutomoveExecutionContext;
   readonly perspective: Color;
   readonly config: SearchConfig;
   readonly transposition: Hash64Table<TranspositionEntry>;
@@ -73,39 +78,28 @@ type SearchContext = {
   readonly stats: SearchNodeAccounting;
 };
 
-export type RootEvaluation = {
-  readonly candidate: RootCandidate;
+/** A root candidate with its completed bounded-search result. */
+export type EvaluatedRoot = RootCandidate & {
   readonly score: number;
   readonly nodesAfter: number;
 };
-
-/**
- * Flat, lossless selector view of a bounded-search result. The shared fields
- * are directly consumable by advisor/reply-risk code while the compatibility
- * aliases and search-only observations remain available to existing callers.
- */
-export type FlatRootEvaluation = SelectorRootEvaluation &
-  RootCandidate & {
-    readonly score: number;
-    readonly nodesAfter: number;
-  };
 
 export type SearchRootOptions = {
   /** Advisor-selected roots, computed before the two-pass focus allocation. */
   readonly priorityInputs?: readonly (readonly Input[])[];
   /** A single prepass-selected input chain that must survive root focusing. */
   readonly forcedInputs?: readonly Input[];
-  /** CurrentPro SpiritImpact/nonnegative-deny plan-family qualification. */
+  /** Production SpiritImpact/nonnegative-deny plan-family qualification. */
   readonly qualifiesPlainSpiritPlan?: (candidate: RootCandidate) => boolean;
-  /** CurrentPro DrainerSafetyRecovery plan-family qualification. */
+  /** Production DrainerSafetyRecovery plan-family qualification. */
   readonly qualifiesDrainerSafetyRecoveryPlan?: (
     candidate: RootCandidate,
   ) => boolean;
 };
 
 export type SearchResult = {
-  readonly best: RootEvaluation | undefined;
-  readonly evaluations: readonly RootEvaluation[];
+  readonly best: EvaluatedRoot | undefined;
+  readonly evaluations: readonly EvaluatedRoot[];
   readonly visitedNodes: number;
   readonly cacheHits: number;
   readonly timedOut: boolean;
@@ -116,56 +110,48 @@ export type FocusedSearchRoots = {
   readonly scoutVisitedNodes: number;
 };
 
-export function flattenRootEvaluation(
-  evaluation: RootEvaluation,
-): FlatRootEvaluation {
-  return {
-    ...evaluation.candidate,
-    score: evaluation.score,
-    nodesAfter: evaluation.nodesAfter,
-  };
-}
+const PREFERABILITY_CACHE = Symbol("preferability-cache");
 
-export function flattenRootEvaluations(
-  evaluations: readonly RootEvaluation[],
-): FlatRootEvaluation[] {
-  return evaluations.map(flattenRootEvaluation);
+function preferabilityCache(
+  execution: AutomoveExecutionContext,
+): Hash64Table<number> {
+  return execution.caches.session.getOrCreate(
+    PREFERABILITY_CACHE,
+    () => new Hash64Table<number>(PREFERABILITY_CACHE_MAX_ENTRIES),
+  );
 }
-
-const preferabilityCache = new Hash64Table<number>(Number.MAX_SAFE_INTEGER);
 
 function cachedPreferability(
+  execution: AutomoveExecutionContext,
   game: MonsGame,
   perspective: Color,
   config: SearchConfig,
   stats: SearchNodeAccounting,
   stateHash = exactSearchStateHash(game),
 ): number {
-  const tag = perspective;
-  const cached = preferabilityCache.get(
-    stateHash,
-    tag,
-    undefined,
-    config.scoringKey,
-  );
+  const cache = preferabilityCache(execution);
+  const tag = colorId(perspective);
+  const profileId = scoringProfileId(config.evaluation.weights);
+  const cached = cache.get(stateHash, tag, undefined, profileId);
   if (cached !== undefined) {
     stats.cacheHits += 1;
     return cached;
   }
   const value = evaluatePreferabilityWithWeightsAndExactPolicy(
+    execution,
     game,
     perspective,
-    config.scoringWeights,
+    config.evaluation.weights,
     false,
   );
-  if (cacheWriteAllowed()) {
+  if (execution.session.cacheWriteAllowed) {
     if (
-      preferabilityCache.size >= config.preferabilityCacheCapacity &&
-      !preferabilityCache.has(stateHash, tag, undefined, config.scoringKey)
+      cache.size >= config.evaluation.cacheCapacity &&
+      !cache.has(stateHash, tag, undefined, profileId)
     ) {
-      preferabilityCache.clear();
+      cache.clear();
     }
-    preferabilityCache.set(stateHash, value, tag, undefined, config.scoringKey);
+    cache.set(stateHash, value, tag, undefined, profileId);
   }
   return value;
 }
@@ -209,8 +195,8 @@ function childWithinCoverageMargin(
   maximizing: boolean,
 ): boolean {
   return maximizing
-    ? saturatingAddI32(score, CHILD_CLASS_SCORE_MARGIN) >= cutoff
-    : score <= saturatingAddI32(cutoff, CHILD_CLASS_SCORE_MARGIN);
+    ? saturatingScoreAdd(score, CHILD_CLASS_SCORE_MARGIN) >= cutoff
+    : score <= saturatingScoreAdd(cutoff, CHILD_CLASS_SCORE_MARGIN);
 }
 
 export function isPriorityChild(child: RankedChild): boolean {
@@ -310,29 +296,37 @@ function rankedChildren(
   beforeStateHash: Hash64,
   preferredChildHash: Hash64 | undefined,
 ): RankedChild[] {
-  if (checkpoint()) return [];
+  if (context.execution.session.checkpoint()) return [];
   const maximizing = game.activeColor === context.perspective;
   const actorColor = game.activeColor;
   const beforeEfficiencySnapshot = moveEfficiencySnapshotWithHash(
+    context.execution,
     game,
     context.perspective,
     false,
     false,
     beforeStateHash,
   );
-  const ownDrainerVulnerableBefore = isOwnDrainerVulnerable(game, actorColor);
+  const ownDrainerVulnerableBefore = isOwnDrainerVulnerable(
+    context.execution,
+    game,
+    actorColor,
+  );
   const children: RankedChild[] = [];
   for (const transition of enumerateLegalTransitions(
+    context.execution,
     game,
-    context.config.nodeEnumLimit,
+    context.config.search.nodeEnumerationLimit,
   )) {
-    if (checkpoint()) return [];
+    if (context.execution.session.checkpoint()) return [];
     const hash = exactSearchStateHash(transition.game);
     const ownDrainerVulnerableAfter = isOwnDrainerVulnerable(
+      context.execution,
       transition.game,
       actorColor,
     );
     const classes = classifyTransition(
+      context.execution,
       game,
       transition,
       actorColor,
@@ -340,6 +334,7 @@ function rankedChildren(
       ownDrainerVulnerableAfter,
     );
     const orderingEfficiency = moveEfficiencyDeltaFromBeforeSnapshot(
+      context.execution,
       game,
       transition.game,
       actorColor,
@@ -352,8 +347,9 @@ function rankedChildren(
         applyRootManaHandoffGuard: false,
         includeTacticalExact: false,
         includeStrategicExact: false,
-        rootBacktrackPenalty: context.config.rootBacktrackPenalty,
-        rootManaHandoffPenalty: context.config.rootManaHandoffPenalty,
+        rootBacktrackPenalty: context.config.evaluation.rootBacktrackPenalty,
+        rootManaHandoffPenalty:
+          context.config.evaluation.rootManaHandoffPenalty,
       },
     );
     let heuristic =
@@ -361,16 +357,17 @@ function rankedChildren(
         transition.game,
         context.perspective,
         0,
-        context.config.depth,
+        context.config.budget.depth,
       ) ??
       cachedPreferability(
+        context.execution,
         transition.game,
         context.perspective,
         context.config,
         context.stats,
         hash,
       );
-    heuristic = saturatingAddI32(
+    heuristic = saturatingScoreAdd(
       heuristic,
       orderingEventBonus(actorColor, context.perspective, transition.events),
     );
@@ -378,7 +375,7 @@ function rankedChildren(
       preferredChildHash !== undefined &&
       hash64Equals(hash, preferredChildHash)
     ) {
-      heuristic = saturatingAddI32(heuristic, TT_BEST_CHILD_BONUS);
+      heuristic = saturatingScoreAdd(heuristic, TT_BEST_CHILD_BONUS);
     }
     const tacticalExtensionTrigger =
       ownDrainerVulnerableBefore !== ownDrainerVulnerableAfter ||
@@ -407,7 +404,7 @@ function rankedChildren(
   enforceTacticalChildTop2(children, maximizing, true);
   return truncateChildrenWithCoverage(
     children,
-    context.config.nodeBranchLimit,
+    context.config.search.nodeBranchLimit,
     maximizing,
     true,
   );
@@ -422,11 +419,12 @@ function staticScore(
     game,
     context.perspective,
     0,
-    context.config.depth,
+    context.config.budget.depth,
   );
   return (
     terminal ??
     cachedPreferability(
+      context.execution,
       game,
       context.perspective,
       context.config,
@@ -452,12 +450,16 @@ function quiescenceScore(
   let best = standPat;
   let window = maximizing ? Math.max(alpha, best) : Math.min(beta, best);
   for (const transition of enumerateLegalTransitions(
+    context.execution,
     game,
-    Math.min(context.config.quiescenceEnumLimit, context.config.nodeEnumLimit),
+    Math.min(
+      context.config.search.quiescenceEnumerationLimit,
+      context.config.search.nodeEnumerationLimit,
+    ),
   )) {
     if (
-      context.stats.visitedNodes >= context.config.maxVisitedNodes ||
-      checkpoint()
+      context.stats.visitedNodes >= context.config.budget.maxVisitedNodes ||
+      context.execution.session.checkpoint()
     ) {
       break;
     }
@@ -465,6 +467,7 @@ function quiescenceScore(
     context.stats.visitedNodes += 1;
     const transitionHash = exactSearchStateHash(transition.game);
     const score = cachedPreferability(
+      context.execution,
       transition.game,
       context.perspective,
       context.config,
@@ -494,17 +497,17 @@ function boundedSearch(
     game,
     context.perspective,
     depth,
-    context.config.depth,
+    context.config.budget.depth,
   );
   if (terminal !== undefined) return terminal;
-  if (checkpoint()) return 0;
-  if (context.stats.visitedNodes >= context.config.maxVisitedNodes) {
+  if (context.execution.session.checkpoint()) return 0;
+  if (context.stats.visitedNodes >= context.config.budget.maxVisitedNodes) {
     return staticScore(game, stateHash, context);
   }
   if (depth <= 0) {
     if (
-      context.config.enableQuiescenceSearch &&
-      context.stats.quiescenceNodes < context.config.quiescenceNodeBudget
+      context.config.search.quiescence &&
+      context.stats.quiescenceNodes < context.config.budget.quiescenceNodes
     ) {
       return quiescenceScore(game, stateHash, alphaValue, betaValue, context);
     }
@@ -518,7 +521,7 @@ function boundedSearch(
 
   // Reuse a sufficiently deep transposition entry to narrow this node.
   let preferredChildHash: Hash64 | undefined;
-  const entry = context.config.useTranspositionTable
+  const entry = context.config.search.transpositionTable
     ? context.transposition.get(stateHash)
     : undefined;
   if (entry !== undefined) {
@@ -537,16 +540,20 @@ function boundedSearch(
   // Apply the optional shallow static cutoff before child expansion.
   const maximizing = game.activeColor === context.perspective;
   if (
-    context.config.enableFutilityPruning &&
+    context.config.search.futilityPruning &&
     depth === 1 &&
-    !hasProTacticalPotential(game)
+    !hasProTacticalPotential(context.execution, game)
   ) {
     const evaluation = staticScore(game, stateHash, context);
     if (
       (maximizing &&
-        saturatingAddI32(evaluation, context.config.futilityMargin) < alpha) ||
+        saturatingScoreAdd(evaluation, context.config.search.futilityMargin) <
+          alpha) ||
       (!maximizing &&
-        saturatingSubI32(evaluation, context.config.futilityMargin) > beta)
+        saturatingScoreSubtract(
+          evaluation,
+          context.config.search.futilityMargin,
+        ) > beta)
     ) {
       return evaluation;
     }
@@ -559,14 +566,14 @@ function boundedSearch(
   let bestChildHash = HASH64_ZERO;
   let stoppedByBudget = false;
   for (const child of children) {
-    if (context.stats.visitedNodes >= context.config.maxVisitedNodes) {
+    if (context.stats.visitedNodes >= context.config.budget.maxVisitedNodes) {
       stoppedByBudget = true;
       break;
     }
     let childDepth = Math.max(0, depth - 1);
     let childExtensions = extensionsRemaining;
     if (
-      context.config.enableSelectiveExtensions &&
+      context.config.search.selectiveExtensions &&
       isSelectiveExtensionCandidate(
         child.tacticalExtensionTrigger,
         child.orderingEfficiency,
@@ -582,9 +589,9 @@ function boundedSearch(
         context.stats.extensionNodes += 1;
       }
     } else if (
-      context.config.enableQuietReductions &&
+      context.config.search.quietReductions &&
       child.quietReductionCandidate &&
-      depth >= context.config.quietReductionDepthThreshold
+      depth >= context.config.search.quietReductionDepthThreshold
     ) {
       childDepth = Math.max(0, depth - 2);
     }
@@ -604,7 +611,7 @@ function boundedSearch(
     }
     if (maximizing) alpha = Math.max(alpha, value);
     else beta = Math.min(beta, value);
-    if (alpha >= beta || checkpoint()) break;
+    if (alpha >= beta || context.execution.session.checkpoint()) break;
   }
   if (value === -0x8000_0000 || value === 0x7fff_ffff) {
     value = staticScore(game, stateHash, context);
@@ -612,14 +619,15 @@ function boundedSearch(
 
   // Store only a complete, non-cancelled node result.
   if (
-    context.config.useTranspositionTable &&
+    context.config.search.transpositionTable &&
     !stoppedByBudget &&
-    cacheWriteAllowed()
+    context.execution.session.cacheWriteAllowed
   ) {
     const bound: TranspositionBound =
       value <= alphaBefore ? "upper" : value >= betaBefore ? "lower" : "exact";
     if (
-      context.transposition.size >= context.config.transpositionCapacity &&
+      context.transposition.size >=
+        context.config.search.transpositionCapacity &&
       !context.transposition.has(stateHash)
     ) {
       context.transposition.clear();
@@ -635,20 +643,24 @@ function boundedSearch(
 }
 
 function createSearchContext(
+  execution: AutomoveExecutionContext,
   perspective: Color,
   config: SearchConfig,
 ): SearchContext {
   return {
+    execution,
     perspective,
     config,
     transposition: new Hash64Table<TranspositionEntry>(
-      transpositionStorageCapacity(config.transpositionCapacity),
+      config.search.transpositionCapacity,
     ),
-    extensionNodeBudget: config.enableSelectiveExtensions
+    extensionNodeBudget: config.search.selectiveExtensions
       ? Math.max(
           1,
           Math.floor(
-            (config.maxVisitedNodes * config.extensionNodeShareBp) / 10_000,
+            (config.budget.maxVisitedNodes *
+              config.budget.extensionNodeShareBp) /
+              10_000,
           ),
         )
       : 0,
@@ -661,17 +673,6 @@ function createSearchContext(
   };
 }
 
-/**
- * Preserve the old Map-backed table's numeric-threshold behavior while giving
- * Hash64Table the positive safe-integer capacity its storage requires.
- */
-function transpositionStorageCapacity(capacity: number): number {
-  if (Number.isNaN(capacity) || capacity === Number.POSITIVE_INFINITY) {
-    return Number.MAX_SAFE_INTEGER;
-  }
-  return Math.max(1, Math.min(Number.MAX_SAFE_INTEGER, Math.ceil(capacity)));
-}
-
 function candidateWithCurrentStateHash(
   candidate: RootCandidate,
 ): RootCandidate {
@@ -682,50 +683,50 @@ function candidateWithCurrentStateHash(
 }
 
 function betterEvaluation(
-  candidate: RootEvaluation,
-  incumbent: RootEvaluation,
+  candidate: EvaluatedRoot,
+  incumbent: EvaluatedRoot,
 ): boolean {
   return (
     candidate.score > incumbent.score ||
     (candidate.score === incumbent.score &&
-      compareRootCandidates(candidate.candidate, incumbent.candidate) < 0)
+      compareRootCandidates(candidate, incumbent) < 0)
   );
 }
 
-type FocusedRootEvaluationRun = {
-  readonly evaluations: readonly RootEvaluation[];
-  readonly best: RootEvaluation | undefined;
+type FocusedEvaluationRun = {
+  readonly evaluations: readonly EvaluatedRoot[];
+  readonly best: EvaluatedRoot | undefined;
 };
 
 function evaluateFocusedRoots(
   candidates: readonly RootCandidate[],
   context: SearchContext,
-): FocusedRootEvaluationRun {
-  const evaluations: RootEvaluation[] = [];
-  let best: RootEvaluation | undefined;
+): FocusedEvaluationRun {
+  const evaluations: EvaluatedRoot[] = [];
+  let best: EvaluatedRoot | undefined;
   let alpha = -0x8000_0000;
   for (const candidate of candidates) {
     if (
-      context.stats.visitedNodes >= context.config.maxVisitedNodes ||
-      checkpoint()
+      context.stats.visitedNodes >= context.config.budget.maxVisitedNodes ||
+      context.execution.session.checkpoint()
     ) {
       break;
     }
     context.stats.visitedNodes += 1;
     const score =
-      context.config.depth <= 1
+      context.config.budget.depth <= 1
         ? candidate.heuristic
         : boundedSearch(
             candidate.game,
             candidate.stateHash,
-            context.config.depth - 1,
+            context.config.budget.depth - 1,
             alpha,
             0x7fff_ffff,
-            context.config.maxExtensionsPerPath,
+            context.config.search.maxExtensionsPerPath,
             context,
           );
-    const evaluation: RootEvaluation = {
-      candidate,
+    const evaluation: EvaluatedRoot = {
+      ...candidate,
       score,
       nodesAfter: context.stats.visitedNodes,
     };
@@ -739,12 +740,13 @@ function evaluateFocusedRoots(
 }
 
 export function evaluateSearchScore(
+  execution: AutomoveExecutionContext,
   game: MonsGame,
   perspective: Color,
   depth: number,
   config: SearchConfig,
 ): number {
-  const context = createSearchContext(perspective, config);
+  const context = createSearchContext(execution, perspective, config);
   const stateHash = exactSearchStateHash(game);
   return boundedSearch(
     game,
@@ -752,7 +754,7 @@ export function evaluateSearchScore(
     Math.max(0, depth),
     -0x8000_0000,
     0x7fff_ffff,
-    config.maxExtensionsPerPath,
+    config.search.maxExtensionsPerPath,
     context,
   );
 }
@@ -763,17 +765,18 @@ export function evaluateSearchScore(
  * this seam deliberately stops before the later scored-root loop.
  */
 export function focusRootCandidatesForSearch(
+  execution: AutomoveExecutionContext,
   game: MonsGame,
   perspective: Color,
   config: SearchConfig,
   suppliedCandidates?: readonly RootCandidate[],
   options: SearchRootOptions = {},
-  useTranspositionTable = config.useTranspositionTable,
+  useTranspositionTable = config.search.transpositionTable,
 ): FocusedSearchRoots {
   const sourceFen = game.fen();
   const sourceCandidates = suppliedCandidates
     ? suppliedCandidates.map(candidateWithCurrentStateHash)
-    : rankRootCandidates(game, perspective, config);
+    : rankRootCandidates(execution, game, perspective, config);
   let scoutContext: SearchContext | undefined;
   const focused = focusedRootCandidates({
     rootMoves: sourceCandidates,
@@ -796,10 +799,13 @@ export function focusRootCandidatesForSearch(
             options.qualifiesDrainerSafetyRecoveryPlan,
         }),
     evaluateDeeperScout: (scout) => {
-      scoutContext ??= createSearchContext(perspective, {
-        ...scout.config,
-        useTranspositionTable: scout.useTranspositionTable,
-      });
+      scoutContext ??= createSearchContext(
+        execution,
+        perspective,
+        patchAutomoveConfig(scout.config, {
+          search: { transpositionTable: scout.useTranspositionTable },
+        }),
+      );
       scoutContext.stats.visitedNodes = Math.max(
         scoutContext.stats.visitedNodes,
         scout.visitedNodes,
@@ -818,8 +824,8 @@ export function focusRootCandidatesForSearch(
         visitedNodes: scoutContext.stats.visitedNodes,
       };
     },
-    checkpoint,
-    cancelled,
+    checkpoint: () => execution.session.checkpoint(),
+    cancelled: () => execution.session.cancelled,
   });
   if (game.fen() !== sourceFen) {
     throw new Error("root focus mutated its source game");
@@ -831,6 +837,7 @@ export function focusRootCandidatesForSearch(
 }
 
 export function searchRootCandidates(
+  execution: AutomoveExecutionContext,
   game: MonsGame,
   perspective: Color,
   config: SearchConfig,
@@ -839,6 +846,7 @@ export function searchRootCandidates(
 ): SearchResult {
   const sourceFen = game.fen();
   const focused = focusRootCandidatesForSearch(
+    execution,
     game,
     perspective,
     config,
@@ -846,7 +854,7 @@ export function searchRootCandidates(
     options,
   );
   const candidates = focused.candidates;
-  const context = createSearchContext(perspective, config);
+  const context = createSearchContext(execution, perspective, config);
   context.stats.visitedNodes = focused.scoutVisitedNodes;
   const { evaluations, best } = evaluateFocusedRoots(candidates, context);
   if (game.fen() !== sourceFen) {
@@ -857,12 +865,12 @@ export function searchRootCandidates(
     evaluations,
     visitedNodes: context.stats.visitedNodes,
     cacheHits: context.stats.cacheHits,
-    timedOut: cancelled(),
+    timedOut: context.execution.session.cancelled,
   };
 }
 
-export function clearSearchCaches(): void {
-  preferabilityCache.clear();
-  clearMoveEfficiencyCache();
-  clearExactStateAnalysisCache();
+export function clearSearchCaches(execution: AutomoveExecutionContext): void {
+  preferabilityCache(execution).clear();
+  clearMoveEfficiencyCache(execution);
+  clearExactStateAnalysisCache(execution);
 }

@@ -14,30 +14,19 @@ export function hash64(hi: number, lo: number): Hash64 {
   return { hi: hi >>> 0, lo: lo >>> 0 };
 }
 
-export function hash64FromU32(value: number): Hash64 {
+export function hash64FromLowWord(value: number): Hash64 {
+  if (!Number.isInteger(value) || value < 0 || value > 0xffff_ffff) {
+    throw new RangeError("hash low word must be an unsigned 32-bit integer");
+  }
   return hash64(0, value);
 }
 
-/** Convert with the same sign extension as an i32-to-u64 cast. */
-export function hash64FromI32(value: number): Hash64 {
-  const signed = value | 0;
-  return hash64(signed < 0 ? 0xffff_ffff : 0, signed);
-}
-
-/**
- * Convert an integral Number with the same wrapping semantics as
- * `BigInt.asUintN(64, BigInt(value))`.
- *
- * Engine-generated values take the i32 fast path. The BigInt fallback is only
- * used for unusual integral values outside that range; non-integral and
- * non-finite Numbers retain BigInt's RangeError behavior.
- */
-export function hash64FromIntegerNumber(value: number): Hash64 {
-  const signed = value | 0;
-  if (value === signed) {
-    return hash64(signed < 0 ? 0xffff_ffff : 0, signed);
+/** Convert a nonnegative safe integer without allocating a BigInt. */
+export function hash64FromNonnegativeInteger(value: number): Hash64 {
+  if (!Number.isSafeInteger(value) || value < 0) {
+    throw new RangeError("hash integer must be a nonnegative safe integer");
   }
-  return hash64FromBigInt(BigInt(value));
+  return hash64(Math.floor(value / 0x1_0000_0000), value);
 }
 
 export function hash64Add(left: Hash64, right: Hash64): Hash64 {
@@ -69,14 +58,6 @@ export function hash64Xor(left: Hash64, right: Hash64): Hash64 {
   return hash64(left.hi ^ right.hi, left.lo ^ right.lo);
 }
 
-export function hash64Or(left: Hash64, right: Hash64): Hash64 {
-  return hash64(left.hi | right.hi, left.lo | right.lo);
-}
-
-export function hash64And(left: Hash64, right: Hash64): Hash64 {
-  return hash64(left.hi & right.hi, left.lo & right.lo);
-}
-
 export function hash64RotateLeft(value: Hash64, bits: number): Hash64 {
   const shift = (bits >>> 0) & 63;
   if (shift === 0) return hash64(value.hi, value.lo);
@@ -92,19 +73,6 @@ export function hash64RotateLeft(value: Hash64, bits: number): Hash64 {
     (value.lo << wordShift) | (value.hi >>> (32 - wordShift)),
     (value.hi << wordShift) | (value.lo >>> (32 - wordShift)),
   );
-}
-
-export function hash64ShiftLeft(value: Hash64, bits: number): Hash64 {
-  const shift = (bits >>> 0) & 63;
-  if (shift === 0) return hash64(value.hi, value.lo);
-  if (shift === 32) return hash64(value.lo, 0);
-  if (shift < 32) {
-    return hash64(
-      (value.hi << shift) | (value.lo >>> (32 - shift)),
-      value.lo << shift,
-    );
-  }
-  return hash64(value.lo << (shift - 32), 0);
 }
 
 export function hash64ShiftRight(value: Hash64, bits: number): Hash64 {
@@ -128,7 +96,7 @@ export function hash64IsZero(value: Hash64): boolean {
   return value.hi === 0 && value.lo === 0;
 }
 
-/** Compare as unsigned u64 values, returning -1, 0, or 1. */
+/** Compare as unsigned 64-bit values, returning -1, 0, or 1. */
 export function hash64CompareUnsigned(left: Hash64, right: Hash64): number {
   if (left.hi !== right.hi) return left.hi < right.hi ? -1 : 1;
   if (left.lo !== right.lo) return left.lo < right.lo ? -1 : 1;
@@ -141,14 +109,6 @@ export function hash64Bucket(value: Hash64): number {
   mixed = Math.imul(mixed ^ (mixed >>> 16), 0x7feb_352d) >>> 0;
   mixed = Math.imul(mixed ^ (mixed >>> 15), 0x846c_a68b) >>> 0;
   return (mixed ^ (mixed >>> 16)) >>> 0;
-}
-
-function hash64FromBigInt(value: bigint): Hash64 {
-  const normalized = BigInt.asUintN(64, value);
-  return hash64(
-    Number((normalized >> 32n) & 0xffff_ffffn),
-    Number(normalized & 0xffff_ffffn),
-  );
 }
 
 type Hash64Entry<V> = {
