@@ -59,7 +59,7 @@ export type MoveEfficiencySnapshot = {
   readonly opponentSafeOpponentManaProgressSteps: number;
 };
 
-export type MoveEfficiencyDeltaPolicy = {
+type MoveEfficiencyDeltaPolicy = {
   readonly isRoot: boolean;
   readonly applyBacktrackPenalty: boolean;
   readonly applyRootManaHandoffGuard: boolean;
@@ -67,7 +67,7 @@ export type MoveEfficiencyDeltaPolicy = {
   readonly rootManaHandoffPenalty: number;
 };
 
-export type MoveEfficiencyDeltaOptions = MoveEfficiencyDeltaPolicy & {
+type MoveEfficiencyDeltaOptions = MoveEfficiencyDeltaPolicy & {
   readonly includeTacticalExact: boolean;
   readonly includeStrategicExact: boolean;
 };
@@ -370,7 +370,6 @@ function buildMoveEfficiencySnapshot(
   return snapshot;
 }
 
-/** Cached builder used for the parent/before side of ordering deltas. */
 export function moveEfficiencySnapshotWithHash(
   context: AutomoveExecutionContext,
   game: MonsGame,
@@ -402,7 +401,6 @@ export function moveEfficiencySnapshotWithHash(
   return snapshot;
 }
 
-/** Uncached builder used for the simulated/after side of ordering deltas. */
 export function moveEfficiencySnapshotUncachedWithHash(
   context: AutomoveExecutionContext,
   game: MonsGame,
@@ -427,7 +425,7 @@ export function clearMoveEfficiencyCache(
   moveEfficiencyCache(context).clear();
 }
 
-export function stepProgressDelta(
+function stepProgressDelta(
   beforeSteps: number,
   afterSteps: number,
   forwardWeight: number,
@@ -479,7 +477,7 @@ export function hasRoundtripMonMove(events: readonly Event[]): boolean {
   return false;
 }
 
-export function isNoEffectTurnTransition(
+function isNoEffectTurnTransition(
   game: MonsGame,
   simulatedGame: MonsGame,
   events: readonly Event[],
@@ -730,7 +728,7 @@ function applyRootEfficiencyPenalties(
  * Complete weighted snapshot delta. Passing a before-snapshot captured for a
  * different perspective intentionally preserves the established child order.
  */
-export function moveEfficiencyDeltaFromBeforeSnapshotWithAfterSnapshot(
+function moveEfficiencyDeltaFromBeforeSnapshotWithAfterSnapshot(
   game: MonsGame,
   simulatedGame: MonsGame,
   perspective: Color,

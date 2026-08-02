@@ -25,7 +25,7 @@ import {
 
 const TURN_ENGINE_CACHES = Symbol("turn-engine-caches");
 
-export class TurnEngineCaches {
+class TurnEngineCaches {
   public readonly continuation = new Hash64Table<readonly Input[]>(
     TURN_ENGINE_CACHE_MAX_ENTRIES,
   );
@@ -129,7 +129,7 @@ export function cacheKey(
   return cacheKeyForMode(game, config.mode, config);
 }
 
-export type UtilityCacheKey = {
+type UtilityCacheKey = {
   readonly stateHash: Hash64;
   readonly configFingerprint: Hash64;
   readonly startTag: number;

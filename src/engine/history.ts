@@ -6,13 +6,13 @@ export type VerboseTrackingEntity = {
   readonly events: readonly Event[];
 };
 
-export type PreparedTakeback = {
+type PreparedTakeback = {
   readonly previousFen: string;
   readonly takebackFens: string[];
   readonly trackingEntries: VerboseTrackingEntity[];
 };
 
-export type CompletedEventApplication = {
+type CompletedEventApplication = {
   readonly snapshotFen: () => string;
   readonly color: Color;
   readonly events: readonly Event[];

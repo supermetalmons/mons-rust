@@ -221,7 +221,7 @@ export function exactStrategicAnalysis(
   );
 }
 
-export type ExactTurnProjectionFlags = number;
+type ExactTurnProjectionFlags = number;
 
 function exactSecureSpecificManaStepsThisTurn(
   context: AutomoveExecutionContext,
@@ -535,7 +535,7 @@ function buildExactTurnSummary(
     : summary;
 }
 
-export function exactTurnSummaryWithSearchHash(
+function exactTurnSummaryWithSearchHash(
   context: AutomoveExecutionContext,
   game: MonsGame,
   color: Color,

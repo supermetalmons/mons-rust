@@ -25,14 +25,9 @@ const ROOT_POTION_HOLD_SCORE_MARGIN = 180;
 const INTERVIEW_SOFT_PRIORITY_SCORE_MARGIN = 80;
 const SPIRIT_SCORE_CHALLENGE_MARGIN = 40;
 
-export {
-  isPlainSpiritDevelopmentRoot,
-  rootProgressStepsBetter,
-  rootScorePathStepsBetter,
-  shouldPreferSpiritDevelopment,
-};
+export { rootProgressStepsBetter };
 
-export type RootReplyRiskSnapshot = {
+type RootReplyRiskSnapshot = {
   readonly allowsImmediateOpponentWin: boolean;
 };
 
@@ -54,10 +49,10 @@ export const ProductionCompetitionKind = Object.freeze({
   RiskyRecovery: "risky-recovery",
 } as const);
 
-export type ProductionCompetitionKind =
+type ProductionCompetitionKind =
   (typeof ProductionCompetitionKind)[keyof typeof ProductionCompetitionKind];
 
-export const PRODUCTION_COMPETITION_KIND_ORDER = Object.freeze([
+const PRODUCTION_COMPETITION_KIND_ORDER = Object.freeze([
   ProductionCompetitionKind.SafeProgress,
   ProductionCompetitionKind.FollowupProgress,
   ProductionCompetitionKind.RiskyScore,
@@ -74,17 +69,17 @@ export const ProductionComparisonPhase = Object.freeze({
   FollowupFloor: "followup-floor",
 } as const);
 
-export type ProductionComparisonPhase =
+type ProductionComparisonPhase =
   (typeof ProductionComparisonPhase)[keyof typeof ProductionComparisonPhase];
 
-export type ProductionRootRuleId =
+type ProductionRootRuleId =
   | `competition.${string}`
   | `safety-reentry.${string}`
   | `final-reentry.${string}`
   | `comparison.${string}`
   | `root-picker.${string}`;
 
-export type ProductionContinueResult = {
+type ProductionContinueResult = {
   readonly kind: "continue";
 };
 
@@ -98,7 +93,7 @@ export type ProductionIndexSelectionResult =
       readonly indices: readonly number[];
     };
 
-export type ProductionRootSelectionResult =
+type ProductionRootSelectionResult =
   | ProductionContinueResult
   | {
       readonly kind: "select";
@@ -113,7 +108,7 @@ export type ProductionComparisonResult =
       readonly order: number;
     };
 
-export type ProductionRootComparisonContext = RootSelectionContext & {
+type ProductionRootComparisonContext = RootSelectionContext & {
   readonly candidateIndex: number;
   readonly incumbentIndex: number;
 };
@@ -122,7 +117,7 @@ export type ProductionRootReentryContext = RootSelectionContext & {
   readonly selectedIndices: readonly number[];
 };
 
-export type ProductionCompetitionRule = {
+type ProductionCompetitionRule = {
   readonly id: ProductionRootRuleId;
   readonly kind: ProductionCompetitionKind;
   readonly evaluate: (
@@ -130,14 +125,14 @@ export type ProductionCompetitionRule = {
   ) => ProductionCompetitionResult;
 };
 
-export type ProductionReentryRule = {
+type ProductionReentryRule = {
   readonly id: ProductionRootRuleId;
   readonly select: (
     context: ProductionRootReentryContext,
   ) => ProductionIndexSelectionResult;
 };
 
-export type ProductionComparisonRule = {
+type ProductionComparisonRule = {
   readonly id: ProductionRootRuleId;
   readonly phase: ProductionComparisonPhase;
   readonly compare: (
@@ -152,10 +147,6 @@ export type ProductionRootPicker = {
   ) => ProductionRootSelectionResult;
 };
 
-/**
- * Ordered production policy. Rules are data with stable IDs so each phase can
- * be inspected and tested independently from the baseline selector.
- */
 export type ProductionRootPolicy = {
   readonly competitionRules: readonly ProductionCompetitionRule[];
   readonly safetyReentryRules: readonly ProductionReentryRule[];
@@ -292,7 +283,7 @@ function selectionContext(
   return { game, roots, candidateIndices, perspective, config };
 }
 
-export function evaluateProductionCompetitionRules(
+function evaluateProductionCompetitionRules(
   policy: ProductionRootPolicy | undefined,
   kind: ProductionCompetitionKind,
   context: RootSelectionContext,
@@ -1087,7 +1078,7 @@ export function spiritScoreChallengeOrder(
   return candidateIsChallenger ? 1 : -1;
 }
 
-export function compareProductionRules(
+function compareProductionRules(
   phase: ProductionComparisonPhase,
   context: ProductionRootComparisonContext,
   policy: ProductionRootPolicy | undefined,
@@ -1382,7 +1373,7 @@ export function pickBaselineRootIndexFromCandidateIndices(
   return bestIndex;
 }
 
-export function pickBaselineRootIndex(
+function pickBaselineRootIndex(
   game: MonsGame,
   roots: readonly EvaluatedRoot[],
   perspective: Color,

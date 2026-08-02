@@ -65,7 +65,7 @@ import {
 } from "./policies/white-opening.js";
 import { ProductionRootAdvisorReasonCode } from "./types.js";
 
-export type AdvisorSelectionRuleResult =
+type AdvisorSelectionRuleResult =
   | { readonly kind: "continue" }
   | {
       readonly kind: "select";
@@ -73,12 +73,12 @@ export type AdvisorSelectionRuleResult =
       readonly reason: ProductionRootAdvisorReasonCode;
     };
 
-export type AdvisorSelection = {
+type AdvisorSelection = {
   readonly index: number;
   readonly reason: ProductionRootAdvisorReasonCode;
 };
 
-export type AdvisorSelectionRuleContext = {
+type AdvisorSelectionRuleContext = {
   readonly execution: AutomoveExecutionContext;
   readonly game: MonsGame;
   readonly roots: readonly EvaluatedRoot[];
@@ -91,7 +91,7 @@ export type AdvisorSelectionRuleContext = {
   readonly baselineIndex: number | undefined;
 };
 
-export type AdvisorSelectionRule<Id extends string = string> = {
+type AdvisorSelectionRule<Id extends string = string> = {
   readonly id: Id;
   readonly evaluate: (
     context: AdvisorSelectionRuleContext,
@@ -142,7 +142,7 @@ function baselineRule<const Id extends string>(
   );
 }
 
-export const ADVISOR_SELECTION_RULES = Object.freeze([
+const ADVISOR_SELECTION_RULES = Object.freeze([
   familyRule("black-family-competition", (context) =>
     blackFamilyCompetitionOverride(
       context.execution,
@@ -555,10 +555,9 @@ export const ADVISOR_SELECTION_RULES = Object.freeze([
 export function applyAdvisorSelectionRules(
   context: Omit<AdvisorSelectionRuleContext, "chosenIndex">,
   initialSelection: AdvisorSelection,
-  rules: readonly AdvisorSelectionRule[] = ADVISOR_SELECTION_RULES,
 ): AdvisorSelection {
   let selection = initialSelection;
-  for (const rule of rules) {
+  for (const rule of ADVISOR_SELECTION_RULES) {
     const result = rule.evaluate({
       ...context,
       chosenIndex: selection.index,

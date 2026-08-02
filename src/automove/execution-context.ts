@@ -3,11 +3,10 @@ import { SearchSession } from "./deadline.js";
 
 export {
   AutomoveCacheScope,
-  type AutomoveCacheLifetime,
   type BoundedAutomoveCache,
 } from "./cache-scope.js";
 
-export type AutomoveCacheScopes = {
+type AutomoveCacheScopes = {
   readonly session: AutomoveCacheScope;
   readonly engine: AutomoveCacheScope;
 };

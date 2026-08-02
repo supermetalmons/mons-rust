@@ -10,6 +10,13 @@ import {
   createAutomoveExecutionContext,
   type BoundedAutomoveCache,
 } from "../../src/automove/execution-context.js";
+import { suggestMove } from "../../src/automove/runtime.js";
+import {
+  PRODUCTION_SELECTOR_BUDGET_MS,
+  selectProductionInputsWithDeadline,
+} from "../../src/automove/runtime/deadline-selection.js";
+import { GameVariant } from "../../src/engine/config.js";
+import { MonsGame } from "../../src/engine/game.js";
 
 let session: SearchSession;
 const TEST_RANDOM_SOURCE = Object.freeze({
@@ -407,5 +414,55 @@ describe("automove execution context", () => {
       expect(context.caches.engine.entryCount).toBe(0);
     });
     expect(engineCache.size).toBe(0);
+  });
+});
+
+const LATE_UNSUPPORTED_FEN =
+  "0 0 b 0 1 5 0 0 2 y0xn10/n11/n02S0xn08/n11/n11/n02A0xE0xn01d0Bn05/n11/n11/n11/n11/n11";
+
+describe("production Pro fallback", () => {
+  it("continues canonically when the packed state is unsupported", () => {
+    const fields = new MonsGame(false, GameVariant.Classic).fen().split(" ");
+    fields[8] = String(Number.MAX_SAFE_INTEGER);
+    const game = MonsGame.fromFen(fields.join(" "), false);
+    expect(game).toBeDefined();
+    if (game === undefined) return;
+    const sourceFen = game.fen();
+    const context = createAutomoveExecutionContext(
+      new SearchSession({ clock: () => 0 }),
+      new AutomoveCacheScope("engine"),
+      TEST_RANDOM_SOURCE,
+    );
+
+    const inputs = selectProductionInputsWithDeadline(context, game);
+
+    expect(inputs.length).toBeGreaterThan(0);
+    expect(game.fork().processInput(inputs, false, false).kind).toBe("events");
+    expect(game.fen()).toBe(sourceFen);
+    expect(context.session.takePreviousTimeout()).toBe(false);
+  }, 30_000);
+
+  it("returns the retained packed move when canonical fallback times out", () => {
+    const game = MonsGame.fromFen(LATE_UNSUPPORTED_FEN, false);
+    expect(game).toBeDefined();
+    if (game === undefined) return;
+    const sourceFen = game.fen();
+    const engineCaches = new AutomoveCacheScope("engine");
+    const session = new SearchSession({
+      clock: () =>
+        engineCaches.cacheCount > 0 ? PRODUCTION_SELECTOR_BUDGET_MS : 0,
+    });
+    const context = createAutomoveExecutionContext(
+      session,
+      engineCaches,
+      TEST_RANDOM_SOURCE,
+    );
+
+    const suggestion = suggestMove(context, game, "pro");
+
+    expect(suggestion.inputFen).toBe("l5,5;l5,3");
+    expect(suggestion.output.kind).toBe("events");
+    expect(session.takePreviousTimeout()).toBe(true);
+    expect(game.fen()).toBe(sourceFen);
   });
 });

@@ -19,7 +19,7 @@ import { evaluateReplyRiskGame } from "./snapshot.js";
 import type { RootReplyRiskSnapshot } from "./types.js";
 import { sameOpeningSafeSetupPair } from "./sibling-ordering.js";
 
-export function isFlatLateManaOnlyReplyRoot(root: EvaluatedRoot): boolean {
+function isFlatLateManaOnlyReplyRoot(root: EvaluatedRoot): boolean {
   return (
     !root.winsImmediately &&
     !root.attacksOpponentDrainer &&
@@ -100,7 +100,7 @@ type NormalRootSafetySnapshot = {
   readonly worstReplyScore: number;
 };
 
-export function normalRootSafetySnapshot(
+function normalRootSafetySnapshot(
   execution: AutomoveExecutionContext,
   stateAfterMove: MonsGame,
   perspective: Color,
@@ -205,7 +205,7 @@ export function normalRootSafetySnapshot(
   };
 }
 
-export function betterNormalRootSafetyCandidate(
+function betterNormalRootSafetyCandidate(
   candidate: NormalRootSafetySnapshot,
   candidateScore: number,
   incumbent: NormalRootSafetySnapshot,
@@ -234,7 +234,7 @@ export function betterNormalRootSafetyCandidate(
   return candidateScore > incumbentScore;
 }
 
-export function quietNonTacticalReplyRiskRoot(root: EvaluatedRoot): boolean {
+function quietNonTacticalReplyRiskRoot(root: EvaluatedRoot): boolean {
   return (
     !root.winsImmediately &&
     !root.attacksOpponentDrainer &&
@@ -247,7 +247,7 @@ export function quietNonTacticalReplyRiskRoot(root: EvaluatedRoot): boolean {
   );
 }
 
-export function normalRootSafetyDeepFloorScore(
+function normalRootSafetyDeepFloorScore(
   execution: AutomoveExecutionContext,
   stateAfterMove: MonsGame,
   perspective: Color,

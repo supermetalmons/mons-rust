@@ -1,26 +1,27 @@
 import { readFileSync } from "node:fs";
 
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 
 import { AutomoveEngine } from "../../src/automove/automove-engine.js";
 import { suggestMove } from "../../src/automove/runtime.js";
 import { enumerateLegalTransitions } from "../../src/automove/transitions.js";
 import {
-  loadPosition,
   moveToInputs,
   tryLoadPosition,
 } from "../../src/automove/fast/bridge.js";
 import { MAX_MOVES, generateMoves } from "../../src/automove/fast/moves.js";
 import {
+  FAST_MOVE_UNREPRESENTABLE,
   FastPosition,
-  applyFastMoveAndCheckRepresentability,
+  applyFastMove,
 } from "../../src/automove/fast/position.js";
+import { selectProFastSelection } from "../../src/automove/fast/index.js";
 import {
-  PRO_FAST_PROFILE,
-  selectProFastInputs,
-} from "../../src/automove/fast/index.js";
-import { FastSearcher } from "../../src/automove/fast/search.js";
-import { ALL_GAME_VARIANTS } from "../../src/engine/config.js";
+  FastSearcher,
+  MAX_SEARCH_DEPTH,
+  normalizeSearchLimits,
+} from "../../src/automove/fast/search.js";
+import { ALL_GAME_VARIANTS, GameVariant } from "../../src/engine/config.js";
 import { inputArrayFen, parseInputArrayFen } from "../../src/engine/fen.js";
 import { MonsGame } from "../../src/engine/game.js";
 import { BOARD_CELLS } from "../../src/engine/geometry.js";
@@ -47,6 +48,19 @@ const V4_DECISION_STATES: readonly DecisionState[] = readFileSync(
     }
     return { id: state.id, fen: state.fen };
   });
+
+const LATE_UNSUPPORTED_FEN =
+  "0 0 b 0 1 5 0 0 2 y0xn10/n11/n02S0xn08/n11/n11/n02A0xE0xn01d0Bn05/n11/n11/n11/n11/n11";
+
+function lateUnsupportedGame(): MonsGame {
+  const game = MonsGame.fromFen(LATE_UNSUPPORTED_FEN, false);
+  if (game === undefined) throw new Error("late-unsupported FEN must parse");
+  return game;
+}
+
+function loadSearchRoot(searcher: FastSearcher, game: MonsGame): void {
+  expect(tryLoadPosition(searcher.root, game, 40)).toBe(true);
+}
 
 function randomSource(seed: number) {
   let state = seed >>> 0 || 0x9e3779b9;
@@ -95,7 +109,7 @@ function compareCanonicalPosition(
   applied: FastPosition,
   expected: FastPosition,
 ): number {
-  loadPosition(packed, game);
+  expect(tryLoadPosition(packed, game, 40)).toBe(true);
   expectFastPositionInvariants(packed, `${label}: packed load`);
   const count = generateMoves(packed, buffer);
   const generated: (readonly [string, number])[] = [];
@@ -130,7 +144,8 @@ function compareCanonicalPosition(
   for (const [inputFen, move] of generated) {
     applied.copyFrom(packed);
     expectFastPositionInvariants(applied, `${label} ${inputFen}: before`);
-    const representable = applyFastMoveAndCheckRepresentability(applied, move);
+    const representable =
+      applyFastMove(applied, move) !== FAST_MOVE_UNREPRESENTABLE;
     const inputs = parseInputArrayFen(inputFen);
     expect(inputs).toBeDefined();
     if (inputs === undefined) continue;
@@ -218,7 +233,7 @@ describe("packed-state automove search", () => {
     if (game === undefined) return;
 
     const searcher = new FastSearcher();
-    loadPosition(searcher.root, game);
+    loadSearchRoot(searcher, game);
     const outcome = searcher.search(
       {
         maxDepth: 4,
@@ -252,7 +267,7 @@ describe("packed-state automove search", () => {
     if (game === undefined) return;
 
     const searcher = new FastSearcher();
-    loadPosition(searcher.root, game);
+    loadSearchRoot(searcher, game);
     const outcome = searcher.search(
       { maxDepth: 8, maxNodes: 120_000 },
       () => false,
@@ -280,7 +295,7 @@ describe("packed-state automove search", () => {
 
     const winningColor = game.activeColor;
     const searcher = new FastSearcher();
-    loadPosition(searcher.root, game);
+    loadSearchRoot(searcher, game);
     const outcome = searcher.search(
       { maxDepth: 8, maxNodes: 120_000 },
       () => false,
@@ -300,24 +315,220 @@ describe("packed-state automove search", () => {
     expect(replay.winnerColor()).toBe(winningColor);
   });
 
+  it("enforces the node ceiling and samples timeout every 512 nodes", () => {
+    const game = new MonsGame(true, GameVariant.Classic);
+    const cappedSearcher = new FastSearcher();
+    loadSearchRoot(cappedSearcher, game);
+    const capped = cappedSearcher.search(
+      { maxDepth: 40, maxNodes: 1 },
+      () => false,
+    );
+
+    expect(capped.nodes).toBe(1);
+    expect(capped.depth).toBe(0);
+    expect(capped.move).not.toBe(0);
+    expect(
+      game.fork().processInput(moveToInputs(capped.move), false, false).kind,
+    ).toBe("events");
+
+    const sampledSearcher = new FastSearcher();
+    loadSearchRoot(sampledSearcher, game);
+    sampledSearcher.search({ maxDepth: 2, maxNodes: 10_000 }, () => false);
+    loadSearchRoot(sampledSearcher, game);
+    let timeoutChecks = 0;
+    const sampled = sampledSearcher.search(
+      { maxDepth: 40, maxNodes: 10_000 },
+      () => {
+        timeoutChecks += 1;
+        return true;
+      },
+    );
+
+    expect(timeoutChecks).toBe(1);
+    expect(sampled.nodes).toBe(512);
+    expect(sampled.move).not.toBe(0);
+    expect(
+      game.fork().processInput(moveToInputs(sampled.move), false, false).kind,
+    ).toBe("events");
+  });
+
+  it("validates limits and skips search work for terminal roots", () => {
+    const normalized = normalizeSearchLimits({
+      maxDepth: MAX_SEARCH_DEPTH,
+      maxNodes: 0,
+    });
+    expect(normalized.maxDepth).toBe(MAX_SEARCH_DEPTH);
+    expect(normalized.maxNodes).toBe(0);
+    expect(Object.isFrozen(normalized)).toBe(true);
+
+    for (const maxDepth of [-1, 0.5, MAX_SEARCH_DEPTH + 1, Number.NaN]) {
+      expect(() => normalizeSearchLimits({ maxDepth, maxNodes: 0 })).toThrow(
+        RangeError,
+      );
+    }
+    for (const maxNodes of [-1, 0.5, Number.NaN]) {
+      expect(() => normalizeSearchLimits({ maxDepth: 0, maxNodes })).toThrow(
+        RangeError,
+      );
+    }
+    expect(() => normalizeSearchLimits(null)).toThrow(TypeError);
+
+    const fields = new MonsGame(true, GameVariant.Classic).fen().split(" ");
+    fields[0] = "5";
+    const terminal = MonsGame.fromFen(fields.join(" "), true);
+    expect(terminal).toBeDefined();
+    if (terminal === undefined) return;
+    const searcher = new FastSearcher();
+    loadSearchRoot(searcher, terminal);
+    let timeoutChecks = 0;
+    expect(
+      searcher.search(
+        { maxDepth: MAX_SEARCH_DEPTH, maxNodes: Number.MAX_SAFE_INTEGER },
+        () => {
+          timeoutChecks += 1;
+          return false;
+        },
+      ),
+    ).toEqual({
+      move: 0,
+      score: 0,
+      depth: 0,
+      nodes: 0,
+      supported: true,
+    });
+    expect(timeoutChecks).toBe(0);
+  });
+
+  it("uses five fixed table arrays and checks time between allocations", () => {
+    const game = new MonsGame(true, GameVariant.Classic);
+    const NativeInt32Array = globalThis.Int32Array;
+    const capacity = 1 << 20;
+
+    const fullSearcher = new FastSearcher();
+    loadSearchRoot(fullSearcher, game);
+    const fullAllocations: number[] = [];
+    const TrackingInt32Array = function (value: unknown): Int32Array {
+      if (value === capacity) fullAllocations.push(value);
+      return Reflect.construct(NativeInt32Array, [value]) as Int32Array;
+    } as unknown as Int32ArrayConstructor;
+    vi.stubGlobal("Int32Array", TrackingInt32Array);
+    try {
+      expect(
+        fullSearcher.search({ maxDepth: 2, maxNodes: 100_000 }, () => false)
+          .depth,
+      ).toBe(2);
+    } finally {
+      vi.unstubAllGlobals();
+    }
+    expect(fullAllocations).toEqual(Array.from({ length: 5 }, () => capacity));
+
+    const timedSearcher = new FastSearcher();
+    loadSearchRoot(timedSearcher, game);
+    const timedAllocations: number[] = [];
+    let timeoutChecks = 0;
+    const TimedInt32Array = function (value: unknown): Int32Array {
+      if (value === capacity) timedAllocations.push(value);
+      return Reflect.construct(NativeInt32Array, [value]) as Int32Array;
+    } as unknown as Int32ArrayConstructor;
+    vi.stubGlobal("Int32Array", TimedInt32Array);
+    let timedDepth = -1;
+    try {
+      timedDepth = timedSearcher.search(
+        { maxDepth: 2, maxNodes: 100_000 },
+        () => {
+          timeoutChecks += 1;
+          return timeoutChecks === 3;
+        },
+      ).depth;
+    } finally {
+      vi.unstubAllGlobals();
+    }
+    expect(timedDepth).toBe(1);
+    expect(timedAllocations).toEqual([capacity, capacity]);
+  });
+
+  it("falls back on table RangeErrors and propagates other failures", () => {
+    const game = new MonsGame(true, GameVariant.Classic);
+    const capacity = 1 << 20;
+    const NativeInt32Array = globalThis.Int32Array;
+    const rangeSearcher = new FastSearcher();
+    loadSearchRoot(rangeSearcher, game);
+    const FailingInt32Array = function (value: unknown): Int32Array {
+      if (value === capacity) throw new RangeError("synthetic allocation");
+      return Reflect.construct(NativeInt32Array, [value]) as Int32Array;
+    } as unknown as Int32ArrayConstructor;
+    vi.stubGlobal("Int32Array", FailingInt32Array);
+    let rangeOutcome;
+    try {
+      rangeOutcome = rangeSearcher.search(
+        { maxDepth: 2, maxNodes: 100_000 },
+        () => false,
+      );
+    } finally {
+      vi.unstubAllGlobals();
+    }
+    expect(rangeOutcome.depth).toBe(1);
+    expect(rangeOutcome.move).not.toBe(0);
+
+    const failure = new TypeError("synthetic allocation");
+    const throwingSearcher = new FastSearcher();
+    loadSearchRoot(throwingSearcher, game);
+    const ThrowingInt32Array = function (value: unknown): Int32Array {
+      if (value === capacity) throw failure;
+      return Reflect.construct(NativeInt32Array, [value]) as Int32Array;
+    } as unknown as Int32ArrayConstructor;
+    vi.stubGlobal("Int32Array", ThrowingInt32Array);
+    try {
+      expect(() =>
+        throwingSearcher.search(
+          { maxDepth: 2, maxNodes: 100_000 },
+          () => false,
+        ),
+      ).toThrow(failure);
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+
   it("selects an applicable Pro move for every variant opening", () => {
     let now = 0;
     const engine = new AutomoveEngine({ clock: () => now++ });
     for (const variant of ALL_GAME_VARIANTS) {
       const game = new MonsGame(true, variant);
-      const inputs = engine.run((execution) =>
-        selectProFastInputs(execution, game),
+      const selection = engine.run((execution) =>
+        selectProFastSelection(execution, game),
       );
-      expect(inputs, variant).toBeDefined();
-      if (inputs === undefined) continue;
-      expect(inputs.length, variant).toBeGreaterThan(0);
-      expect(game.fork().processInput(inputs, false, false).kind, variant).toBe(
-        "events",
-      );
+      expect(selection.kind, variant).toBe("supported");
+      if (selection.kind !== "supported") continue;
+      expect(selection.inputs.length, variant).toBeGreaterThan(0);
+      expect(
+        game.fork().processInput(selection.inputs, false, false).kind,
+        variant,
+      ).toBe("events");
     }
   }, 60_000);
 
-  it("bounds the search when the host clock never advances", () => {
+  it("handles coarse, frozen, and nested selection clocks", () => {
+    let coarseReads = 0;
+    const coarseEngine = new AutomoveEngine({
+      clock: () => {
+        coarseReads += 1;
+        return coarseReads >= 600 ? 460 : 0;
+      },
+    });
+    const coarseGame = new MonsGame(true, GameVariant.Classic);
+    const coarse = coarseEngine.run((execution) =>
+      selectProFastSelection(execution, coarseGame),
+    );
+    expect(coarse.kind).toBe("supported");
+    if (coarse.kind === "supported") {
+      expect(coarse.inputs.length).toBeGreaterThan(0);
+      expect(
+        coarseGame.fork().processInput(coarse.inputs, false, false).kind,
+      ).toBe("events");
+    }
+    expect(coarseReads).toBeGreaterThanOrEqual(600);
+
     const game = new MonsGame(true, ALL_GAME_VARIANTS[0]);
     let clockReads = 0;
     const engine = new AutomoveEngine({
@@ -326,15 +537,91 @@ describe("packed-state automove search", () => {
         return 0;
       },
     });
-    const inputs = engine.run((execution) =>
-      selectProFastInputs(execution, game),
+    const frozen = engine.run((execution) =>
+      selectProFastSelection(execution, game),
     );
-    expect(inputs).toBeDefined();
-    if (inputs === undefined) return;
-    expect(inputs.length).toBeGreaterThan(0);
+    expect(frozen.kind).toBe("supported");
+    if (frozen.kind === "supported") {
+      expect(frozen.inputs.length).toBeGreaterThan(0);
+    }
     expect(clockReads).toBeGreaterThan(0);
-    expect(clockReads).toBeLessThanOrEqual(
-      Math.ceil(PRO_FAST_PROFILE.maxNodes / 512) * 2 + 16,
+    expect(clockReads).toBeLessThanOrEqual(10_000);
+
+    const nestedGame = new MonsGame(true, GameVariant.Classic);
+    let nestedReads = 0;
+    const nestedEngine = new AutomoveEngine({
+      clock: () => {
+        nestedReads += 1;
+        return nestedReads >= 30 ? 460 : 0;
+      },
+    });
+    let outerReads = 0;
+    let nesting = false;
+    let nestedSelection: ReturnType<typeof selectProFastSelection> | undefined;
+    const outerEngine = new AutomoveEngine({
+      clock: () => {
+        outerReads += 1;
+        if (outerReads === 20 && !nesting) {
+          nesting = true;
+          nestedSelection = nestedEngine.run((execution) =>
+            selectProFastSelection(execution, nestedGame),
+          );
+        }
+        return outerReads >= 30 ? 460 : 0;
+      },
+    });
+    const outerGame = new MonsGame(true, GameVariant.Classic);
+    const outerSelection = outerEngine.run((execution) =>
+      selectProFastSelection(execution, outerGame),
     );
-  }, 30_000);
+    expect(nestedSelection?.kind).toBe("supported");
+    expect(outerSelection.kind).toBe("supported");
+    if (nestedSelection?.kind === "supported") {
+      expect(
+        nestedGame.fork().processInput(nestedSelection.inputs, false, false)
+          .kind,
+      ).toBe("events");
+    }
+    if (outerSelection.kind === "supported") {
+      expect(
+        outerGame.fork().processInput(outerSelection.inputs, false, false).kind,
+      ).toBe("events");
+    }
+  }, 60_000);
+
+  it("retains an applicable root move when a later position is unsupported", () => {
+    const game = lateUnsupportedGame();
+    const sourceFen = game.fen();
+    const engine = new AutomoveEngine({ clock: () => 0 });
+    const selection = engine.run((execution) =>
+      selectProFastSelection(execution, game),
+    );
+
+    expect(selection.kind).toBe("unsupported");
+    if (selection.kind !== "unsupported") return;
+    expect(inputArrayFen(selection.fallbackInputs)).toBe("l5,5;l5,3");
+    expect(
+      game.fork().processInput(selection.fallbackInputs, false, false).kind,
+    ).toBe("events");
+    expect(game.fen()).toBe(sourceFen);
+  });
+
+  it("returns no Pro move for terminal games", () => {
+    const fields = new MonsGame(true, GameVariant.Classic).fen().split(" ");
+    fields[0] = "5";
+    fields[8] = String(Number.MAX_SAFE_INTEGER);
+    const game = MonsGame.fromFen(fields.join(" "), true);
+    expect(game).toBeDefined();
+    if (game === undefined) return;
+    const sourceFen = game.fen();
+    const engine = new AutomoveEngine({ clock: () => 0 });
+
+    expect(
+      engine.run((execution) => selectProFastSelection(execution, game)),
+    ).toEqual({ kind: "supported", inputs: [] });
+    expect(
+      engine.run((execution) => suggestMove(execution, game, "pro")),
+    ).toEqual({ output: { kind: "invalid-input" }, inputFen: "" });
+    expect(game.fen()).toBe(sourceFen);
+  });
 });

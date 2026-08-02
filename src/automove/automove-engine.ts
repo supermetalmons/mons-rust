@@ -6,7 +6,7 @@ import {
   type AutomoveRandomSource,
 } from "./execution-context.js";
 
-export type AutomoveEngineOptions = {
+type AutomoveEngineOptions = {
   readonly clock?: MonotonicClock;
   readonly randomSource?: AutomoveRandomSource;
 };

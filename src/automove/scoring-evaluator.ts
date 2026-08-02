@@ -100,7 +100,7 @@ type DrainerSafetySnapshot = {
   readonly walkThreat: boolean;
 };
 
-export type ScoringEvalOptions = {
+type ScoringEvalOptions = {
   readonly allowExactStrategic: boolean;
   readonly useAttackReachSummary?: boolean;
   readonly narrowAttackReachTargets?: boolean;
@@ -1344,7 +1344,7 @@ function requireExactSummary(
   return summary;
 }
 
-export function scaleByBp(value: number, basisPoints: number): number {
+function scaleByBp(value: number, basisPoints: number): number {
   return Math.trunc((Math.trunc(value) * Math.trunc(basisPoints)) / 10_000);
 }
 
@@ -1831,10 +1831,7 @@ type Destination =
   | { readonly kind: "any-closest-pool" }
   | { readonly kind: "closest-pool"; readonly color: Color };
 
-export function distanceToLocation(
-  location: Location,
-  destination: Location,
-): number {
+function distanceToLocation(location: Location, destination: Location): number {
   return locationDistance(location, destination) + 1;
 }
 

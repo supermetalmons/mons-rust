@@ -35,6 +35,7 @@ import {
   compareRootRankThenRanked,
   exactContextIsQuiet,
   isTurnPlanFamilyOneOf,
+  memoizedByIndex,
   rootUtility,
   sameFirstInput,
   utilityCompetes,
@@ -85,10 +86,19 @@ function whiteManaCompetitionOverride(
     config,
     TurnPlanFamily.ManaTempo,
   );
-  const utilities = new Map<
-    number,
-    ReturnType<typeof turnEngineRootPlanUtility>
-  >();
+  const utility = memoizedByIndex((index) => {
+    const root = roots[index];
+    return root === undefined
+      ? undefined
+      : turnEngineRootPlanUtility(
+          execution,
+          game,
+          root,
+          perspective,
+          config,
+          TurnPlanFamily.ManaTempo,
+        );
+  });
   let bestIndex: number | undefined;
   let bestUtility = approvedUtility;
   let bestIsDominance = false;
@@ -121,18 +131,8 @@ function whiteManaCompetitionOverride(
     ) {
       continue;
     }
-    let challengerUtility = utilities.get(index);
-    if (challengerUtility === undefined) {
-      challengerUtility = turnEngineRootPlanUtility(
-        execution,
-        game,
-        challenger,
-        perspective,
-        config,
-        TurnPlanFamily.ManaTempo,
-      );
-      utilities.set(index, challengerUtility);
-    }
+    const challengerUtility = utility(index);
+    if (challengerUtility === undefined) continue;
     const utilityOrder = compareUtilityPrimaryAxes(
       challengerUtility,
       approvedUtility,
@@ -327,37 +327,30 @@ function whiteWindowProgressCompetitionOverride(
     perspective,
     config,
   );
-  const snapshots = new Map([[approvedIndex, approvedSnapshot]]);
-  const followups = new Map([[approvedIndex, approvedFollowup]]);
-  const snapshot = (index: number) => {
-    let value = snapshots.get(index);
-    const root = roots[index];
-    if (value === undefined && root !== undefined) {
-      value = rootReplyRiskSnapshot(
-        execution,
-        root.game,
-        perspective,
-        config,
-        replyLimit,
-      );
-      snapshots.set(index, value);
-    }
-    return value;
-  };
-  const followup = (index: number) => {
-    let value = followups.get(index);
-    const root = roots[index];
-    if (value === undefined && root !== undefined) {
-      value = spiritFollowupFloorScore(
-        execution,
-        root.game,
-        perspective,
-        config,
-      );
-      followups.set(index, value);
-    }
-    return value;
-  };
+  const snapshot = memoizedByIndex(
+    (index) => {
+      const root = roots[index];
+      return root === undefined
+        ? undefined
+        : rootReplyRiskSnapshot(
+            execution,
+            root.game,
+            perspective,
+            config,
+            replyLimit,
+          );
+    },
+    new Map([[approvedIndex, approvedSnapshot]]),
+  );
+  const followup = memoizedByIndex(
+    (index) => {
+      const root = roots[index];
+      return root === undefined
+        ? undefined
+        : spiritFollowupFloorScore(execution, root.game, perspective, config);
+    },
+    new Map([[approvedIndex, approvedFollowup]]),
+  );
   let bestIndex: number | undefined;
   for (const index of selectionIndices) {
     if (index === approvedIndex) continue;

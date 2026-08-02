@@ -21,7 +21,10 @@ import {
 import { compareRankedEvaluatedRootIndices } from "../root-selector.js";
 import type { EvaluatedRoot } from "../search.js";
 import { patchAutomoveConfig } from "../selector-config.js";
-import { rootIsUnsafe as advisorRootIsUnsafe } from "../selector-types.js";
+import {
+  isPlainSpiritDevelopmentRoot,
+  rootIsUnsafe as advisorRootIsUnsafe,
+} from "../selector-types.js";
 import type { AutomoveConfig } from "../selector-types.js";
 import { compareInputChains } from "../transitions.js";
 import {
@@ -29,10 +32,53 @@ import {
   compareUtilityPrimaryAxes,
   utilitySupportsFamilyFallback,
 } from "../turn-engine.js";
-import type {
-  ProductionRootAdvisorEntry,
+import { ProductionRootAdvisorReasonCode } from "./types.js";
+import type { ProductionRootAdvisorEntry } from "./types.js";
+
+const productionRepresentativeSpecs: readonly (readonly [
   ProductionRootAdvisorReasonCode,
-} from "./types.js";
+  (root: RootCandidate) => boolean,
+])[] = [
+  [
+    ProductionRootAdvisorReasonCode.PreserveSpiritRepresentative,
+    (root) => root.spiritSameTurnScoreSetupNow || root.spiritOwnManaSetupNow,
+  ],
+  [
+    ProductionRootAdvisorReasonCode.PreserveSpiritRepresentative,
+    isPlainSpiritDevelopmentRoot,
+  ],
+  [
+    ProductionRootAdvisorReasonCode.PreserveSafeProgressRepresentative,
+    (root) => advisorRootFamily(root) === TurnPlanFamily.SafeSupermanaProgress,
+  ],
+  [
+    ProductionRootAdvisorReasonCode.PreserveSafeProgressRepresentative,
+    (root) =>
+      advisorRootFamily(root) === TurnPlanFamily.SafeOpponentManaProgress,
+  ],
+  [
+    ProductionRootAdvisorReasonCode.PreserveManaTempoRepresentative,
+    (root) => advisorRootFamily(root) === TurnPlanFamily.ManaTempo,
+  ],
+];
+
+function memoizedByIndex<Value>(
+  resolve: (index: number) => Value,
+  values: Map<number, Exclude<Value, undefined>> = new Map<
+    number,
+    Exclude<Value, undefined>
+  >(),
+): (index: number) => Value {
+  return (index) => {
+    const cached = values.get(index);
+    if (cached !== undefined) return cached;
+    const value = resolve(index);
+    if (value !== undefined) {
+      values.set(index, value as Exclude<Value, undefined>);
+    }
+    return value;
+  };
+}
 
 function isTurnPlanFamilyOneOf(
   family: TurnPlanFamily,
@@ -245,6 +291,8 @@ export {
   entry,
   exactContextIsQuiet,
   isTurnPlanFamilyOneOf,
+  memoizedByIndex,
+  productionRepresentativeSpecs,
   pushUnique,
   rootMoveUtility,
   rootUtility,

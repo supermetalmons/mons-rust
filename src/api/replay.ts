@@ -2,12 +2,12 @@ import { Color, type Input } from "../engine/domain.js";
 import { parseInputArrayFen } from "../engine/fen.js";
 import type { MonsGame } from "../engine/game.js";
 
-export type ReplayProgress = {
+type ReplayProgress = {
   readonly whiteMovesProcessed: number;
   readonly blackMovesProcessed: number;
 };
 
-export type InterleavedReplayResult = ReplayProgress & {
+type InterleavedReplayResult = ReplayProgress & {
   readonly status: "complete" | "invalid-move" | "missing-move" | "stopped";
 };
 

@@ -13,8 +13,6 @@ import {
   cellOccupancy,
   monId,
 } from "../../src/automove/fast/board.js";
-import { DEFAULT_WEIGHTS } from "../../src/automove/fast/evaluate.js";
-import type { FastProfile } from "../../src/automove/fast/index.js";
 import type {
   FastPosition,
   FastPositionSnapshot,
@@ -29,13 +27,6 @@ import {
   locationIndex,
   type Location,
 } from "../../src/engine/geometry.js";
-
-export const TINY_PROFILE: FastProfile = Object.freeze({
-  budgetMs: 10,
-  maxDepth: 1,
-  maxNodes: 1,
-  weights: DEFAULT_WEIGHTS,
-});
 
 export function locationInput(at: Location): Input {
   return { kind: "location", location: at };

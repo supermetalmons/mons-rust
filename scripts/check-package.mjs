@@ -151,7 +151,6 @@ for (const [label, pattern] of [
 
 const expectedFiles = [
   "LICENSE",
-  "MIGRATION.md",
   "README.md",
   "package.json",
   ...publishedDistFiles.map((filePath) => `dist/${filePath}`),

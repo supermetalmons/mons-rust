@@ -23,6 +23,7 @@ import {
   nearbyLocations,
   spiritReachableLocations,
 } from "../engine/geometry.js";
+import { spiritDestinationItemAllowed } from "../engine/legality.js";
 import {
   colorKey,
   EXACT_SPIRIT_SUMMARY_CACHE_MAX_ENTRIES,
@@ -123,42 +124,7 @@ function spiritDestinationAllowed(
   const destinationItem = board.get(destination);
   const targetMon = itemMon(targetItem);
   const targetMana = itemMana(targetItem);
-  let validDestination: boolean;
-  if (destinationItem === undefined) {
-    validDestination = true;
-  } else {
-    switch (destinationItem.kind) {
-      case "mon":
-        if (targetItem.kind === "mana") {
-          validDestination =
-            destinationItem.mon.kind === MonKind.Drainer &&
-            !isMonFainted(destinationItem.mon);
-        } else if (targetItem.kind === "consumable") {
-          validDestination = targetItem.consumable === Consumable.BombOrPotion;
-        } else {
-          validDestination = false;
-        }
-        break;
-      case "mana":
-        validDestination =
-          targetMon?.kind === MonKind.Drainer && !isMonFainted(targetMon);
-        break;
-      case "mon-with-mana":
-      case "mon-with-consumable":
-        validDestination =
-          targetItem.kind === "consumable" &&
-          targetItem.consumable === Consumable.BombOrPotion;
-        break;
-      case "consumable":
-        validDestination =
-          destinationItem.consumable === Consumable.BombOrPotion &&
-          (targetItem.kind === "mon" ||
-            targetItem.kind === "mon-with-mana" ||
-            targetItem.kind === "mon-with-consumable");
-        break;
-    }
-  }
-  if (!validDestination) return false;
+  if (!spiritDestinationItemAllowed(targetItem, destinationItem)) return false;
   const square = board.squareAt(destination);
   switch (square.kind) {
     case "regular":

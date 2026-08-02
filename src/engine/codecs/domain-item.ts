@@ -95,7 +95,7 @@ export function manaFen(mana: Mana): string {
   return mana.color === Color.White ? "M" : "m";
 }
 
-export function parseManaFen(fen: string): Mana | undefined {
+function parseManaFen(fen: string): Mana | undefined {
   switch (fen) {
     case "M":
       return regularMana(Color.White);
@@ -108,7 +108,7 @@ export function parseManaFen(fen: string): Mana | undefined {
   }
 }
 
-export function consumableFen(consumable: Consumable): string {
+function consumableFen(consumable: Consumable): string {
   switch (consumable) {
     case Consumable.Potion:
       return "P";
@@ -119,7 +119,7 @@ export function consumableFen(consumable: Consumable): string {
   }
 }
 
-export function parseConsumableFen(fen: string): Consumable | undefined {
+function parseConsumableFen(fen: string): Consumable | undefined {
   switch (fen) {
     case "P":
       return Consumable.Potion;

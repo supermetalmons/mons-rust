@@ -63,16 +63,15 @@ import {
   currentPlayerPotions,
   isFirstTurnState,
   shouldSuggestRegularManaStarts,
+  spiritDestinationItemAllowed,
   winnerForState,
 } from "./legality.js";
-
-export type { VerboseTrackingEntity } from "./history.js";
 
 export type SuggestedStartInputOptions = {
   readonly includeManaStartsWithPotionAction: boolean;
 };
 
-export const DEFAULT_SUGGESTED_START_INPUT_OPTIONS: SuggestedStartInputOptions =
+const DEFAULT_SUGGESTED_START_INPUT_OPTIONS: SuggestedStartInputOptions =
   Object.freeze({
     includeManaStartsWithPotionAction: false,
   });
@@ -1277,49 +1276,7 @@ export class MonsGame {
             (at) => {
               const destinationItem = this.board.get(at);
               const destinationSquare = this.board.squareAt(at);
-              let validDestination: boolean;
-              switch (destinationItem?.kind) {
-                case "mon":
-                  switch (targetItem.kind) {
-                    case "mon":
-                    case "mon-with-mana":
-                    case "mon-with-consumable":
-                      validDestination = false;
-                      break;
-                    case "mana":
-                      validDestination =
-                        destinationItem.mon.kind === MonKind.Drainer &&
-                        !isMonFainted(destinationItem.mon);
-                      break;
-                    case "consumable":
-                      validDestination =
-                        targetItem.consumable === Consumable.BombOrPotion;
-                      break;
-                  }
-                  break;
-                case "mana":
-                  validDestination =
-                    targetMon?.kind === MonKind.Drainer &&
-                    !isMonFainted(targetMon);
-                  break;
-                case "mon-with-mana":
-                case "mon-with-consumable":
-                  validDestination =
-                    targetItem.kind === "consumable" &&
-                    targetItem.consumable === Consumable.BombOrPotion;
-                  break;
-                case "consumable":
-                  validDestination =
-                    destinationItem.consumable === Consumable.BombOrPotion &&
-                    (targetItem.kind === "mon" ||
-                      targetItem.kind === "mon-with-mana" ||
-                      targetItem.kind === "mon-with-consumable");
-                  break;
-                case undefined:
-                  validDestination = true;
-                  break;
-              }
-              if (!validDestination) {
+              if (!spiritDestinationItemAllowed(targetItem, destinationItem)) {
                 return false;
               }
               switch (destinationSquare.kind) {

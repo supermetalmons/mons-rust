@@ -18,8 +18,7 @@
     "dist/api/types.d.ts",
     "dist/api/winner.d.ts",
     "LICENSE",
-    "README.md",
-    "MIGRATION.md"
+    "README.md"
   ],
   "main": "./dist/mons-rules.js",
   "types": "./dist/entrypoints/mons-rules.d.ts",

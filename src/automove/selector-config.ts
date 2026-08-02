@@ -61,7 +61,7 @@ const SOFT_OPPONENT_MANA_SCORE_BONUS = 360;
 const SOFT_MANA_HANDOFF_PENALTY = 220;
 const SOFT_ROUNDTRIP_PENALTY = 140;
 
-export const AUTOMOVE_SEARCH_CONSTANTS = Object.freeze({
+const AUTOMOVE_SEARCH_CONSTANTS = Object.freeze({
   maxExtensionsPerPath: 1,
   extensionNodeShareBp: 1_500,
   quiescenceNodes: 120,
@@ -71,7 +71,7 @@ export const AUTOMOVE_SEARCH_CONSTANTS = Object.freeze({
   evaluationCacheCapacity: 32_768,
 });
 
-export const AUTOMOVE_SEARCH_BUDGETS = Object.freeze({
+const AUTOMOVE_SEARCH_BUDGETS = Object.freeze({
   fast: Object.freeze({
     depth: FAST_DEPTH,
     maxVisitedNodes: FAST_MAX_VISITED_NODES,
@@ -384,7 +384,7 @@ const ATTACKER_PROFILES = Object.freeze({
   }),
 });
 
-export function runtimePhaseAdaptiveWalkThreatMediumScoringProfile(
+function runtimePhaseAdaptiveWalkThreatMediumScoringProfile(
   game: MonsGame,
   depth: number,
 ): ScoringProfile {
@@ -403,7 +403,7 @@ export function runtimePhaseAdaptiveWalkThreatMediumScoringProfile(
   );
 }
 
-export function runtimePhaseAdaptiveAttackerProximityScoringProfile(
+function runtimePhaseAdaptiveAttackerProximityScoringProfile(
   game: MonsGame,
   depth: number,
 ): ScoringProfile {
@@ -438,7 +438,7 @@ function scaleFloor(
   return Math.trunc((value * numerator) / denominator);
 }
 
-export type AutomoveConfigDefinition = AutomoveConfig;
+type AutomoveConfigDefinition = AutomoveConfig;
 
 type SectionPatch<Section> = {
   readonly [Key in keyof Section]?: Section[Key];
@@ -787,7 +787,7 @@ export function validateAutomoveConfig(
   }
 }
 
-export function defineAutomoveConfig(
+function defineAutomoveConfig(
   definition: AutomoveConfigDefinition,
 ): AutomoveConfig {
   const weights = normalizeScoringProfile(definition.evaluation.weights);
@@ -848,7 +848,7 @@ export function patchAutomoveConfig(
   return next;
 }
 
-export function automoveConfigFromBudget(
+function automoveConfigFromBudget(
   preference: SmartAutomovePreference,
   requestedDepth: number,
   requestedMaxVisitedNodes: number,
@@ -958,7 +958,7 @@ export function automoveConfigFromBudget(
   });
 }
 
-export function withRuntimeSearchShape(config: AutomoveConfig): AutomoveConfig {
+function withRuntimeSearchShape(config: AutomoveConfig): AutomoveConfig {
   if (config.budget.depth >= 3) {
     const rootBranchLimit = clamp(config.search.rootBranchLimit + 10, 6, 36);
     const nodeBranchLimit = clamp(
@@ -981,7 +981,7 @@ export function withRuntimeSearchShape(config: AutomoveConfig): AutomoveConfig {
   });
 }
 
-export function withFastWideRootShape(config: AutomoveConfig): AutomoveConfig {
+function withFastWideRootShape(config: AutomoveConfig): AutomoveConfig {
   const rootBranchLimit = clamp(config.search.rootBranchLimit + 8, 8, 40);
   const nodeBranchLimit = clamp(
     subtractSaturating(config.search.nodeBranchLimit, 2),
@@ -998,7 +998,7 @@ export function withFastWideRootShape(config: AutomoveConfig): AutomoveConfig {
   });
 }
 
-export function withNormalDeeperShape(config: AutomoveConfig): AutomoveConfig {
+function withNormalDeeperShape(config: AutomoveConfig): AutomoveConfig {
   const rootBranchLimit = clamp(config.search.rootBranchLimit, 8, 36);
   const nodeBranchLimit = clamp(config.search.nodeBranchLimit + 3, 9, 18);
   return patchAutomoveConfig(config, {
@@ -1011,7 +1011,7 @@ export function withNormalDeeperShape(config: AutomoveConfig): AutomoveConfig {
   });
 }
 
-export function automoveConfigFromPreference(
+function automoveConfigFromPreference(
   preference: SmartAutomovePreference,
 ): AutomoveConfig {
   const budget = AUTOMOVE_SEARCH_BUDGETS[preference];
@@ -1185,7 +1185,7 @@ export function automoveConfigFromPreference(
   });
 }
 
-export function withRuntimeScoringWeights(
+function withRuntimeScoringWeights(
   game: MonsGame,
   config: AutomoveConfig,
 ): AutomoveConfig {
@@ -1207,7 +1207,7 @@ export function withRuntimeScoringWeights(
   });
 }
 
-export function applyRuntimeNormalFastPolicyBlock(
+function applyRuntimeNormalFastPolicyBlock(
   config: AutomoveConfig,
 ): AutomoveConfig {
   const rootBranchLimit = clamp(config.search.rootBranchLimit + 5, 12, 40);
@@ -1260,7 +1260,7 @@ export function applyRuntimeNormalFastPolicyBlock(
   });
 }
 
-export function applyRuntimeNormalFastCoreBudgetSpendProfile(
+function applyRuntimeNormalFastCoreBudgetSpendProfile(
   config: AutomoveConfig,
 ): AutomoveConfig {
   const policy = applyRuntimeNormalFastPolicyBlock(config);
@@ -1284,7 +1284,7 @@ export function applyRuntimeNormalFastCoreBudgetSpendProfile(
   });
 }
 
-export function applyProPrimaryProfile(
+function applyProPrimaryProfile(
   game: MonsGame,
   config: AutomoveConfig,
 ): AutomoveConfig {
@@ -1347,9 +1347,7 @@ export function applyProPrimaryProfile(
   });
 }
 
-export function withPreExactRuntimePolicy(
-  config: AutomoveConfig,
-): AutomoveConfig {
+function withPreExactRuntimePolicy(config: AutomoveConfig): AutomoveConfig {
   return patchAutomoveConfig(config, {
     budget: { exactLiteRootCalls: 0, exactLiteStaticCalls: 0 },
     search: { exactLiteChecks: false },

@@ -4,7 +4,7 @@ const MAX_ABSOLUTE_WEIGHT = 10_000;
 const MAX_NEXT_TURN_WINDOW_SCALE_BP = 20_000;
 const PROFILE_ID_PATTERN = /^[a-z0-9]+(?:[.-][a-z0-9]+)*$/;
 
-export type EvaluationFormulaWeights = {
+type EvaluationFormulaWeights = {
   readonly useHeuristicFormula: boolean;
   readonly includeRegularManaMoveWindows: boolean;
   readonly includeMatchPointWindow: boolean;
@@ -12,7 +12,7 @@ export type EvaluationFormulaWeights = {
   readonly doubleConfirmedScore: boolean;
 };
 
-export type MaterialWeights = {
+type MaterialWeights = {
   readonly confirmedScore: number;
   readonly faintedMon: number;
   readonly faintedDrainer: number;
@@ -21,7 +21,7 @@ export type MaterialWeights = {
   readonly activeMon: number;
 };
 
-export type PositionWeights = {
+type PositionWeights = {
   readonly drainerAtRisk: number;
   readonly manaCloseToSamePool: number;
   readonly monWithManaCloseToAnyPool: number;
@@ -38,7 +38,7 @@ export type PositionWeights = {
   readonly angelCloseToFriendlyDrainer: number;
 };
 
-export type ManaWeights = {
+type ManaWeights = {
   readonly regularManaToOwnerPool: number;
   readonly regularManaDrainerControl: number;
   readonly supermanaDrainerControl: number;
@@ -51,7 +51,7 @@ export type ManaWeights = {
   readonly immediateWinningCarrier: number;
 };
 
-export type RaceWeights = {
+type RaceWeights = {
   readonly scoreRacePathProgress: number;
   readonly opponentScoreRacePathProgress: number;
   readonly scoreRaceMultiPath: number;
@@ -62,7 +62,7 @@ export type RaceWeights = {
   readonly opponentImmediateScoreMultiWindow: number;
 };
 
-export type ThreatWeights = {
+type ThreatWeights = {
   readonly drainerBestManaPath: number;
   readonly drainerPickupScoreThisTurn: number;
   readonly manaCarrierScoreThisTurn: number;
@@ -87,7 +87,7 @@ export type ScoringWeights = {
   readonly threat: ThreatWeights;
 };
 
-export type ScoringProfileDefinition = {
+type ScoringProfileDefinition = {
   readonly id: string;
   readonly base?: ScoringWeights;
   readonly formula?: Partial<EvaluationFormulaWeights>;
@@ -455,7 +455,7 @@ export const BALANCED_DISTANCE_SCORING_WEIGHTS = defineScoringProfile({
   },
 });
 
-export const MANA_RACE_LITE_SCORING_WEIGHTS = defineScoringProfile({
+const MANA_RACE_LITE_SCORING_WEIGHTS = defineScoringProfile({
   id: "mana-race-lite",
   base: BALANCED_DISTANCE_SCORING_WEIGHTS,
   material: { faintedCooldownStep: -70 },
@@ -549,41 +549,40 @@ export const TACTICAL_BALANCED_AGGRESSIVE_SCORING_WEIGHTS =
     },
   });
 
-export const RUNTIME_FAST_DRAINER_CONTEXT_SCORING_WEIGHTS =
-  defineScoringProfile({
-    id: "runtime-fast-context",
-    base: MANA_RACE_LITE_D2_TUNED_SCORING_WEIGHTS,
-    formula: { useHeuristicFormula: false },
-    material: { confirmedScore: 920 },
-    position: {
-      drainerCloseToMana: 360,
-      drainerHoldingMana: 430,
-    },
-    mana: {
-      manaCarrierAtRisk: -285,
-      manaCarrierGuarded: 145,
-      manaCarrierOneStepFromPool: 320,
-      supermanaCarrierOneStepFromPoolExtra: 210,
-      immediateWinningCarrier: 520,
-    },
-    race: {
-      scoreRacePathProgress: 165,
-      opponentScoreRacePathProgress: 150,
-      scoreRaceMultiPath: 60,
-      opponentScoreRaceMultiPath: 90,
-      immediateScoreWindow: 240,
-      opponentImmediateScoreWindow: 220,
-      immediateScoreMultiWindow: 80,
-      opponentImmediateScoreMultiWindow: 120,
-    },
-    threat: {
-      drainerBestManaPath: 250,
-      drainerPickupScoreThisTurn: 210,
-      manaCarrierScoreThisTurn: 290,
-      drainerImmediateThreat: -220,
-      spiritActionUtility: 56,
-    },
-  });
+const RUNTIME_FAST_DRAINER_CONTEXT_SCORING_WEIGHTS = defineScoringProfile({
+  id: "runtime-fast-context",
+  base: MANA_RACE_LITE_D2_TUNED_SCORING_WEIGHTS,
+  formula: { useHeuristicFormula: false },
+  material: { confirmedScore: 920 },
+  position: {
+    drainerCloseToMana: 360,
+    drainerHoldingMana: 430,
+  },
+  mana: {
+    manaCarrierAtRisk: -285,
+    manaCarrierGuarded: 145,
+    manaCarrierOneStepFromPool: 320,
+    supermanaCarrierOneStepFromPoolExtra: 210,
+    immediateWinningCarrier: 520,
+  },
+  race: {
+    scoreRacePathProgress: 165,
+    opponentScoreRacePathProgress: 150,
+    scoreRaceMultiPath: 60,
+    opponentScoreRaceMultiPath: 90,
+    immediateScoreWindow: 240,
+    opponentImmediateScoreWindow: 220,
+    immediateScoreMultiWindow: 80,
+    opponentImmediateScoreMultiWindow: 120,
+  },
+  threat: {
+    drainerBestManaPath: 250,
+    drainerPickupScoreThisTurn: 210,
+    manaCarrierScoreThisTurn: 290,
+    drainerImmediateThreat: -220,
+    spiritActionUtility: 56,
+  },
+});
 
 export const RUNTIME_FAST_DRAINER_CONTEXT_SCORING_WEIGHTS_POTION_PREF =
   defineScoringProfile({

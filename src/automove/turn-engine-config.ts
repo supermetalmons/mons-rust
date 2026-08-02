@@ -75,7 +75,7 @@ export function applyEarlyWhiteTurnEngineLimits(
   };
 }
 
-export function applyTurnEngineRerankLimits(
+function applyTurnEngineRerankLimits(
   config: TurnEngineConfig,
 ): TurnEngineConfig {
   const production = config.mode === TurnEngineMode.Production;

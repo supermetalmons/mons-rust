@@ -76,7 +76,7 @@ function isInformativeReplyRiskProjectionFamily(
   );
 }
 
-export function shouldUseReplyRiskProjectionForRoot(
+function shouldUseReplyRiskProjectionForRoot(
   root: EvaluatedRoot,
   projection: TurnEngineRootProjection,
   perspective: Color,

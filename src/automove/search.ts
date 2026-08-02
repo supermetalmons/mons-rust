@@ -78,7 +78,6 @@ type SearchContext = {
   readonly stats: SearchNodeAccounting;
 };
 
-/** A root candidate with its completed bounded-search result. */
 export type EvaluatedRoot = RootCandidate & {
   readonly score: number;
   readonly nodesAfter: number;
@@ -105,7 +104,7 @@ export type SearchResult = {
   readonly timedOut: boolean;
 };
 
-export type FocusedSearchRoots = {
+type FocusedSearchRoots = {
   readonly candidates: readonly RootCandidate[];
   readonly scoutVisitedNodes: number;
 };
@@ -492,7 +491,6 @@ function boundedSearch(
   extensionsRemaining: number,
   context: SearchContext,
 ): number {
-  // Terminal, cancellation, and node-budget gates.
   const terminal = terminalSearchScore(
     game,
     context.perspective,
@@ -519,7 +517,6 @@ function boundedSearch(
   const alphaBefore = alpha;
   const betaBefore = beta;
 
-  // Reuse a sufficiently deep transposition entry to narrow this node.
   let preferredChildHash: Hash64 | undefined;
   const entry = context.config.search.transpositionTable
     ? context.transposition.get(stateHash)
@@ -537,7 +534,6 @@ function boundedSearch(
     }
   }
 
-  // Apply the optional shallow static cutoff before child expansion.
   const maximizing = game.activeColor === context.perspective;
   if (
     context.config.search.futilityPruning &&
@@ -559,7 +555,6 @@ function boundedSearch(
     }
   }
 
-  // Expand children in deterministic ranked order.
   const children = rankedChildren(game, context, stateHash, preferredChildHash);
   if (children.length === 0) return staticScore(game, stateHash, context);
   let value = maximizing ? -0x8000_0000 : 0x7fff_ffff;
@@ -617,7 +612,6 @@ function boundedSearch(
     value = staticScore(game, stateHash, context);
   }
 
-  // Store only a complete, non-cancelled node result.
   if (
     context.config.search.transpositionTable &&
     !stoppedByBudget &&

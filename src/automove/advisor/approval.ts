@@ -9,7 +9,11 @@ import {
   isPlainSpiritDevelopmentRoot,
 } from "../selector-types.js";
 import type { AutomoveConfig } from "../selector-types.js";
-import { advisorRootIsSafe, sameFirstInput } from "./support.js";
+import {
+  advisorRootIsSafe,
+  memoizedByIndex,
+  sameFirstInput,
+} from "./support.js";
 import { ProductionRootAdvisorReasonCode } from "./types.js";
 
 function blackPlainSpiritRepresentativeCompetes(
@@ -24,17 +28,12 @@ function blackPlainSpiritRepresentativeCompetes(
 ): boolean {
   const plain = roots[plainIndex];
   if (plain === undefined || !isPlainSpiritDevelopmentRoot(plain)) return false;
-  const followup = (index: number): number => {
-    const cached = followupScores.get(index);
-    if (cached !== undefined) return cached;
+  const followup = memoizedByIndex((index): number => {
     const root = roots[index];
-    const value =
-      root === undefined
-        ? MIN_SCORE
-        : spiritFollowupFloorScore(execution, root.game, perspective, config);
-    followupScores.set(index, value);
-    return value;
-  };
+    return root === undefined
+      ? MIN_SCORE
+      : spiritFollowupFloorScore(execution, root.game, perspective, config);
+  }, followupScores);
   let competes = false;
   for (const index of shortlist) {
     const setup = roots[index];

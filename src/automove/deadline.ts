@@ -14,7 +14,7 @@ export type SearchControl = {
   checkpointWithReserve(reserveMs: number): boolean;
 };
 
-export type SearchSessionOptions = {
+type SearchSessionOptions = {
   readonly clock?: MonotonicClock;
 };
 

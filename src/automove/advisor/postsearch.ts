@@ -6,7 +6,6 @@ import {
   replyRiskGuardShortlistIndices,
   rootReplyRiskSnapshot,
 } from "../reply-risk.js";
-import { rootFamily as advisorRootFamily } from "../root-family.js";
 import {
   compareRankedEvaluatedRootIndices,
   filteredRootCandidateIndices,
@@ -15,11 +14,9 @@ import {
 import type { EvaluatedRoot } from "../search.js";
 import {
   AUTOMOVE_TURN_ENGINE_MODE,
-  isPlainSpiritDevelopmentRoot,
   productionEnabled,
 } from "../selector-types.js";
 import type { AutomoveConfig } from "../selector-types.js";
-import { TurnPlanFamily } from "../turn-engine.js";
 import { representativeCompetesInApproval } from "./approval.js";
 import {
   collectAdvisorReentries,
@@ -28,7 +25,12 @@ import {
 } from "./reentries.js";
 import { buildRootPolicy } from "./root-policy-core.js";
 import { applyAdvisorSelectionRules } from "./selection-rules.js";
-import { entry, pushUnique, withoutReplyRiskGuard } from "./support.js";
+import {
+  entry,
+  productionRepresentativeSpecs,
+  pushUnique,
+  withoutReplyRiskGuard,
+} from "./support.js";
 import { ProductionRootAdvisorReasonCode } from "./types.js";
 import type {
   ProductionRootAdvisorEntry,
@@ -116,34 +118,7 @@ export function productionRootAdvisorPostsearch(
     }
   }
   const followupScores = new Map<number, number>();
-  const specs: readonly (readonly [
-    ProductionRootAdvisorReasonCode,
-    (root: EvaluatedRoot) => boolean,
-  ])[] = [
-    [
-      ProductionRootAdvisorReasonCode.PreserveSpiritRepresentative,
-      (root) => root.spiritSameTurnScoreSetupNow || root.spiritOwnManaSetupNow,
-    ],
-    [
-      ProductionRootAdvisorReasonCode.PreserveSpiritRepresentative,
-      isPlainSpiritDevelopmentRoot,
-    ],
-    [
-      ProductionRootAdvisorReasonCode.PreserveSafeProgressRepresentative,
-      (root) =>
-        advisorRootFamily(root) === TurnPlanFamily.SafeSupermanaProgress,
-    ],
-    [
-      ProductionRootAdvisorReasonCode.PreserveSafeProgressRepresentative,
-      (root) =>
-        advisorRootFamily(root) === TurnPlanFamily.SafeOpponentManaProgress,
-    ],
-    [
-      ProductionRootAdvisorReasonCode.PreserveManaTempoRepresentative,
-      (root) => advisorRootFamily(root) === TurnPlanFamily.ManaTempo,
-    ],
-  ];
-  for (const [reason, predicate] of specs) {
+  for (const [reason, predicate] of productionRepresentativeSpecs) {
     if (execution.session.checkpoint()) return undefined;
     const index = findScoredRepresentative(
       execution,

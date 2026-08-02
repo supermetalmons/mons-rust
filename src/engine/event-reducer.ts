@@ -32,7 +32,7 @@ export type MutableRulesState = {
   turnNumber: number;
 };
 
-export type EventReduction = {
+type EventReduction = {
   readonly events: Event[];
   readonly turnAdvanced: boolean;
   readonly winner: Color | undefined;

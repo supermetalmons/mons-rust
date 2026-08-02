@@ -13,6 +13,7 @@ import { TurnPlanFamily } from "../turn-engine.js";
 import {
   rootProgressOrSetupBetter,
   sameNonTacticalProgressLane,
+  shortlistHasPair,
 } from "./ranking.js";
 import { sameFirstInput } from "./sibling-ordering.js";
 
@@ -22,21 +23,13 @@ export function safeProgressCompetition(
   config: AutomoveConfig,
 ): boolean {
   if (!productionEnabled(config) || shortlist.length < 2) return false;
-  for (let left = 0; left < shortlist.length; left += 1) {
-    const candidate = evaluations[shortlist[left] ?? -1];
-    if (candidate === undefined) continue;
-    for (let right = left + 1; right < shortlist.length; right += 1) {
-      const incumbent = evaluations[shortlist[right] ?? -1];
-      if (
-        incumbent !== undefined &&
-        sameNonTacticalProgressLane(candidate, incumbent) &&
-        isUnsafe(candidate) !== isUnsafe(incumbent)
-      ) {
-        return true;
-      }
-    }
-  }
-  return false;
+  return shortlistHasPair(
+    evaluations,
+    shortlist,
+    (candidate, incumbent) =>
+      sameNonTacticalProgressLane(candidate, incumbent) &&
+      isUnsafe(candidate) !== isUnsafe(incumbent),
+  );
 }
 
 export function isProductionModeWhiteSpiritFollowupSetupPair(
@@ -105,25 +98,14 @@ export function whiteSpiritFollowupSetupCompetition(
   shortlist: readonly number[],
   config: AutomoveConfig,
 ): boolean {
-  for (let left = 0; left < shortlist.length; left += 1) {
-    const candidate = evaluations[shortlist[left] ?? -1];
-    if (candidate === undefined) continue;
-    for (let right = left + 1; right < shortlist.length; right += 1) {
-      const incumbent = evaluations[shortlist[right] ?? -1];
-      if (
-        incumbent !== undefined &&
-        isProductionModeWhiteSpiritFollowupSetupPair(
-          game,
-          candidate,
-          incumbent,
-          config,
-        )
-      ) {
-        return true;
-      }
-    }
-  }
-  return false;
+  return shortlistHasPair(evaluations, shortlist, (candidate, incumbent) =>
+    isProductionModeWhiteSpiritFollowupSetupPair(
+      game,
+      candidate,
+      incumbent,
+      config,
+    ),
+  );
 }
 
 export function nonConcreteManaWindowRoot(root: EvaluatedRoot): boolean {
@@ -155,33 +137,24 @@ export function blackManaWindowProgressCompetition(
   ) {
     return false;
   }
-  for (let left = 0; left < shortlist.length; left += 1) {
-    const candidate = evaluations[shortlist[left] ?? -1];
-    if (candidate === undefined) continue;
-    for (let right = left + 1; right < shortlist.length; right += 1) {
-      const incumbent = evaluations[shortlist[right] ?? -1];
-      if (incumbent === undefined) continue;
-      const candidateWindow = nonConcreteManaWindowRoot(candidate);
-      const incumbentWindow = nonConcreteManaWindowRoot(incumbent);
-      if (candidateWindow === incumbentWindow) continue;
-      const window = candidateWindow ? candidate : incumbent;
-      const progress = candidateWindow ? incumbent : candidate;
-      if (
-        window.sameTurnScoreWindowValue <= 1 &&
-        progress.sameTurnScoreWindowValue === 0 &&
-        rootFamily(progress) === TurnPlanFamily.ManaTempo &&
-        progress.ownDrainerVulnerable === window.ownDrainerVulnerable &&
-        progress.ownDrainerWalkVulnerable === window.ownDrainerWalkVulnerable &&
-        !progress.manaHandoffToOpponent &&
-        !progress.hasRoundtrip &&
-        rootProgressOrSetupBetter(progress, window) &&
-        saturatingScoreAdd(progress.score, 192) >= window.score
-      ) {
-        return true;
-      }
-    }
-  }
-  return false;
+  return shortlistHasPair(evaluations, shortlist, (candidate, incumbent) => {
+    const candidateWindow = nonConcreteManaWindowRoot(candidate);
+    const incumbentWindow = nonConcreteManaWindowRoot(incumbent);
+    if (candidateWindow === incumbentWindow) return false;
+    const window = candidateWindow ? candidate : incumbent;
+    const progress = candidateWindow ? incumbent : candidate;
+    return (
+      window.sameTurnScoreWindowValue <= 1 &&
+      progress.sameTurnScoreWindowValue === 0 &&
+      rootFamily(progress) === TurnPlanFamily.ManaTempo &&
+      progress.ownDrainerVulnerable === window.ownDrainerVulnerable &&
+      progress.ownDrainerWalkVulnerable === window.ownDrainerWalkVulnerable &&
+      !progress.manaHandoffToOpponent &&
+      !progress.hasRoundtrip &&
+      rootProgressOrSetupBetter(progress, window) &&
+      saturatingScoreAdd(progress.score, 192) >= window.score
+    );
+  });
 }
 
 export function closePositiveScoreCompetition(

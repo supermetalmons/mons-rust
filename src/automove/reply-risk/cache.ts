@@ -59,7 +59,7 @@ function replyRiskCaches(
   );
 }
 
-export type ReplyRiskCacheKey = {
+type ReplyRiskCacheKey = {
   readonly hash: Hash64;
   readonly tag: number;
   readonly qualifier: Hash64Qualifier;

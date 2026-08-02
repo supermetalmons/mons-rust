@@ -30,6 +30,7 @@ import {
   compareRootRankThenRanked,
   exactContextIsQuiet,
   isTurnPlanFamilyOneOf,
+  memoizedByIndex,
   rootUtility,
   sameFirstInput,
   utilityCompetes,
@@ -283,47 +284,32 @@ function blackSetupProgressCompetitionOverride(
   ) {
     return undefined;
   }
-  const utilityCache = new Map<number, ReturnType<typeof rootUtility>>();
-  const snapshotCache = new Map([[approvedIndex, approvedSnapshot] as const]);
-  const followupCache = new Map<number, number>();
-  const utility = (index: number) => {
-    const cached = utilityCache.get(index);
-    if (cached !== undefined) return cached;
+  const utility = memoizedByIndex((index) => {
     const root = roots[index];
-    const result =
-      root === undefined
-        ? rootUtility(execution, game, approved, perspective, config)
-        : rootUtility(execution, game, root, perspective, config);
-    utilityCache.set(index, result);
-    return result;
-  };
-  const snapshot = (index: number) => {
-    const cached = snapshotCache.get(index);
-    if (cached !== undefined) return cached;
+    return rootUtility(execution, game, root ?? approved, perspective, config);
+  });
+  const snapshot = memoizedByIndex(
+    (index) => {
+      const root = roots[index];
+      return rootReplyRiskSnapshot(
+        execution,
+        root?.game ?? approved.game,
+        perspective,
+        config,
+        replyLimit,
+      );
+    },
+    new Map([[approvedIndex, approvedSnapshot]]),
+  );
+  const followup = memoizedByIndex((index) => {
     const root = roots[index];
-    const result = rootReplyRiskSnapshot(
-      execution,
-      root?.game ?? approved.game,
-      perspective,
-      config,
-      replyLimit,
-    );
-    snapshotCache.set(index, result);
-    return result;
-  };
-  const followup = (index: number) => {
-    const cached = followupCache.get(index);
-    if (cached !== undefined) return cached;
-    const root = roots[index];
-    const result = spiritFollowupFloorScore(
+    return spiritFollowupFloorScore(
       execution,
       root?.game ?? approved.game,
       perspective,
       config,
     );
-    followupCache.set(index, result);
-    return result;
-  };
+  });
   const approvedUtility = utility(approvedIndex);
   const approvedFollowup = followup(approvedIndex);
   const exact = exactOpportunityContext(execution, game, game.activeColor);

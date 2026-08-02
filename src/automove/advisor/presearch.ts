@@ -30,6 +30,7 @@ import {
   compareRankedRootMoveIndices,
   compareRootMoveSearchPriority,
   entry,
+  productionRepresentativeSpecs,
   pushUnique,
   rootMoveUtility,
   sameFirstInput,
@@ -567,34 +568,7 @@ export function productionRootAdvisorPresearch(
     orderedShortlist,
     entry(anchor, ProductionRootAdvisorReasonCode.RankedRoot),
   );
-  const specs: readonly (readonly [
-    ProductionRootAdvisorReasonCode,
-    (root: RootCandidate) => boolean,
-  ])[] = [
-    [
-      ProductionRootAdvisorReasonCode.PreserveSpiritRepresentative,
-      (root) => root.spiritSameTurnScoreSetupNow || root.spiritOwnManaSetupNow,
-    ],
-    [
-      ProductionRootAdvisorReasonCode.PreserveSpiritRepresentative,
-      (root) => isPlainSpiritDevelopmentRoot(root),
-    ],
-    [
-      ProductionRootAdvisorReasonCode.PreserveSafeProgressRepresentative,
-      (root) =>
-        advisorRootFamily(root) === TurnPlanFamily.SafeSupermanaProgress,
-    ],
-    [
-      ProductionRootAdvisorReasonCode.PreserveSafeProgressRepresentative,
-      (root) =>
-        advisorRootFamily(root) === TurnPlanFamily.SafeOpponentManaProgress,
-    ],
-    [
-      ProductionRootAdvisorReasonCode.PreserveManaTempoRepresentative,
-      (root) => advisorRootFamily(root) === TurnPlanFamily.ManaTempo,
-    ],
-  ];
-  for (const [reason, predicate] of specs) {
+  for (const [reason, predicate] of productionRepresentativeSpecs) {
     if (execution.session.checkpoint()) return undefined;
     const index = findRootMoveRepresentative(
       execution,

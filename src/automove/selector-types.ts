@@ -17,7 +17,7 @@ export const AUTOMOVE_TURN_ENGINE_MODE = Object.freeze({
   Production: "production",
 } as const);
 
-export type AutomoveTurnEngineMode =
+type AutomoveTurnEngineMode =
   (typeof AUTOMOVE_TURN_ENGINE_MODE)[keyof typeof AUTOMOVE_TURN_ENGINE_MODE];
 
 export type AutomoveBudgetConfig = {

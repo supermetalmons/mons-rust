@@ -670,7 +670,7 @@ type ProductionFallbackGuardId =
   | "white-confirm-baseline-better"
   | "late-black-fallback";
 
-export type ProductionPreselectionGuard = {
+type ProductionPreselectionGuard = {
   readonly id: ProductionPreselectionGuardId;
   evaluate(
     execution: AutomoveExecutionContext,
@@ -679,7 +679,7 @@ export type ProductionPreselectionGuard = {
   ): ProductionGuardResult;
 };
 
-export type ProductionFallbackGuard = {
+type ProductionFallbackGuard = {
   readonly id: ProductionFallbackGuardId;
   evaluate(
     execution: AutomoveExecutionContext,

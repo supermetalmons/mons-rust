@@ -86,7 +86,7 @@ export function moveModifier(move: number): number {
   return (move >> 24) & 3;
 }
 
-export type FastArrayView = ArrayLike<number> & Iterable<number>;
+type FastArrayView = ArrayLike<number> & Iterable<number>;
 
 export type FastPositionSnapshot = {
   readonly cells: FastArrayView;
@@ -659,13 +659,6 @@ function advanceTurn(position: MutableFastPosition): void {
       ),
     );
   }
-}
-
-export function applyFastMoveAndCheckRepresentability(
-  position: FastPosition,
-  move: number,
-): boolean {
-  return applyFastMove(position, move) !== FAST_MOVE_UNREPRESENTABLE;
 }
 
 export function applyFastMove(position: FastPosition, move: number): number {

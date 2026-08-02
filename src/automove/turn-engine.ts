@@ -1,6 +1,5 @@
 export {
   EMPTY_TURN_UTILITY,
-  OpportunityKind,
   TURN_PLAN_FAMILY_CACHE_TAG,
   TURN_PLAN_FAMILY_PRIORITY_ORDER,
   TurnEngineMode,
@@ -10,7 +9,6 @@ export {
   compareTurnUtilities,
   familyRank,
   turnEngineComparePlans,
-  turnSnapshotFromGame,
   utilityHasNonnegativeDenyGain,
   utilityHasScoreDeltaForce,
   utilityImprovesNonScoreOverrideAxes,
@@ -20,17 +18,7 @@ export {
   utilitySupportsPrimaryAxesEvalTolerance,
   utilitySupportsTemporaryRiskRecovery,
 } from "./turn-types.js";
-export type {
-  OpportunityBudget,
-  OpportunityDelta,
-  TurnAction,
-  TurnEngineConfig,
-  TurnOpportunity,
-  TurnPackageMeta,
-  TurnPlan,
-  TurnSnapshot,
-  TurnUtility,
-} from "./turn-types.js";
+export type { TurnEngineConfig, TurnPlan, TurnUtility } from "./turn-types.js";
 export { clearTurnEnginePlanCache } from "./turn-cache.js";
 export { turnEngineEvaluateStateUtility } from "./turn-evaluation.js";
 export {
@@ -43,4 +31,3 @@ export {
   turnEngineNextInputsFromAllowedHeads,
   turnEngineStoreCachedStep,
 } from "./turn-planner.js";
-export { discoverTurnOpportunities } from "./turn-opportunities.js";

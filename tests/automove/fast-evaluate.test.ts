@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { loadPosition } from "../../src/automove/fast/bridge.js";
+import { tryLoadPosition } from "../../src/automove/fast/bridge.js";
 import {
   CONS_BOMB,
   CONS_BOTH,
@@ -346,7 +346,7 @@ describe("fast position evaluation", () => {
     expect(game.activeColor).toBe(Color.Black);
 
     const position = new FastPosition();
-    loadPosition(position, game);
+    expect(tryLoadPosition(position, game, 40)).toBe(true);
     expect(
       evaluatePosition(
         position,
@@ -395,7 +395,7 @@ describe("fast position evaluation", () => {
     ).toBe("events");
 
     const position = new FastPosition();
-    loadPosition(position, game);
+    expect(tryLoadPosition(position, game, 40)).toBe(true);
     const carrier = position.cells[locationIndex(carrierAt)] ?? 0;
     expect(cellCooldown(carrier)).toBe(2);
     expect(cellConsumable(carrier)).toBe(CONS_BOMB);

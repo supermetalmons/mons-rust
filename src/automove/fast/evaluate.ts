@@ -106,12 +106,6 @@ export function normalizeEvalWeights(weights: unknown): EvalWeights {
   return Object.freeze(normalized);
 }
 
-export function validateEvalWeights(
-  weights: unknown,
-): asserts weights is EvalWeights {
-  normalizeEvalWeights(weights);
-}
-
 export const DEFAULT_WEIGHTS: EvalWeights = Object.freeze({
   scoreUnit: 12_000,
   potion: 240,
@@ -209,7 +203,6 @@ function estimatedAttackSteps(
   return best;
 }
 
-/** Static evaluation from White's perspective. */
 export function evaluatePosition(
   position: FastPosition,
   weights: EvalWeights,

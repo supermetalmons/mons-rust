@@ -29,7 +29,10 @@ import {
   mysticReachableLocations,
   type Location,
 } from "../engine/geometry.js";
-import { scoreForColor } from "../engine/legality.js";
+import {
+  scoreForColor,
+  spiritDestinationItemAllowed,
+} from "../engine/legality.js";
 import {
   saturatingScoreAdd,
   saturatingScoreMultiply,
@@ -120,14 +123,14 @@ export class TransitionCompilePool {
   }
 }
 
-export function compileLimitForConfig(config: TurnEngineConfig): number {
+function compileLimitForConfig(config: TurnEngineConfig): number {
   return Math.min(
     Math.max(Math.max(config.ownSeedCap, config.opponentSeedCap) * 12, 24),
     96,
   );
 }
 
-export function directInputsForAction(action: TurnAction): Input[] {
+function directInputsForAction(action: TurnAction): Input[] {
   switch (action.kind) {
     case "walk":
     case "safety-retreat":
@@ -160,7 +163,7 @@ export function directInputsForAction(action: TurnAction): Input[] {
   }
 }
 
-export function compileActionDirect(
+function compileActionDirect(
   execution: AutomoveExecutionContext,
   game: MonsGame,
   perspective: Color,
@@ -185,7 +188,7 @@ export function compileActionDirect(
   return [result.game, inputs];
 }
 
-export function bestTransitionForAction(
+function bestTransitionForAction(
   execution: AutomoveExecutionContext,
   game: MonsGame,
   perspective: Color,
@@ -233,7 +236,7 @@ export function bestTransitionForAction(
   return best;
 }
 
-export function compileActionFromPoolFallback(
+function compileActionFromPoolFallback(
   execution: AutomoveExecutionContext,
   game: MonsGame,
   perspective: Color,
@@ -302,9 +305,7 @@ export function compileAction(
   );
 }
 
-export function actionPriorityLocations(
-  action: TurnAction,
-): readonly Location[] {
+function actionPriorityLocations(action: TurnAction): readonly Location[] {
   switch (action.kind) {
     case "walk":
     case "safety-retreat":
@@ -321,7 +322,7 @@ export function actionPriorityLocations(
   }
 }
 
-export function movedActorTo(
+function movedActorTo(
   events: readonly Event[],
   actor: Location,
   to: Location,
@@ -334,7 +335,7 @@ export function movedActorTo(
   );
 }
 
-export function attackEventsMatch(
+function attackEventsMatch(
   events: readonly Event[],
   actor: Location,
   target: Location,
@@ -354,7 +355,7 @@ export function attackEventsMatch(
   });
 }
 
-export function actorOrSuccessorCarries(
+function actorOrSuccessorCarries(
   after: MonsGame,
   perspective: Color,
   wanted: Mana,
@@ -372,7 +373,7 @@ export function actorOrSuccessorCarries(
   return false;
 }
 
-export function transitionMatchesAction(
+function transitionMatchesAction(
   execution: AutomoveExecutionContext,
   before: MonsGame,
   after: MonsGame,
@@ -434,7 +435,7 @@ export function transitionMatchesAction(
   }
 }
 
-export function transitionScore(
+function transitionScore(
   execution: AutomoveExecutionContext,
   before: MonsGame,
   after: MonsGame,
@@ -516,7 +517,7 @@ export function transitionScore(
   return score;
 }
 
-export function eventsIncludeNonWalkAction(events: readonly Event[]): boolean {
+function eventsIncludeNonWalkAction(events: readonly Event[]): boolean {
   return events.some(
     (event) =>
       event.kind === "mystic-action" ||
@@ -526,7 +527,7 @@ export function eventsIncludeNonWalkAction(events: readonly Event[]): boolean {
   );
 }
 
-export function eventsIncludeAnyFaint(
+function eventsIncludeAnyFaint(
   events: readonly Event[],
   perspective: Color,
 ): boolean {
@@ -537,7 +538,7 @@ export function eventsIncludeAnyFaint(
   );
 }
 
-export function eventsIncludeOpponentDrainerFaint(
+function eventsIncludeOpponentDrainerFaint(
   events: readonly Event[],
   perspective: Color,
 ): boolean {
@@ -567,7 +568,7 @@ export function actorCanBombFromItem(item: Item): boolean {
   );
 }
 
-export function locationGuardedByAngel(
+function locationGuardedByAngel(
   angelLocation: Location | undefined,
   at: Location,
 ): boolean {
@@ -576,7 +577,7 @@ export function locationGuardedByAngel(
   );
 }
 
-export function demonAttackPathClear(
+function demonAttackPathClear(
   board: Board,
   from: Location,
   target: Location,
@@ -650,36 +651,7 @@ export function spiritDestinationAllowed(
   const square = board.squareAt(destination);
   const targetMon = itemMon(targetItem);
   const targetMana = itemMana(targetItem);
-  let validDestination: boolean;
-  if (destinationItem === undefined) {
-    validDestination = true;
-  } else if (destinationItem.kind === "mon") {
-    if (itemMon(targetItem) !== undefined) validDestination = false;
-    else if (targetItem.kind === "mana") {
-      validDestination =
-        destinationItem.mon.kind === MonKind.Drainer &&
-        !isMonFainted(destinationItem.mon);
-    } else {
-      validDestination =
-        targetItem.kind === "consumable" &&
-        targetItem.consumable === Consumable.BombOrPotion;
-    }
-  } else if (destinationItem.kind === "mana") {
-    validDestination =
-      targetMon?.kind === MonKind.Drainer && !isMonFainted(targetMon);
-  } else if (
-    destinationItem.kind === "mon-with-mana" ||
-    destinationItem.kind === "mon-with-consumable"
-  ) {
-    validDestination =
-      targetItem.kind === "consumable" &&
-      targetItem.consumable === Consumable.BombOrPotion;
-  } else if (destinationItem.consumable === Consumable.BombOrPotion) {
-    validDestination = itemMon(targetItem) !== undefined;
-  } else {
-    validDestination = false;
-  }
-  if (!validDestination) return false;
+  if (!spiritDestinationItemAllowed(targetItem, destinationItem)) return false;
   switch (square.kind) {
     case "regular":
     case "consumable-base":

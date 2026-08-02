@@ -284,24 +284,31 @@ export function isSafePlainSpiritPair(
   );
 }
 
+export function shortlistHasPair<Value>(
+  values: readonly Value[],
+  shortlist: readonly number[],
+  predicate: (candidate: Value, incumbent: Value) => boolean,
+): boolean {
+  for (let left = 0; left < shortlist.length; left += 1) {
+    const candidate = values[shortlist[left] ?? -1];
+    if (candidate === undefined) continue;
+    for (let right = left + 1; right < shortlist.length; right += 1) {
+      const incumbent = values[shortlist[right] ?? -1];
+      if (incumbent !== undefined && predicate(candidate, incumbent)) {
+        return true;
+      }
+    }
+  }
+  return false;
+}
+
 export function safePlainSpiritCompetition(
   evaluations: readonly EvaluatedRoot[],
   shortlist: readonly number[],
   config: AutomoveConfig,
 ): boolean {
   if (!productionEnabled(config) || shortlist.length < 2) return false;
-  for (let left = 0; left < shortlist.length; left += 1) {
-    const candidate = evaluations[shortlist[left] ?? -1];
-    if (candidate === undefined) continue;
-    for (let right = left + 1; right < shortlist.length; right += 1) {
-      const incumbent = evaluations[shortlist[right] ?? -1];
-      if (
-        incumbent !== undefined &&
-        isSafePlainSpiritPair(candidate, incumbent, config)
-      ) {
-        return true;
-      }
-    }
-  }
-  return false;
+  return shortlistHasPair(evaluations, shortlist, (candidate, incumbent) =>
+    isSafePlainSpiritPair(candidate, incumbent, config),
+  );
 }

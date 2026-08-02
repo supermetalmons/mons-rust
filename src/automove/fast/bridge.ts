@@ -105,7 +105,7 @@ export function tryLoadPosition(
   return true;
 }
 
-export function loadPosition(position: FastPosition, game: MonsGame): void {
+function loadPosition(position: FastPosition, game: MonsGame): void {
   let cells: Uint16Array;
   try {
     cells = new Uint16Array(BOARD_CELLS);

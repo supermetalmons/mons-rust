@@ -34,6 +34,7 @@ import {
   compareRootRankThenRanked,
   exactContextIsQuiet,
   isTurnPlanFamilyOneOf,
+  memoizedByIndex,
   rootUtility,
   sameFirstInput,
   utilityCompetes,
@@ -355,37 +356,25 @@ function blackFamilyCompetitionOverride(
   const approvedUnsafe = advisorRootIsUnsafe(approved);
   const approvedProgress = hasProgressSurface(approved);
   const replyLimit = replyLimitForRoots(replyRiskShortlist.length, config);
-  const snapshots = new Map<number, ReturnType<typeof rootReplyRiskSnapshot>>();
+  const snapshot = memoizedByIndex((index) => {
+    const root = roots[index];
+    return root === undefined
+      ? undefined
+      : rootReplyRiskSnapshot(
+          execution,
+          root.game,
+          perspective,
+          config,
+          replyLimit,
+        );
+  });
   const followups = new Map<number, number>();
-  const snapshot = (index: number) => {
-    let value = snapshots.get(index);
+  const followup = memoizedByIndex((index) => {
     const root = roots[index];
-    if (value === undefined && root !== undefined) {
-      value = rootReplyRiskSnapshot(
-        execution,
-        root.game,
-        perspective,
-        config,
-        replyLimit,
-      );
-      snapshots.set(index, value);
-    }
-    return value;
-  };
-  const followup = (index: number) => {
-    let value = followups.get(index);
-    const root = roots[index];
-    if (value === undefined && root !== undefined) {
-      value = spiritFollowupFloorScore(
-        execution,
-        root.game,
-        perspective,
-        config,
-      );
-      followups.set(index, value);
-    }
-    return value;
-  };
+    return root === undefined
+      ? undefined
+      : spiritFollowupFloorScore(execution, root.game, perspective, config);
+  }, followups);
   const qualifyingIndices: number[] = [];
   for (const index of selectionIndices) {
     if (index === approvedIndex) continue;

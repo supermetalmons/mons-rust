@@ -6,9 +6,7 @@ import type { AutomoveConfig } from "../selector-types.js";
 import type { TurnPlan, TurnPlanFamily } from "../turn-engine.js";
 import { turnEngineSelectedUtility } from "./plan-support.js";
 
-export type TurnEngineHeadUtility = ReturnType<
-  typeof turnEngineSelectedUtility
->;
+type TurnEngineHeadUtility = ReturnType<typeof turnEngineSelectedUtility>;
 
 export type TurnEngineHeadAcceptanceContext = {
   readonly game: MonsGame;

@@ -108,7 +108,7 @@ export function advisorConflictsWithChoice(
   return approved !== undefined && !inputChainsEqual(approved, inputs);
 }
 
-export function seedTurnEngineFollowupCacheIfSafe(
+function seedTurnEngineFollowupCacheIfSafe(
   execution: AutomoveExecutionContext,
   game: MonsGame,
   perspective: Color,

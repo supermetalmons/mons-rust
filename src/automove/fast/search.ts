@@ -49,7 +49,6 @@ import {
 
 const MAX_PLY = 48;
 const DEFAULT_TRANSPOSITION_CAPACITY = 1 << 20;
-const MAX_TRANSPOSITION_CAPACITY = DEFAULT_TRANSPOSITION_CAPACITY;
 const FLAG_EXACT = 0;
 const FLAG_LOWER = 1;
 const FLAG_UPPER = 2;
@@ -90,7 +89,7 @@ if (
   );
 }
 
-export type SearchTuning = {
+type SearchTuning = {
   readonly lateMoveReduction: boolean;
   readonly lateMoveIndex: number;
   readonly lateMoveDeepIndex: number;
@@ -118,13 +117,13 @@ export type SearchLimits = {
   readonly tuning?: SearchTuning;
 };
 
-export type NormalizedSearchLimits = {
+type NormalizedSearchLimits = {
   readonly maxDepth: number;
   readonly maxNodes: number;
   readonly tuning: SearchTuning;
 };
 
-export type SearchOutcome = {
+type SearchOutcome = {
   readonly move: number;
   readonly score: number;
   readonly depth: number;
@@ -136,16 +135,6 @@ type RootSearchOutcome = {
   readonly move: number;
   readonly score: number;
   readonly selective: boolean;
-};
-
-export type TranspositionPart = "keyLo" | "keyHi" | "score" | "info" | "move";
-
-export type FastSearcherOptions = {
-  readonly transpositionCapacity?: number;
-  readonly allocateTranspositionPart?: (
-    part: TranspositionPart,
-    length: number,
-  ) => Int32Array;
 };
 
 export function normalizeSearchLimits(limits: unknown): NormalizedSearchLimits {
@@ -174,10 +163,6 @@ export function normalizeSearchLimits(limits: unknown): NormalizedSearchLimits {
     tuning:
       tuning === undefined ? DEFAULT_TUNING : normalizeSearchTuning(tuning),
   });
-}
-
-export function validateSearchLimits(limits: SearchLimits): void {
-  normalizeSearchLimits(limits);
 }
 
 function normalizeSearchTuning(tuning: unknown): SearchTuning {
@@ -241,62 +226,13 @@ function normalizedTuningInteger(
   return value;
 }
 
-function normalizeTranspositionCapacity(capacity: unknown): number {
-  if (capacity === undefined) return DEFAULT_TRANSPOSITION_CAPACITY;
-  if (
-    !Number.isSafeInteger(capacity) ||
-    (capacity as number) < 1 ||
-    (capacity as number) > MAX_TRANSPOSITION_CAPACITY ||
-    ((capacity as number) & ((capacity as number) - 1)) !== 0
-  ) {
-    throw new RangeError(
-      `transpositionCapacity must be a power of two from 1 through ${MAX_TRANSPOSITION_CAPACITY}`,
-    );
-  }
-  return capacity as number;
-}
-
-function defaultTranspositionAllocator(
-  _part: TranspositionPart,
-  length: number,
-): Int32Array {
-  return new Int32Array(length);
-}
-
-function tryAllocateTranspositionPart(
-  allocate: NonNullable<FastSearcherOptions["allocateTranspositionPart"]>,
-  part: TranspositionPart,
-  length: number,
-): Int32Array | undefined {
+function tryAllocateTranspositionPart(length: number): Int32Array | undefined {
   try {
-    const array = allocate(part, length);
-    return ArrayBuffer.isView(array) &&
-      Object.prototype.toString.call(array) === "[object Int32Array]" &&
-      array.length === length
-      ? array
-      : undefined;
+    return new Int32Array(length);
   } catch (error) {
     if (error instanceof RangeError) return undefined;
     throw error;
   }
-}
-
-function transpositionPartsOverlap(parts: readonly Int32Array[]): boolean {
-  for (let leftIndex = 0; leftIndex < parts.length; leftIndex += 1) {
-    const left = at(parts, leftIndex);
-    const leftEnd = left.byteOffset + left.byteLength;
-    for (
-      let rightIndex = leftIndex + 1;
-      rightIndex < parts.length;
-      rightIndex += 1
-    ) {
-      const right = at(parts, rightIndex);
-      if (left.buffer !== right.buffer) continue;
-      const rightEnd = right.byteOffset + right.byteLength;
-      if (left.byteOffset < rightEnd && right.byteOffset < leftEnd) return true;
-    }
-  }
-  return false;
 }
 
 class TranspositionTable {
@@ -308,62 +244,26 @@ class TranspositionTable {
   public entries = 0;
   public generation = 1;
   public mask = 0;
-  readonly #allocate: NonNullable<
-    FastSearcherOptions["allocateTranspositionPart"]
-  >;
-  readonly #capacity: number;
-
-  public constructor(
-    allocate: NonNullable<FastSearcherOptions["allocateTranspositionPart"]>,
-    capacity: number,
-  ) {
-    this.#allocate = allocate;
-    this.#capacity = capacity;
-  }
-
   public deactivate(): void {
     this.mask = 0;
   }
 
   public prepare(checkTimeout: () => boolean): boolean {
     if (this.keyLo.length !== 0) {
-      this.mask = this.#capacity - 1;
+      this.mask = DEFAULT_TRANSPOSITION_CAPACITY - 1;
       return true;
     }
     if (checkTimeout()) return false;
-    const keyLo = tryAllocateTranspositionPart(
-      this.#allocate,
-      "keyLo",
-      this.#capacity,
-    );
+    const keyLo = tryAllocateTranspositionPart(DEFAULT_TRANSPOSITION_CAPACITY);
     if (keyLo === undefined || checkTimeout()) return false;
-    const keyHi = tryAllocateTranspositionPart(
-      this.#allocate,
-      "keyHi",
-      this.#capacity,
-    );
+    const keyHi = tryAllocateTranspositionPart(DEFAULT_TRANSPOSITION_CAPACITY);
     if (keyHi === undefined || checkTimeout()) return false;
-    const score = tryAllocateTranspositionPart(
-      this.#allocate,
-      "score",
-      this.#capacity,
-    );
+    const score = tryAllocateTranspositionPart(DEFAULT_TRANSPOSITION_CAPACITY);
     if (score === undefined || checkTimeout()) return false;
-    const info = tryAllocateTranspositionPart(
-      this.#allocate,
-      "info",
-      this.#capacity,
-    );
+    const info = tryAllocateTranspositionPart(DEFAULT_TRANSPOSITION_CAPACITY);
     if (info === undefined || checkTimeout()) return false;
-    const move = tryAllocateTranspositionPart(
-      this.#allocate,
-      "move",
-      this.#capacity,
-    );
+    const move = tryAllocateTranspositionPart(DEFAULT_TRANSPOSITION_CAPACITY);
     if (move === undefined || checkTimeout()) return false;
-    if (transpositionPartsOverlap([keyLo, keyHi, score, info, move])) {
-      return false;
-    }
     this.keyLo = keyLo;
     this.keyHi = keyHi;
     this.score = score;
@@ -371,7 +271,7 @@ class TranspositionTable {
     this.move = move;
     this.entries = 0;
     this.generation = 1;
-    this.mask = this.#capacity - 1;
+    this.mask = DEFAULT_TRANSPOSITION_CAPACITY - 1;
     return true;
   }
 
@@ -402,11 +302,8 @@ export class FastSearcher {
   #selectiveEpoch = 0;
   #checkTimeout: () => boolean = NO_TIMEOUT;
 
-  public constructor(options: FastSearcherOptions = {}) {
-    this.#table = new TranspositionTable(
-      options.allocateTranspositionPart ?? defaultTranspositionAllocator,
-      normalizeTranspositionCapacity(options.transpositionCapacity),
-    );
+  public constructor() {
+    this.#table = new TranspositionTable();
     for (let ply = 0; ply <= MAX_PLY; ply += 1) {
       this.#positions.push(new FastPosition());
       this.#moves.push(new Int32Array(MAX_MOVES));
@@ -900,7 +797,7 @@ function moveHeuristic(position: FastPosition, move: number): number {
   }
 }
 
-export function scalarIndex(position: FastPosition): number {
+function scalarIndex(position: FastPosition): number {
   const whitePotions = i32(position.potions, 0);
   const blackPotions = i32(position.potions, 1);
   const whitePotionBucket = whitePotions > 2 ? 3 : whitePotions;
@@ -914,7 +811,7 @@ export function scalarIndex(position: FastPosition): number {
   return position.active + ACTIVE_STATES * scalar;
 }
 
-export function stateKeyLo(position: FastPosition, scalar: number): number {
+function stateKeyLo(position: FastPosition, scalar: number): number {
   return (
     position.hashLo ^
     i32(Z_SCALAR_LO, scalar) ^
@@ -924,7 +821,7 @@ export function stateKeyLo(position: FastPosition, scalar: number): number {
   );
 }
 
-export function stateKeyHi(position: FastPosition, scalar: number): number {
+function stateKeyHi(position: FastPosition, scalar: number): number {
   return (
     position.hashHi ^
     i32(Z_SCALAR_HI, scalar) ^

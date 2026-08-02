@@ -56,33 +56,33 @@ export const NextInputKind = Object.freeze({
 } as const satisfies Readonly<Record<string, InputAction>>);
 export type NextInputKind = InputAction;
 
-export type RegularMana = Extract<Mana, { readonly kind: "regular" }>;
+type RegularMana = Extract<Mana, { readonly kind: "regular" }>;
 
-export type Supermana = Extract<Mana, { readonly kind: "supermana" }>;
+type Supermana = Extract<Mana, { readonly kind: "supermana" }>;
 
-export type MonItem = {
+type MonItem = {
   readonly kind: "mon";
   readonly mon: Mon;
 };
 
-export type ManaItem = {
+type ManaItem = {
   readonly kind: "mana";
   readonly mana: Mana;
 };
 
-export type MonWithManaItem = {
+type MonWithManaItem = {
   readonly kind: "mon-with-mana";
   readonly mon: Mon;
   readonly mana: Mana;
 };
 
-export type MonWithConsumableItem = {
+type MonWithConsumableItem = {
   readonly kind: "mon-with-consumable";
   readonly mon: Mon;
   readonly consumable: Consumable;
 };
 
-export type ConsumableItem = {
+type ConsumableItem = {
   readonly kind: "consumable";
   readonly consumable: Consumable;
 };
@@ -209,7 +209,7 @@ export function createMon(kind: MonKind, color: Color, cooldown: number): Mon {
   return Object.freeze({ kind, color, cooldown });
 }
 
-export function monEquals(left: Mon, right: Mon): boolean {
+function monEquals(left: Mon, right: Mon): boolean {
   return (
     left.kind === right.kind &&
     left.color === right.color &&
@@ -334,7 +334,7 @@ function copyLocation(value: Location): Location {
  * Frozen scalar domain values are normalized and shared by the related copy
  * helpers below; callers remain free to mutate returned wrappers and locations.
  */
-export function copyInput(input: Input): Input {
+function copyInput(input: Input): Input {
   switch (input.kind) {
     case "takeback":
       return { kind: "takeback" };
@@ -562,11 +562,11 @@ export function itemEquals(left: Item, right: Item): boolean {
 }
 
 /** Stable value key for maps and caches; never use object identity for engine values. */
-export function monKey(mon: Mon): string {
+function monKey(mon: Mon): string {
   return `${mon.kind}:${mon.color}:${mon.cooldown}`;
 }
 
-export function manaKey(mana: Mana): string {
+function manaKey(mana: Mana): string {
   return mana.kind === "supermana" ? "s" : `r:${mana.color}`;
 }
 

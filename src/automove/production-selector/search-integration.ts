@@ -45,7 +45,7 @@ import {
   shouldInvokeTurnHeadRerank,
 } from "./tactical-prepass.js";
 
-export function searchRootOptions(
+function searchRootOptions(
   execution: AutomoveExecutionContext,
   perspective: Color,
   config: AutomoveConfig,

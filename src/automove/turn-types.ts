@@ -1,11 +1,7 @@
 import type { MonsGame } from "../engine/game.js";
 import { type Input, type Mana } from "../engine/domain.js";
 import { locationIndex, type Location } from "../engine/geometry.js";
-import {
-  exactSearchStateHash,
-  type ExactColorSummary,
-  type ExactOpportunityContext,
-} from "./exact.js";
+import type { ExactColorSummary, ExactOpportunityContext } from "./exact.js";
 import { hash64, type Hash64 } from "./hash64.js";
 import type { ScoringWeights } from "./scoring.js";
 import { compareInputChains } from "./transitions.js";
@@ -47,7 +43,7 @@ export type TurnEngineConfig = {
   readonly enableLazyOracleScoreWindowProjection: boolean;
 };
 
-export type TurnSnapshot = {
+type TurnSnapshot = {
   readonly stateHash: Hash64;
 };
 
@@ -241,7 +237,7 @@ export function utilitySupportsPrimaryAxesEvalTolerance(
   );
 }
 
-export type TurnPackageMeta = {
+type TurnPackageMeta = {
   readonly scoreGain: number;
   readonly denyGain: number;
   readonly drainerSafetyDelta: number;
@@ -434,12 +430,12 @@ export function actionKey(action: TurnAction): string {
   }`;
 }
 
-export function compareLocations(left: Location, right: Location): number {
+function compareLocations(left: Location, right: Location): number {
   const rowOrder = compareNumber(left.i, right.i);
   return rowOrder !== 0 ? rowOrder : compareNumber(left.j, right.j);
 }
 
-export function compareOptionalLocations(
+function compareOptionalLocations(
   left: Location | undefined,
   right: Location | undefined,
 ): number {
@@ -456,10 +452,6 @@ export function compareActionKeys(left: TurnAction, right: TurnAction): number {
     compareOptionalLocations(leftKey[2], rightKey[2]) ||
     compareOptionalLocations(leftKey[3], rightKey[3])
   );
-}
-
-export function turnSnapshotFromGame(game: MonsGame): TurnSnapshot {
-  return { stateHash: exactSearchStateHash(game) };
 }
 
 export function compareTurnUtilities(
@@ -516,13 +508,13 @@ export function familyRank(family: TurnPlanFamily): number {
   return TURN_PLAN_FAMILY_PRIORITY_ORDER.indexOf(family);
 }
 
-export function headOpeningRiskClass(utility: TurnUtility): number {
+function headOpeningRiskClass(utility: TurnUtility): number {
   if (utility.avoidImmediateLoss < 0) return 0;
   if (utility.drainerSafety < 0 || utility.scoreDelta < 0) return 1;
   return 2;
 }
 
-export function shouldCompareHeadOpeningUtility(
+function shouldCompareHeadOpeningUtility(
   family: TurnPlanFamily,
   left: TurnUtility,
   right: TurnUtility,
@@ -534,7 +526,7 @@ export function shouldCompareHeadOpeningUtility(
   );
 }
 
-export function comparePlanRank(
+function comparePlanRank(
   leftUtility: TurnUtility,
   leftHeadUtility: TurnUtility,
   leftHeadFamily: TurnPlanFamily,
@@ -563,7 +555,7 @@ export function comparePlanRank(
   return compareNumber(leftUtility.evalScore, rightUtility.evalScore);
 }
 
-export function comparePackageMeta(
+function comparePackageMeta(
   left: TurnPackageMeta,
   right: TurnPackageMeta,
 ): number {

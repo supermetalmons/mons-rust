@@ -1,7 +1,7 @@
 import { createHash } from "node:crypto";
 import type { Readable } from "node:stream";
 
-export type ByteLineSummary = {
+type ByteLineSummary = {
   readonly bytes: number;
   readonly containsCarriageReturn: boolean;
   readonly endsWithLf: boolean;

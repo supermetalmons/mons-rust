@@ -31,6 +31,7 @@ import {
 } from "../turn-engine.js";
 import {
   advisorRootIsSafe,
+  memoizedByIndex,
   rootUtility,
   utilitiesEqual,
   utilityCompetes,
@@ -144,18 +145,12 @@ function plainSpiritClusterProgressReentry(
     .filter((root): root is EvaluatedRoot => root !== undefined);
   const bestScore = Math.max(...candidateRoots.map((root) => root.score));
   const bestRank = Math.min(...candidateRoots.map((root) => root.rootRank));
-  const followups = new Map<number, number>();
-  const followup = (index: number): number => {
-    const cached = followups.get(index);
-    if (cached !== undefined) return cached;
+  const followup = memoizedByIndex((index): number => {
     const root = roots[index];
-    const value =
-      root === undefined
-        ? MIN_SCORE
-        : spiritFollowupFloorScore(execution, root.game, perspective, config);
-    followups.set(index, value);
-    return value;
-  };
+    return root === undefined
+      ? MIN_SCORE
+      : spiritFollowupFloorScore(execution, root.game, perspective, config);
+  });
   const bestFollowup = Math.max(...candidateIndices.map(followup));
   const omitted = roots
     .map((_root, index) => index)

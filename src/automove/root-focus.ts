@@ -11,7 +11,7 @@ import {
   type AutomoveConfig,
 } from "./selector-types.js";
 
-export const ROOT_FOCUS_CONSTANTS = Object.freeze({
+const ROOT_FOCUS_CONSTANTS = Object.freeze({
   scoutDepth: 2,
   scoutMinNodes: 96,
   focusCount: 3,
@@ -61,7 +61,7 @@ export type RootFocusCandidate = {
 
 export type RootFocusConfig = AutomoveConfig;
 
-export type RootFocusScoutContext<Candidate extends RootFocusCandidate> = {
+type RootFocusScoutContext<Candidate extends RootFocusCandidate> = {
   readonly candidate: Candidate;
   readonly candidateIndex: number;
   readonly perspective: Color;
@@ -72,13 +72,13 @@ export type RootFocusScoutContext<Candidate extends RootFocusCandidate> = {
   readonly useTranspositionTable: boolean;
 };
 
-export type RootFocusScoutEvaluation = {
+type RootFocusScoutEvaluation = {
   readonly score: number;
   /** Absolute cumulative count, including the root node already charged. */
   readonly visitedNodes: number;
 };
 
-export type RootFocusOptions<Candidate extends RootFocusCandidate> = {
+type RootFocusOptions<Candidate extends RootFocusCandidate> = {
   readonly rootMoves: readonly Candidate[];
   readonly perspective: Color;
   readonly config: RootFocusConfig;
@@ -98,7 +98,7 @@ export type RootFocusOptions<Candidate extends RootFocusCandidate> = {
   readonly cancelled?: () => boolean;
 };
 
-export type FocusedRootCandidatesResult<Candidate> = {
+type FocusedRootCandidatesResult<Candidate> = {
   readonly candidates: readonly Candidate[];
   readonly scoutVisitedNodes: number;
 };
@@ -116,7 +116,7 @@ function rootProgressStepSoftBonus(
   return (MONS_MOVES_PER_TURN - clampedSteps) * Math.trunc(perStepBonus);
 }
 
-export function rootScoutProgressBonus(candidate: RootFocusCandidate): number {
+function rootScoutProgressBonus(candidate: RootFocusCandidate): number {
   let bonus = 0;
   if (
     candidate.supermanaProgress &&
@@ -145,7 +145,7 @@ export function rootScoutProgressBonus(candidate: RootFocusCandidate): number {
   return bonus;
 }
 
-export function rootFocusScoutScore(candidate: RootFocusCandidate): number {
+function rootFocusScoutScore(candidate: RootFocusCandidate): number {
   return saturatingScoreAdd(
     saturatingScoreAdd(
       Math.trunc(candidate.heuristic),
@@ -155,7 +155,7 @@ export function rootFocusScoutScore(candidate: RootFocusCandidate): number {
   );
 }
 
-export function rootVolatilityScore(candidate: RootFocusCandidate): number {
+function rootVolatilityScore(candidate: RootFocusCandidate): number {
   let score = 0;
   if (candidate.winsImmediately) score = score + 5_000;
   if (candidate.attacksOpponentDrainer || candidate.classes.drainerAttack) {

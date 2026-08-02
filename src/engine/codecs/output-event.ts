@@ -8,7 +8,7 @@ import { compareAscii, locationFen } from "./common.js";
 import { colorFen, itemFen, manaFen, monFen } from "./domain-item.js";
 import { inputFen } from "./input.js";
 
-export function nextInputKindFen(kind: NextInputKind): string {
+function nextInputKindFen(kind: NextInputKind): string {
   switch (kind) {
     case NextInputKind.MonMove:
       return "mm";
@@ -31,13 +31,13 @@ export function nextInputKindFen(kind: NextInputKind): string {
   }
 }
 
-export function nextInputFen(nextInput: NextInput): string {
+function nextInputFen(nextInput: NextInput): string {
   return `${inputFen(nextInput.input)} ${nextInputKindFen(nextInput.kind)} ${
     nextInput.actorMonItem === undefined ? "o" : itemFen(nextInput.actorMonItem)
   }`;
 }
 
-export function eventFen(event: Event): string {
+function eventFen(event: Event): string {
   switch (event.kind) {
     case "mon-move":
       return `mm ${itemFen(event.item)} ${locationFen(event.from)} ${locationFen(event.to)}`;

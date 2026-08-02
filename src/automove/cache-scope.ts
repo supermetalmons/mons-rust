@@ -1,4 +1,4 @@
-export type AutomoveCacheLifetime = "session" | "engine";
+type AutomoveCacheLifetime = "session" | "engine";
 
 /**
  * Minimal lifecycle shared by the bounded hash tables used by automove.

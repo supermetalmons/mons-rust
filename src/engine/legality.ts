@@ -5,9 +5,17 @@ import {
   MONS_MOVES_PER_TURN,
   TARGET_SCORE,
 } from "./config.js";
-import { Color, type Color as ColorValue } from "./domain.js";
+import {
+  Color,
+  Consumable,
+  MonKind,
+  isMonFainted,
+  itemMon,
+  type Color as ColorValue,
+  type Item,
+} from "./domain.js";
 
-export type RulesStateView = {
+type RulesStateView = {
   readonly board: Board;
   readonly whiteScore: number;
   readonly blackScore: number;
@@ -85,6 +93,41 @@ export function canPlayerUseAction(state: RulesStateView): boolean {
     state.actionsUsedCount,
     currentPlayerPotions(state),
   );
+}
+
+export function spiritDestinationItemAllowed(
+  targetItem: Item,
+  destinationItem: Item | undefined,
+): boolean {
+  if (destinationItem === undefined) return true;
+  const targetMon = itemMon(targetItem);
+  switch (destinationItem.kind) {
+    case "mon":
+      if (targetMon !== undefined) return false;
+      if (targetItem.kind === "mana") {
+        return (
+          destinationItem.mon.kind === MonKind.Drainer &&
+          !isMonFainted(destinationItem.mon)
+        );
+      }
+      return (
+        targetItem.kind === "consumable" &&
+        targetItem.consumable === Consumable.BombOrPotion
+      );
+    case "mana":
+      return targetMon?.kind === MonKind.Drainer && !isMonFainted(targetMon);
+    case "mon-with-mana":
+    case "mon-with-consumable":
+      return (
+        targetItem.kind === "consumable" &&
+        targetItem.consumable === Consumable.BombOrPotion
+      );
+    case "consumable":
+      return (
+        destinationItem.consumable === Consumable.BombOrPotion &&
+        targetMon !== undefined
+      );
+  }
 }
 
 export function shouldSuggestRegularManaStartsFromScalars(

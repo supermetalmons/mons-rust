@@ -356,7 +356,6 @@ function smartSearchBestInputsInternal(
   ).inputs;
 }
 
-/** Clear selector-owned state without altering a game or its public wrappers. */
 export function clearProductionSelectorCaches(
   execution: AutomoveExecutionContext,
 ): void {
@@ -366,7 +365,6 @@ export function clearProductionSelectorCaches(
   clearTurnEnginePlanCache(execution);
 }
 
-/** Production deterministic smart-search selector. */
 export function smartSearchBestInputs(
   execution: AutomoveExecutionContext,
   game: MonsGame,

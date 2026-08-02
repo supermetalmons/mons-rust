@@ -1,11 +1,11 @@
 import { Color, type Mana } from "../engine/domain.js";
 
-export type ExactScorePathWindow = {
+type ExactScorePathWindow = {
   readonly bestSteps: number | undefined;
   readonly multiPressure: number;
 };
 
-export type ExactImmediateScoreWindow = {
+type ExactImmediateScoreWindow = {
   readonly bestScore: number;
   readonly multiPressure: number;
 };
@@ -81,7 +81,7 @@ export type ExactOpportunityBudget = {
   readonly canMoveMana: boolean;
 };
 
-export type ExactOpportunityDelta = {
+type ExactOpportunityDelta = {
   readonly sameTurnScoreWindowValue: number;
   readonly spiritGain: number;
   readonly opponentWindowDenyGain: number;

@@ -9,12 +9,8 @@ export {
   defaultColorSummary,
   defaultOpportunityContext,
   type ExactColorSummary,
-  type ExactDrainerPickupPath,
-  type ExactImmediateScoreWindow,
   type ExactOpportunityBudget,
   type ExactOpportunityContext,
-  type ExactOpportunityDelta,
-  type ExactScorePathWindow,
   type ExactSpiritSummary,
   type ExactTurnSummary,
   type ExactTurnTacticalProjection,
@@ -39,7 +35,6 @@ export {
 export {
   exactBestScoreStepsOnBoard,
   exactSecureSpecificManaPathFrom,
-  exactSecureSpecificManaStepsOnBoard,
 } from "./exact-mana.js";
 
 export {
@@ -50,9 +45,7 @@ export {
   exactStrategicAnalysis,
   exactStrategicAnalysisWithSearchHash,
   exactTurnSummary,
-  exactTurnSummaryWithSearchHash,
   exactTurnTacticalProjectionWithSearchHash,
-  type ExactTurnProjectionFlags,
 } from "./exact-analysis.js";
 
 export { clearExactStateAnalysisCache } from "./exact-cache.js";

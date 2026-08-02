@@ -1,7 +1,7 @@
 import { MAX_INPUTS_PER_MOVE, type Input, Modifier } from "../domain.js";
 import { isAscii, locationFen, parseLocationFen } from "./common.js";
 
-export function modifierFen(modifier: Modifier): string {
+function modifierFen(modifier: Modifier): string {
   switch (modifier) {
     case Modifier.SelectPotion:
       return "p";
@@ -10,7 +10,7 @@ export function modifierFen(modifier: Modifier): string {
   }
 }
 
-export function parseModifierFen(fen: string): Modifier | undefined {
+function parseModifierFen(fen: string): Modifier | undefined {
   switch (fen) {
     case "p":
       return Modifier.SelectPotion;

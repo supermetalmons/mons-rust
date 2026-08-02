@@ -8,22 +8,10 @@ import type {
 import type { AutomoveConfig } from "./selector-types.js";
 
 export {
-  ProductionRootAdvisorReasonCode,
-  type ProductionAdvisorOptions,
-  type ProductionInjectedRootAdvisorDecision,
-  type ProductionRootAdvisorDecision,
-  type ProductionRootAdvisorEntry,
-  type ProductionRootAdvisorPostsearchResult,
-} from "./advisor/types.js";
-export {
   productionRootAdvisorPresearch,
   productionRootAdvisorPriorityInputs,
 } from "./advisor/presearch.js";
-export { productionRootAdvisorPostsearch };
-export { rootFamily as advisorRootFamily } from "./root-family.js";
-export { rootIsUnsafe as advisorRootIsUnsafe } from "./selector-types.js";
 
-/** Builds the production policy seams consumed by `root-selector`. */
 export function productionRootPolicy(
   execution: AutomoveExecutionContext,
   config: AutomoveConfig,

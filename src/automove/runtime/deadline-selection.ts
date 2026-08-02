@@ -2,10 +2,7 @@ import type { Input } from "../../engine/domain.js";
 import type { MonsGame } from "../../engine/game.js";
 import { AUTOMOVE_SELECTOR_BUDGET_MS } from "../deadline.js";
 import type { AutomoveExecutionContext } from "../execution-context.js";
-import {
-  selectProFastSelection,
-  type FastSelectionResult,
-} from "../fast/index.js";
+import { selectProFastSelection } from "../fast/index.js";
 import { smartSearchBestInputs } from "../production-selector.js";
 import {
   automoveConfigForGame,
@@ -22,11 +19,6 @@ import {
 const FAST_PREFERENCE_BANK_BUDGET_MS = 200;
 const PRODUCTION_START_RESERVE_MS = 100;
 export const PRODUCTION_SELECTOR_BUDGET_MS = 550;
-
-type PackedProSelector = (
-  execution: AutomoveExecutionContext,
-  game: MonsGame,
-) => FastSelectionResult;
 
 export function selectStrategicSearchInputsWithDeadline(
   execution: AutomoveExecutionContext,
@@ -97,12 +89,11 @@ function selectCanonicalProductionInputs(
 export function selectProductionInputsWithDeadline(
   execution: AutomoveExecutionContext,
   game: MonsGame,
-  selectPackedPro: PackedProSelector = selectProFastSelection,
 ): Input[] {
   return execution.session.withDeadlineIfAbsent(
     PRODUCTION_SELECTOR_BUDGET_MS,
     () => {
-      const packedProSelection = selectPackedPro(execution, game);
+      const packedProSelection = selectProFastSelection(execution, game);
       return packedProSelection.kind === "supported"
         ? packedProSelection.inputs
         : selectCanonicalProductionInputs(

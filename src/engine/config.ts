@@ -270,7 +270,7 @@ export function squareAtForVariant(at: Location, variant: GameVariant): Square {
   return squaresForVariant(variant)[locationIndex(at)] ?? REGULAR_SQUARE;
 }
 
-export function squareAt(at: Location): Square {
+function squareAt(at: Location): Square {
   return squareAtForVariant(at, DEFAULT_GAME_VARIANT);
 }
 

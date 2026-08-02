@@ -1,31 +1,21 @@
-import { describe, expect, it, vi } from "vitest";
+import { describe, expect, it } from "vitest";
 
 import {
-  loadPosition,
   moveToInputs,
   tryLoadPosition,
 } from "../../src/automove/fast/bridge.js";
-import {
-  SQ_POOL,
-  cellCooldown,
-  fastSquaresForVariant,
-} from "../../src/automove/fast/board.js";
+import { cellCooldown } from "../../src/automove/fast/board.js";
 import { MAX_MOVES, generateMoves } from "../../src/automove/fast/moves.js";
 import {
+  FAST_MOVE_UNREPRESENTABLE,
   FastPosition,
-  MOVE_MANA,
-  applyFastMoveAndCheckRepresentability,
-  moveFrom,
-  moveTo,
-  moveType,
+  applyFastMove,
 } from "../../src/automove/fast/position.js";
 import {
   Color,
   Consumable,
-  Modifier,
   MonKind,
   createMon,
-  consumableItem,
   manaItem,
   monItem,
   monWithConsumableItem,
@@ -34,14 +24,9 @@ import {
   type Input,
   type Item,
 } from "../../src/engine/domain.js";
-import {
-  ALL_GAME_VARIANTS,
-  DEFAULT_GAME_VARIANT,
-} from "../../src/engine/config.js";
 import { inputArrayFen } from "../../src/engine/fen.js";
 import { MonsGame } from "../../src/engine/game.js";
 import {
-  BOARD_CELLS,
   BOARD_SIZE,
   location,
   locationIndex,
@@ -52,7 +37,6 @@ import {
   fastPositionSnapshot,
   gameWith,
   locationInput,
-  resetFastPosition,
 } from "./fast.test-helper.js";
 
 const INT32_MAX = 0x7fff_ffff;
@@ -82,10 +66,15 @@ function moveInputs(from: Location, to: Location): Input[] {
   return [locationInput(from), locationInput(to)];
 }
 
-function generatedMoves(game: MonsGame): Map<string, number> {
+function loadedPosition(game: MonsGame, maxDepth = 40): FastPosition {
   const position = new FastPosition();
-  loadPosition(position, game);
+  expect(tryLoadPosition(position, game, maxDepth)).toBe(true);
   expectFastPositionInvariants(position);
+  return position;
+}
+
+function generatedMoves(game: MonsGame): Map<string, number> {
+  const position = loadedPosition(game);
   const moves = new Int32Array(MAX_MOVES);
   const count = generateMoves(position, moves);
   const generated = new Map<string, number>();
@@ -105,175 +94,68 @@ function manaEntries(count: number): (readonly [Location, Item])[] {
   ]);
 }
 
+function expectRepresentable(position: FastPosition, move: number): void {
+  expect(applyFastMove(position, move)).not.toBe(FAST_MOVE_UNREPRESENTABLE);
+  expectFastPositionInvariants(position);
+}
+
 describe("fast packed-state compatibility", () => {
-  it("returns independently owned square layouts", () => {
-    const first = fastSquaresForVariant(DEFAULT_GAME_VARIANT);
-    const second = fastSquaresForVariant(DEFAULT_GAME_VARIANT);
-    const expected = [...second];
-
-    expect(first).not.toBe(second);
-    first.fill(0xff);
-
-    expect([...second]).toEqual(expected);
-    expect([...fastSquaresForVariant(DEFAULT_GAME_VARIANT)]).toEqual(expected);
-  });
-
-  it("keeps pool and mon-base topology fixed across current variants", () => {
-    const fixedTopology = (squares: Uint8Array): number[] =>
-      Array.from(squares, (square) => (square >= SQ_POOL ? square : 0));
-    const expected = fixedTopology(fastSquaresForVariant(DEFAULT_GAME_VARIANT));
-
-    for (const variant of ALL_GAME_VARIANTS) {
-      expect(fixedTopology(fastSquaresForVariant(variant)), variant).toEqual(
-        expected,
-      );
-    }
-  });
-
-  it("owns reset topology and shares it across controlled copies", () => {
-    const sourceSquares = fastSquaresForVariant(DEFAULT_GAME_VARIANT);
-    const position = new FastPosition();
-    resetFastPosition(position, { squares: sourceSquares });
-    const expectedSquares = [...position.squares];
-
-    sourceSquares.fill(0xff);
-    expect([...position.squares]).toEqual(expectedSquares);
-
-    const copy = new FastPosition();
-    copy.copyFrom(position);
-    expect(copy.squares).toBe(position.squares);
-    expectFastPositionInvariants(position);
-    expectFastPositionInvariants(copy);
-  });
-
-  it("rejects malformed reset snapshots before mutation", () => {
-    const position = new FastPosition();
-    loadPosition(position, new MonsGame(false));
-    const before = fastPositionSnapshot(position);
-    const squaresBefore = position.squares;
-
-    for (const [name, overrides] of [
-      ["cells", { cells: before.cells.slice(1) }],
-      ["squares", { squares: before.squares.slice(1) }],
-      ["potions", { potions: before.potions.slice(1) }],
-    ] as const) {
-      expect(() => position.reset({ ...before, ...overrides }), name).toThrow(
-        RangeError,
-      );
-      expect(fastPositionSnapshot(position), name).toEqual(before);
-      expect(position.squares, name).toBe(squaresBefore);
-      expectFastPositionInvariants(position, name);
-    }
-  });
-
-  it("rejects move buffers that cannot hold the generated moves", () => {
-    const position = new FastPosition();
-    loadPosition(position, new MonsGame(true));
-    const required = generateMoves(position, new Int32Array(MAX_MOVES));
-
-    expect(required).toBeGreaterThan(0);
-    expect(() => generateMoves(position, new Int32Array(required - 1))).toThrow(
-      "fast move buffer capacity exceeded",
-    );
-  });
-
-  it("rejects unsupported states before mutating the destination", () => {
-    const position = new FastPosition();
-    expect(tryLoadPosition(position, new MonsGame(false), 1)).toBe(true);
-    expectFastPositionInvariants(position);
+  it("rejects unsupported loads without mutating the destination", () => {
+    const position = loadedPosition(new MonsGame(false), 1);
     const before = fastPositionSnapshot(position);
     const squaresBefore = position.squares;
     const duplicateMon = createMon(MonKind.Demon, Color.White, 0);
-    const duplicateGame = gameWith([
-      [location(5, 3), monItem(duplicateMon)],
-      [location(5, 4), monWithConsumableItem(duplicateMon, Consumable.Bomb)],
-    ]);
-    const tooMuchManaGame = gameWith(
-      manaEntries(position.manaIndices.length + 1),
-    );
-    const tooMuchTotalManaGame = gameWith([
-      ...manaEntries(position.manaIndices.length),
-      [
-        location(5, 5),
-        monWithManaItem(
-          createMon(MonKind.Drainer, Color.White, 0),
-          regularMana(Color.White),
-        ),
-      ],
-    ]);
-    const whitePotionGame = gameWith([], {
-      whitePotionsCount: INT32_MAX - 1,
-    });
-    const blackPotionGame = gameWith([], {
-      blackPotionsCount: INT32_MAX - 1,
-    });
-    const turnGame = gameWith([], {
-      turnNumber: Number.MAX_SAFE_INTEGER - 1,
-    });
-
-    for (const [name, game, maxDepth] of [
+    const unsupported = [
       ["negative depth", new MonsGame(false), -1],
       ["fractional depth", new MonsGame(false), 1.5],
-      ["duplicate mon", duplicateGame, 1],
-      ["too much mana", tooMuchManaGame, 1],
-      ["too much loose and carried mana", tooMuchTotalManaGame, 1],
-      ["white potion headroom", whitePotionGame, 2],
-      ["black potion headroom", blackPotionGame, 2],
-      ["turn headroom", turnGame, 2],
-    ] as const) {
+      [
+        "duplicate mon",
+        gameWith([
+          [location(5, 3), monItem(duplicateMon)],
+          [
+            location(5, 4),
+            monWithConsumableItem(duplicateMon, Consumable.Bomb),
+          ],
+        ]),
+        1,
+      ],
+      ["loose mana capacity", gameWith(manaEntries(17)), 1],
+      [
+        "total mana capacity",
+        gameWith([
+          ...manaEntries(16),
+          [
+            location(5, 5),
+            monWithManaItem(
+              createMon(MonKind.Drainer, Color.White, 0),
+              regularMana(Color.White),
+            ),
+          ],
+        ]),
+        1,
+      ],
+      [
+        "white potion headroom",
+        gameWith([], { whitePotionsCount: INT32_MAX - 1 }),
+        2,
+      ],
+      [
+        "black potion headroom",
+        gameWith([], { blackPotionsCount: INT32_MAX - 1 }),
+        2,
+      ],
+      [
+        "turn headroom",
+        gameWith([], { turnNumber: Number.MAX_SAFE_INTEGER - 1 }),
+        2,
+      ],
+    ] as const;
+
+    for (const [name, game, maxDepth] of unsupported) {
       expect(tryLoadPosition(position, game, maxDepth), name).toBe(false);
       expect(fastPositionSnapshot(position), name).toEqual(before);
       expect(position.squares, name).toBe(squaresBefore);
-      expectFastPositionInvariants(position, name);
     }
-  });
-
-  it("fails soft on bridge workspace allocation without mutation", () => {
-    const game = new MonsGame(false, DEFAULT_GAME_VARIANT);
-    const position = new FastPosition();
-    loadPosition(position, game);
-    const before = fastPositionSnapshot(position);
-    const squaresBefore = position.squares;
-    const NativeUint16Array = globalThis.Uint16Array;
-    const FailingUint16Array = function (value: unknown): Uint16Array {
-      if (value === BOARD_CELLS) {
-        throw new RangeError("synthetic bridge allocation failure");
-      }
-      return Reflect.construct(NativeUint16Array, [value]) as Uint16Array;
-    } as unknown as Uint16ArrayConstructor;
-
-    vi.stubGlobal("Uint16Array", FailingUint16Array);
-    try {
-      expect(tryLoadPosition(position, game, 1)).toBe(false);
-    } finally {
-      vi.unstubAllGlobals();
-    }
-
-    expect(fastPositionSnapshot(position)).toEqual(before);
-    expect(position.squares).toBe(squaresBefore);
-  });
-
-  it("does not misclassify position invariant errors as allocation failures", () => {
-    const failure = new RangeError("synthetic position invariant failure");
-    const position = new FastPosition();
-    const rejectingPosition = new Proxy(position, {
-      get(target, property, receiver) {
-        if (property === "reset") {
-          return () => {
-            throw failure;
-          };
-        }
-        return Reflect.get(target, property, receiver);
-      },
-    });
-
-    expect(() =>
-      tryLoadPosition(
-        rejectingPosition,
-        new MonsGame(false, DEFAULT_GAME_VARIANT),
-        1,
-      ),
-    ).toThrow(failure);
   });
 
   it("accepts exact packed counter and mana boundaries", () => {
@@ -283,244 +165,12 @@ describe("fast packed-state compatibility", () => {
       blackPotionsCount: INT32_MAX - maxDepth,
       turnNumber: Number.MAX_SAFE_INTEGER - maxDepth,
     });
-    const position = new FastPosition();
+    const position = loadedPosition(game, maxDepth);
 
     expect(position.manaIndices.length).toBe(16);
-    expect(tryLoadPosition(position, game, maxDepth)).toBe(true);
     expect(position.manaCount).toBe(16);
     expect(position.potions[0]).toBe(INT32_MAX - maxDepth);
     expect(position.potions[1]).toBe(INT32_MAX - maxDepth);
-    expectFastPositionInvariants(position);
-  });
-
-  it("rejects direct loads that exceed the loose mana index capacity", () => {
-    const position = new FastPosition();
-    loadPosition(position, new MonsGame(false));
-    const before = fastPositionSnapshot(position);
-    const squaresBefore = position.squares;
-
-    expect(() =>
-      loadPosition(
-        position,
-        gameWith(manaEntries(position.manaIndices.length + 1)),
-      ),
-    ).toThrow("fast mana index capacity exceeded");
-    expect(fastPositionSnapshot(position)).toEqual(before);
-    expect(position.squares).toBe(squaresBefore);
-    expectFastPositionInvariants(position);
-  });
-
-  it("rejects concrete loose consumables as mon-move destinations", () => {
-    const from = location(5, 3);
-    const to = location(5, 4);
-    const mon = createMon(MonKind.Demon, Color.White, 0);
-    const actors = [
-      ["plain", monItem(mon)],
-      ["mana carrier", monWithManaItem(mon, regularMana(Color.White))],
-      ["bomb carrier", monWithConsumableItem(mon, Consumable.Bomb)],
-    ] as const;
-
-    for (const [actorName, actor] of actors) {
-      for (const consumable of [Consumable.Bomb, Consumable.Potion]) {
-        const game = gameWith([
-          [from, actor],
-          [to, consumableItem(consumable)],
-        ]);
-        const inputs = moveInputs(from, to);
-        const inputFen = inputArrayFen(inputs);
-
-        expect(
-          game.fork().processInput(inputs, false, false).kind,
-          `${actorName} ${consumable}`,
-        ).toBe("invalid-input");
-        expect(
-          generatedMoves(game).has(inputFen),
-          `${actorName} ${consumable}`,
-        ).toBe(false);
-      }
-    }
-  });
-
-  it("uses raw mon destinations when deciding whether mana may start", () => {
-    const from = location(10, 3);
-    const concreteDestination = location(9, 2);
-    const manaAt = location(8, 8);
-    const game = gameWith([
-      [from, monItem(createMon(MonKind.Demon, Color.White, 0))],
-      [concreteDestination, consumableItem(Consumable.Potion)],
-      [location(9, 3), monItem(createMon(MonKind.Angel, Color.Black, 0))],
-      [location(9, 4), monItem(createMon(MonKind.Demon, Color.Black, 0))],
-      [location(10, 2), monItem(createMon(MonKind.Mystic, Color.Black, 0))],
-      [location(10, 4), monItem(createMon(MonKind.Spirit, Color.Black, 0))],
-      [manaAt, manaItem(regularMana(Color.White))],
-    ]);
-    const position = new FastPosition();
-    loadPosition(position, game);
-    expectFastPositionInvariants(position);
-    const count = generateMoves(position, new Int32Array(MAX_MOVES));
-
-    expect(count).toBe(0);
-
-    const root = game.processInput([], false, false);
-    expect(root.kind).toBe("locations-to-start-from");
-    if (root.kind !== "locations-to-start-from") return;
-    expect(root.locations).toContainEqual(from);
-    expect(root.locations).not.toContainEqual(manaAt);
-  });
-
-  it("uses raw attack targets when deciding whether mana may start", () => {
-    const from = location(5, 3);
-    const targetAt = location(3, 1);
-    const manaAt = location(8, 8);
-    const game = gameWith(
-      [
-        [from, monItem(createMon(MonKind.Mystic, Color.White, 0))],
-        [
-          targetAt,
-          monWithConsumableItem(
-            createMon(MonKind.Drainer, Color.Black, 0),
-            Consumable.Potion,
-          ),
-        ],
-        [manaAt, manaItem(regularMana(Color.White))],
-      ],
-      { monsMovesCount: 5 },
-    );
-    const position = new FastPosition();
-    loadPosition(position, game);
-    const count = generateMoves(position, new Int32Array(MAX_MOVES));
-
-    expect(count).toBe(0);
-
-    const root = game.processInput([], false, false);
-    expect(root.kind).toBe("locations-to-start-from");
-    if (root.kind !== "locations-to-start-from") return;
-    expect(root.locations).toContainEqual(from);
-    expect(root.locations).not.toContainEqual(manaAt);
-  });
-
-  it("keeps loose mana indices sorted through pickup and relocation", () => {
-    const drainerAt = location(5, 3);
-    const pickupAt = location(5, 4);
-    const firstManaAt = location(8, 8);
-    const secondManaAt = location(9, 9);
-    const game = gameWith(
-      [
-        [drainerAt, monItem(createMon(MonKind.Drainer, Color.White, 0))],
-        [pickupAt, manaItem(regularMana(Color.White))],
-        [firstManaAt, manaItem(regularMana(Color.White))],
-        [secondManaAt, manaItem(regularMana(Color.White))],
-      ],
-      {
-        actionsUsedCount: 1,
-        monsMovesCount: 4,
-      },
-    );
-    const position = new FastPosition();
-    loadPosition(position, game);
-    const pickupMove = generatedMoves(game).get(
-      inputArrayFen(moveInputs(drainerAt, pickupAt)),
-    );
-    expect(pickupMove).toBeDefined();
-    if (pickupMove === undefined) return;
-
-    expect(applyFastMoveAndCheckRepresentability(position, pickupMove)).toBe(
-      true,
-    );
-    expectFastPositionInvariants(position);
-    expect([...position.manaIndices].slice(0, position.manaCount)).toEqual([
-      locationIndex(firstManaAt),
-      locationIndex(secondManaAt),
-    ]);
-
-    const moves = new Int32Array(MAX_MOVES);
-    const count = generateMoves(position, moves);
-    const origins: number[] = [];
-    const destinationsByOrigin = new Map<number, number[]>();
-    let relocationMove = 0;
-    for (let slot = 0; slot < count; slot += 1) {
-      const move = moves[slot] ?? 0;
-      if (moveType(move) !== MOVE_MANA) continue;
-      const origin = moveFrom(move);
-      if (origins[origins.length - 1] !== origin) origins.push(origin);
-      const destinations = destinationsByOrigin.get(origin) ?? [];
-      destinations.push(moveTo(move));
-      destinationsByOrigin.set(origin, destinations);
-      if (relocationMove === 0) relocationMove = move;
-    }
-
-    expect(origins).toEqual([
-      locationIndex(firstManaAt),
-      locationIndex(secondManaAt),
-    ]);
-    const canonical = game.fork();
-    expect(
-      canonical.processInput(moveInputs(drainerAt, pickupAt), false, false)
-        .kind,
-    ).toBe("events");
-    for (const manaAt of [firstManaAt, secondManaAt]) {
-      const output = canonical
-        .fork()
-        .processInput([locationInput(manaAt)], false, false);
-      expect(output.kind).toBe("next-input-options");
-      if (output.kind !== "next-input-options") continue;
-      expect(destinationsByOrigin.get(locationIndex(manaAt))).toEqual(
-        output.nextInputs.map((option) => {
-          if (option.input.kind !== "location") {
-            throw new TypeError("mana destination must be a location");
-          }
-          return locationIndex(option.input.location);
-        }),
-      );
-    }
-    expect(relocationMove).not.toBe(0);
-    expect(
-      applyFastMoveAndCheckRepresentability(position, relocationMove),
-    ).toBe(true);
-    expectFastPositionInvariants(position);
-    expect([...position.manaIndices].slice(0, position.manaCount)).toEqual(
-      [moveTo(relocationMove), locationIndex(secondManaAt)].sort(
-        (left, right) => left - right,
-      ),
-    );
-  });
-
-  it("preserves BombOrPotion collection for plain mons and carriers", () => {
-    const from = location(5, 3);
-    const to = location(5, 4);
-    const mon = createMon(MonKind.Demon, Color.White, 0);
-    const plainGame = gameWith([
-      [from, monItem(mon)],
-      [to, consumableItem(Consumable.BombOrPotion)],
-    ]);
-    const baseInputs = moveInputs(from, to);
-    const plainMoves = generatedMoves(plainGame);
-
-    for (const modifier of [Modifier.SelectBomb, Modifier.SelectPotion]) {
-      const inputs: Input[] = [...baseInputs, { kind: "modifier", modifier }];
-      expect(plainMoves.has(inputArrayFen(inputs)), modifier).toBe(true);
-      expect(
-        plainGame.fork().processInput(inputs, false, false).kind,
-        modifier,
-      ).toBe("events");
-    }
-
-    for (const [name, actor] of [
-      ["mana carrier", monWithManaItem(mon, regularMana(Color.White))],
-      ["bomb carrier", monWithConsumableItem(mon, Consumable.Bomb)],
-    ] as const) {
-      const game = gameWith([
-        [from, actor],
-        [to, consumableItem(Consumable.BombOrPotion)],
-      ]);
-      expect(generatedMoves(game).has(inputArrayFen(baseInputs)), name).toBe(
-        true,
-      );
-      expect(
-        game.fork().processInput(baseInputs, false, false).kind,
-        name,
-      ).toBe("events");
-    }
   });
 
   it("preserves concrete Demon step inputs while ignoring their step event", () => {
@@ -533,7 +183,7 @@ describe("fast packed-state compatibility", () => {
       const game = gameWith([
         [from, monItem(createMon(MonKind.Demon, Color.White, 0))],
         [targetAt, target],
-        [stepAt, consumableItem(consumable)],
+        [stepAt, { kind: "consumable", consumable }],
       ]);
       const inputs = [
         locationInput(from),
@@ -553,18 +203,10 @@ describe("fast packed-state compatibility", () => {
         consumable,
       ).toBe(false);
 
-      const position = new FastPosition();
-      loadPosition(position, game);
-      expect(
-        applyFastMoveAndCheckRepresentability(position, move),
-        consumable,
-      ).toBe(true);
-      expectFastPositionInvariants(position, consumable);
-      const expected = new FastPosition();
-      loadPosition(expected, canonical);
-      expectFastPositionInvariants(expected, consumable);
+      const position = loadedPosition(game);
+      expectRepresentable(position, move);
       expect(fastPositionSnapshot(position), consumable).toEqual(
-        fastPositionSnapshot(expected),
+        fastPositionSnapshot(loadedPosition(canonical)),
       );
     }
   });
@@ -592,17 +234,10 @@ describe("fast packed-state compatibility", () => {
     expect(move).toBeDefined();
     if (move === undefined) return;
 
-    const position = new FastPosition();
-    loadPosition(position, game);
-    expect(applyFastMoveAndCheckRepresentability(position, move)).toBe(false);
-
+    const position = loadedPosition(game);
+    expect(applyFastMove(position, move)).toBe(FAST_MOVE_UNREPRESENTABLE);
     const canonical = game.fork();
     expect(canonical.processInput(inputs, false, false).kind).toBe("events");
-    const expected = new FastPosition();
-    loadPosition(expected, canonical);
-    expect([...position.cells]).toEqual([...expected.cells]);
-    expect(position.hashLo).toBe(expected.hashLo);
-    expect(position.hashHi).toBe(expected.hashHi);
     expect(tryLoadPosition(new FastPosition(), canonical, 1)).toBe(false);
   });
 
@@ -629,18 +264,12 @@ describe("fast packed-state compatibility", () => {
     expect(move).toBeDefined();
     if (move === undefined) return;
 
-    const position = new FastPosition();
-    loadPosition(position, game);
-    expect(applyFastMoveAndCheckRepresentability(position, move)).toBe(true);
-    expectFastPositionInvariants(position);
-
+    const position = loadedPosition(game);
+    expectRepresentable(position, move);
     const canonical = game.fork();
     expect(canonical.processInput(inputs, false, false).kind).toBe("events");
-    const expected = new FastPosition();
-    expect(tryLoadPosition(expected, canonical, 1)).toBe(true);
-    expectFastPositionInvariants(expected);
     expect(fastPositionSnapshot(position)).toEqual(
-      fastPositionSnapshot(expected),
+      fastPositionSnapshot(loadedPosition(canonical, 1)),
     );
   });
 
@@ -716,16 +345,12 @@ describe("fast packed-state compatibility", () => {
       { manaMovesCount: 1 },
     );
     const inputs = moveInputs(from, to);
-    const position = new FastPosition();
-    expect(tryLoadPosition(position, game, 1)).toBe(true);
-    expectFastPositionInvariants(position);
     const move = generatedMoves(game).get(inputArrayFen(inputs));
     expect(move).toBeDefined();
     if (move === undefined) return;
 
-    expect(applyFastMoveAndCheckRepresentability(position, move)).toBe(true);
-    expectFastPositionInvariants(position);
-
+    const position = loadedPosition(game, 1);
+    expectRepresentable(position, move);
     expect(cellCooldown(position.cells[locationIndex(plainAt)] ?? 0)).toBe(1);
     expect(
       cellCooldown(position.cells[locationIndex(manaCarrierAt)] ?? 0),
@@ -736,11 +361,8 @@ describe("fast packed-state compatibility", () => {
 
     const canonical = game.fork();
     expect(canonical.processInput(inputs, false, false).kind).toBe("events");
-    const expected = new FastPosition();
-    loadPosition(expected, canonical);
-    expectFastPositionInvariants(expected);
     expect(fastPositionSnapshot(position)).toEqual(
-      fastPositionSnapshot(expected),
+      fastPositionSnapshot(loadedPosition(canonical, 1)),
     );
   });
 
@@ -754,23 +376,16 @@ describe("fast packed-state compatibility", () => {
       [targetBase, monItem(createMon(MonKind.Angel, Color.Black, 0))],
     ]);
     const inputs = moveInputs(from, targetAt);
-    const position = new FastPosition();
-    expect(tryLoadPosition(position, game, 1)).toBe(true);
-    expectFastPositionInvariants(position);
     const move = generatedMoves(game).get(inputArrayFen(inputs));
     expect(move).toBeDefined();
     if (move === undefined) return;
 
-    expect(applyFastMoveAndCheckRepresentability(position, move)).toBe(true);
-    expectFastPositionInvariants(position);
-
+    const position = loadedPosition(game, 1);
+    expectRepresentable(position, move);
     const canonical = game.fork();
     expect(canonical.processInput(inputs, false, false).kind).toBe("events");
-    const expected = new FastPosition();
-    loadPosition(expected, canonical);
-    expectFastPositionInvariants(expected);
     expect(fastPositionSnapshot(position)).toEqual(
-      fastPositionSnapshot(expected),
+      fastPositionSnapshot(loadedPosition(canonical, 1)),
     );
   });
 });

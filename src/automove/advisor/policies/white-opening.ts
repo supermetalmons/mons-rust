@@ -32,6 +32,7 @@ import {
   compareRootRankThenRanked,
   exactContextIsQuiet,
   isTurnPlanFamilyOneOf,
+  memoizedByIndex,
   rootUtility,
   sameFirstInput,
   utilityCompetes,
@@ -83,47 +84,33 @@ function whiteSetupProgressCompetitionOverride(
   ) {
     return undefined;
   }
-  const utilities = new Map<number, ReturnType<typeof rootUtility>>();
-  const snapshots = new Map([[approvedIndex, approvedSnapshot]]);
-  const followups = new Map<number, number>();
-  const utility = (index: number) => {
-    let value = utilities.get(index);
+  const utility = memoizedByIndex((index) => {
     const root = roots[index];
-    if (value === undefined && root !== undefined) {
-      value = rootUtility(execution, game, root, perspective, config);
-      utilities.set(index, value);
-    }
-    return value;
-  };
-  const snapshot = (index: number) => {
-    let value = snapshots.get(index);
+    return root === undefined
+      ? undefined
+      : rootUtility(execution, game, root, perspective, config);
+  });
+  const snapshot = memoizedByIndex(
+    (index) => {
+      const root = roots[index];
+      return root === undefined
+        ? undefined
+        : rootReplyRiskSnapshot(
+            execution,
+            root.game,
+            perspective,
+            config,
+            replyLimit,
+          );
+    },
+    new Map([[approvedIndex, approvedSnapshot]]),
+  );
+  const followup = memoizedByIndex((index) => {
     const root = roots[index];
-    if (value === undefined && root !== undefined) {
-      value = rootReplyRiskSnapshot(
-        execution,
-        root.game,
-        perspective,
-        config,
-        replyLimit,
-      );
-      snapshots.set(index, value);
-    }
-    return value;
-  };
-  const followup = (index: number) => {
-    let value = followups.get(index);
-    const root = roots[index];
-    if (value === undefined && root !== undefined) {
-      value = spiritFollowupFloorScore(
-        execution,
-        root.game,
-        perspective,
-        config,
-      );
-      followups.set(index, value);
-    }
-    return value;
-  };
+    return root === undefined
+      ? undefined
+      : spiritFollowupFloorScore(execution, root.game, perspective, config);
+  });
   const approvedUtility = utility(approvedIndex);
   const approvedFollowup = followup(approvedIndex);
   if (approvedUtility === undefined || approvedFollowup === undefined)

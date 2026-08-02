@@ -31,7 +31,7 @@ import {
   utilitySupportsTemporaryRiskRecovery,
 } from "../turn-engine.js";
 import { productionSecondaryAnalysisLive } from "../turn-engine-config.js";
-import { advisorRootIsSafe, rootUtility } from "./support.js";
+import { advisorRootIsSafe, memoizedByIndex, rootUtility } from "./support.js";
 
 function spiritSetupCompetes(
   execution: AutomoveExecutionContext,
@@ -225,23 +225,17 @@ function followupProgressCompetition(
   const bestSpiritScore = Math.max(
     ...spiritIndices.map((index) => context.roots[index]?.score ?? MIN_SCORE),
   );
-  const followups = new Map<number, number>();
-  const followup = (index: number): number => {
-    const cached = followups.get(index);
-    if (cached !== undefined) return cached;
+  const followup = memoizedByIndex((index): number => {
     const root = context.roots[index];
-    const value =
-      root === undefined
-        ? MIN_SCORE
-        : spiritFollowupFloorScore(
-            execution,
-            root.game,
-            context.perspective,
-            context.config,
-          );
-    followups.set(index, value);
-    return value;
-  };
+    return root === undefined
+      ? MIN_SCORE
+      : spiritFollowupFloorScore(
+          execution,
+          root.game,
+          context.perspective,
+          context.config,
+        );
+  });
   const bestSpiritFollowup = Math.max(...spiritIndices.map(followup));
   return context.candidateIndices.some((index) => {
     if (spiritIndices.includes(index)) return false;
@@ -513,23 +507,17 @@ function safeProgressReentryAfterSafetyPrefilter(
   const bestKeptScore = Math.max(
     ...keptIndices.map((index) => context.roots[index]?.score ?? MIN_SCORE),
   );
-  const followups = new Map<number, number>();
-  const followup = (index: number): number => {
-    const cached = followups.get(index);
-    if (cached !== undefined) return cached;
+  const followup = memoizedByIndex((index): number => {
     const root = context.roots[index];
-    const value =
-      root === undefined
-        ? MIN_SCORE
-        : spiritFollowupFloorScore(
-            execution,
-            root.game,
-            context.perspective,
-            context.config,
-          );
-    followups.set(index, value);
-    return value;
-  };
+    return root === undefined
+      ? MIN_SCORE
+      : spiritFollowupFloorScore(
+          execution,
+          root.game,
+          context.perspective,
+          context.config,
+        );
+  });
   const bestKeptFollowup = Math.max(...keptIndices.map(followup));
   return context.candidateIndices
     .filter((index) => !keptIndices.includes(index))

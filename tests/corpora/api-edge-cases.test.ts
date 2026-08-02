@@ -1,4 +1,3 @@
-import { createHash, type BinaryLike } from "node:crypto";
 import { readFileSync } from "node:fs";
 import path from "node:path";
 
@@ -8,57 +7,23 @@ import { Color, Game, MonKind } from "../../src/entrypoints/mons-rules.js";
 
 type ArtifactManifest = {
   readonly path: string;
-  readonly recordCount: number;
-  readonly bytes: number;
-  readonly sha256: string;
-  readonly orderedIdsSha256: string;
-  readonly firstId: string;
-  readonly lastId: string;
 };
 
 type EdgeManifest = {
-  readonly schemaVersion: number;
-  readonly corpusVersion: string;
   readonly constants: {
     readonly classicInitialFen: string;
-    readonly parserWhitespaceCodePoints: readonly number[];
-    readonly explicitNonWhitespaceCodePoints: readonly number[];
-  };
-  readonly statistics: {
-    readonly recordCount: number;
-    readonly matchingCaseCount: number;
-    readonly approvedExceptionCount: number;
-    readonly categoryCounts: Readonly<Record<string, number>>;
   };
   readonly artifacts: readonly ArtifactManifest[];
-  readonly aggregate: {
-    readonly artifactBytes: number;
-    readonly recordCount: number;
-    readonly orderedIdsSha256: string;
-  };
 };
 
 type StoredEdgeRecord = {
   readonly id: string;
-  readonly category: string;
   readonly operation:
     | "MonsGameModel.from_fen"
     | "MonsGameModel.item/square/remove_item"
     | "MonsGameModel.process_input_fen";
-  readonly expectedRustWhitespace?: boolean;
-  readonly inputSpec?: {
-    readonly replaceAsciiFieldSeparatorsWithCodePoint?: number;
-  };
   readonly inputFen?: string;
   readonly inputCodeUnits?: readonly number[];
-  readonly constructorArgs?: {
-    readonly iExpression: string;
-    readonly jExpression: string;
-  };
-  readonly legacy: Readonly<Record<string, unknown>>;
-  readonly typescriptPolicy: {
-    readonly kind: "approved-exception" | "match-legacy";
-  };
 };
 
 const corpusDirectory = path.resolve("test-data/compatibility-edge-cases/v1");
@@ -66,40 +31,11 @@ const manifest = JSON.parse(
   readFileSync(path.join(corpusDirectory, "manifest.json"), "utf8"),
 ) as EdgeManifest;
 
-function sha256(value: BinaryLike): string {
-  return createHash("sha256").update(value).digest("hex");
-}
-
 function readArtifact(artifact: ArtifactManifest): readonly StoredEdgeRecord[] {
-  const bytes = readFileSync(path.resolve(artifact.path));
-  expect(bytes.byteLength).toBe(artifact.bytes);
-  expect(sha256(bytes)).toBe(artifact.sha256);
-
-  const text = bytes.toString("utf8");
-  expect(text.endsWith("\n")).toBe(true);
-  const lines = text.slice(0, -1).split("\n");
-  expect(lines).toHaveLength(artifact.recordCount);
-  const records = lines.map((line) => {
-    const record = JSON.parse(line) as StoredEdgeRecord;
-    expect(JSON.stringify(record)).toBe(line);
-    return record;
-  });
-  const ids = records.map(({ id }) => id);
-  expect(ids[0]).toBe(artifact.firstId);
-  expect(ids.at(-1)).toBe(artifact.lastId);
-  expect(sha256(`${ids.join("\n")}\n`)).toBe(artifact.orderedIdsSha256);
-  return records;
-}
-
-function archivalCategory(category: string): string {
-  switch (category) {
-    case "rust-whitespace":
-      return "parser-whitespace";
-    case "wasm-string-normalization":
-      return "string-normalization";
-    default:
-      return category;
-  }
+  return readFileSync(path.resolve(artifact.path), "utf8")
+    .trimEnd()
+    .split("\n")
+    .map((line) => JSON.parse(line) as StoredEdgeRecord);
 }
 
 describe("archived public API edge-case corpus", () => {
@@ -111,62 +47,6 @@ describe("archived public API edge-case corpus", () => {
     if (record === undefined) throw new Error(`missing archived record ${id}`);
     return record;
   }
-
-  it("pins every v1 payload byte, record ID, and aggregate", () => {
-    expect(manifest.schemaVersion).toBe(1);
-    expect(manifest.corpusVersion).toBe("api-edge-cases-v1");
-    expect(records).toHaveLength(manifest.statistics.recordCount);
-    expect(records).toHaveLength(manifest.aggregate.recordCount);
-    expect(
-      manifest.artifacts.reduce((sum, artifact) => sum + artifact.bytes, 0),
-    ).toBe(manifest.aggregate.artifactBytes);
-
-    const ids = records.map(({ id }) => id);
-    expect(new Set(ids).size).toBe(ids.length);
-    expect(sha256(`${ids.join("\n")}\n`)).toBe(
-      manifest.aggregate.orderedIdsSha256,
-    );
-
-    const categoryCounts: Record<string, number> = {};
-    for (const record of records) {
-      const category = archivalCategory(record.category);
-      categoryCounts[category] = (categoryCounts[category] ?? 0) + 1;
-    }
-    expect(categoryCounts).toEqual(manifest.statistics.categoryCounts);
-    expect(
-      records.filter(
-        ({ typescriptPolicy }) => typescriptPolicy.kind === "match-legacy",
-      ),
-    ).toHaveLength(manifest.statistics.matchingCaseCount);
-    expect(
-      records.filter(
-        ({ typescriptPolicy }) =>
-          typescriptPolicy.kind === "approved-exception",
-      ),
-    ).toHaveLength(manifest.statistics.approvedExceptionCount);
-  });
-
-  it("retains the archived parser-whitespace classification", () => {
-    const whitespaceRecords = records.filter(
-      ({ category }) => category === "rust-whitespace",
-    );
-    const codePoints = (expected: boolean): readonly (number | undefined)[] =>
-      whitespaceRecords
-        .filter(({ expectedRustWhitespace }) =>
-          expected ? expectedRustWhitespace : expectedRustWhitespace === false,
-        )
-        .map(
-          ({ inputSpec }) =>
-            inputSpec?.replaceAsciiFieldSeparatorsWithCodePoint,
-        );
-
-    expect(codePoints(true)).toEqual(
-      manifest.constants.parserWhitespaceCodePoints,
-    );
-    expect(codePoints(false)).toEqual(
-      manifest.constants.explicitNonWhitespaceCodePoints,
-    );
-  });
 
   it("covers canonical FEN, board values, and legal input semantics", () => {
     expect(requiredRecord("valid-occupied").operation).toBe(

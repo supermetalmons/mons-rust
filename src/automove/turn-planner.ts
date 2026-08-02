@@ -95,7 +95,7 @@ import {
   type TurnUtility,
 } from "./turn-types.js";
 
-export function cachedBestPlanIfLegal(
+function cachedBestPlanIfLegal(
   execution: AutomoveExecutionContext,
   game: MonsGame,
   key: TurnCacheKey,
@@ -115,7 +115,7 @@ export function cachedBestPlanIfLegal(
   return copyPlan(cached);
 }
 
-export function cachedStepIfLegal(
+function cachedStepIfLegal(
   execution: AutomoveExecutionContext,
   game: MonsGame,
   config: TurnEngineConfig,
@@ -209,7 +209,7 @@ export function turnEngineCandidatePlanLive(
     : result.plan;
 }
 
-export function allowedRankMap(
+function allowedRankMap(
   allowedFirstSteps: readonly (readonly Input[])[],
 ): ReadonlyMap<string, number> {
   const result = new Map<string, number>();
@@ -220,14 +220,14 @@ export function allowedRankMap(
   return result;
 }
 
-export type AllowedHeadSelectionMeta = {
+type AllowedHeadSelectionMeta = {
   readonly rank: number;
   readonly allowedLength: number;
   readonly firstStepOpponentImmediateLoss: boolean;
   readonly firstStepDrainerSafety: number;
 };
 
-export function allowedHeadSelectionMeta(
+function allowedHeadSelectionMeta(
   execution: AutomoveExecutionContext,
   root: MonsGame,
   plan: TurnPlan,
@@ -251,7 +251,7 @@ export function allowedHeadSelectionMeta(
   };
 }
 
-export function allowedHeadRankAdjustedEval(
+function allowedHeadRankAdjustedEval(
   utility: TurnUtility,
   meta: AllowedHeadSelectionMeta,
 ): number {
@@ -264,7 +264,7 @@ export function allowedHeadRankAdjustedEval(
   );
 }
 
-export function compareAllowedHeadPlans(
+function compareAllowedHeadPlans(
   left: TurnPlan,
   leftMeta: AllowedHeadSelectionMeta,
   right: TurnPlan,
@@ -292,7 +292,7 @@ export function compareAllowedHeadPlans(
   return order !== 0 ? order : compareNumber(rightMeta.rank, leftMeta.rank);
 }
 
-export function bestPlanFromAllowedHeads(
+function bestPlanFromAllowedHeads(
   execution: AutomoveExecutionContext,
   game: MonsGame,
   perspective: Color,
@@ -335,7 +335,7 @@ export function bestPlanFromAllowedHeads(
   return best?.plan;
 }
 
-export function buildBestPlanFromAllowedHeads(
+function buildBestPlanFromAllowedHeads(
   execution: AutomoveExecutionContext,
   game: MonsGame,
   perspective: Color,
@@ -470,7 +470,7 @@ export function turnEngineCommitPlan(
     registerPlanContinuations(execution, game, perspective, mode, plan, config);
 }
 
-export function registerPlanContinuations(
+function registerPlanContinuations(
   execution: AutomoveExecutionContext,
   game: MonsGame,
   perspective: Color,
@@ -536,7 +536,7 @@ export function turnEngineEvaluatePlanWithReplies(
   return execution.session.checkpoint() ? EMPTY_TURN_UTILITY : utility;
 }
 
-export function buildBestPlan(
+function buildBestPlan(
   execution: AutomoveExecutionContext,
   game: MonsGame,
   perspective: Color,
@@ -628,7 +628,7 @@ export function buildBestPlan(
     : { status: "ok", plan: best };
 }
 
-export function generatePlansForMode(
+function generatePlansForMode(
   execution: AutomoveExecutionContext,
   game: MonsGame,
   perspective: Color,
@@ -670,22 +670,22 @@ export function generatePlansForMode(
     : result;
 }
 
-export function bundleChunkCapForConfig(config: TurnEngineConfig): number {
+function bundleChunkCapForConfig(config: TurnEngineConfig): number {
   return Math.min(Math.max(config.stepCap, 1), 6);
 }
 
-export function bundlePlanCapForConfig(config: TurnEngineConfig): number {
+function bundlePlanCapForConfig(config: TurnEngineConfig): number {
   return Math.min(Math.max(config.stepCap, 1), 4);
 }
 
-export function mergePlanFamily(
+function mergePlanFamily(
   current: TurnPlanFamily,
   next: TurnPlanFamily,
 ): TurnPlanFamily {
   return familyRank(next) < familyRank(current) ? next : current;
 }
 
-export function macroFollowupFamilyAllowed(
+function macroFollowupFamilyAllowed(
   head: TurnPlanFamily,
   goal: TurnPlanFamily,
   candidate: TurnPlanFamily,
@@ -748,7 +748,7 @@ export function macroFollowupFamilyAllowed(
   }
 }
 
-export function macroFollowupFamilyBonus(
+function macroFollowupFamilyBonus(
   head: TurnPlanFamily,
   goal: TurnPlanFamily,
   candidate: TurnPlanFamily,
@@ -787,7 +787,7 @@ export function macroFollowupFamilyBonus(
   return bonus;
 }
 
-export function macroFollowupFamilies(
+function macroFollowupFamilies(
   head: TurnPlanFamily,
   goal: TurnPlanFamily,
 ): TurnPlanFamily[] {
@@ -796,7 +796,7 @@ export function macroFollowupFamilies(
   );
 }
 
-export function macroFollowupSeedCandidates(
+function macroFollowupSeedCandidates(
   execution: AutomoveExecutionContext,
   game: MonsGame,
   gameHash: Hash64,
@@ -841,7 +841,7 @@ export function macroFollowupSeedCandidates(
   );
 }
 
-export function progressStepGain(
+function progressStepGain(
   before: number | undefined,
   after: number | undefined,
 ): number {
@@ -849,7 +849,7 @@ export function progressStepGain(
   return Math.max((before ?? unknown) - (after ?? unknown), 0);
 }
 
-export function macroOpportunityDelta(
+function macroOpportunityDelta(
   execution: AutomoveExecutionContext,
   game: MonsGame,
   endGame: MonsGame,
@@ -896,7 +896,7 @@ export function macroOpportunityDelta(
   };
 }
 
-export function emptyOpportunityDelta(): OpportunityDelta {
+function emptyOpportunityDelta(): OpportunityDelta {
   return {
     sameTurnScoreWindowGain: 0,
     spiritGain: 0,
@@ -908,7 +908,7 @@ export function emptyOpportunityDelta(): OpportunityDelta {
   };
 }
 
-export function macroPriorityFromState(
+function macroPriorityFromState(
   utilityContext: TurnUtilityEvalContext,
   endGame: MonsGame,
   endHash: Hash64,
@@ -936,13 +936,11 @@ export function macroPriorityFromState(
   );
 }
 
-export function macroSignatureMix(hash: Hash64, value: Hash64): Hash64 {
+function macroSignatureMix(hash: Hash64, value: Hash64): Hash64 {
   return hash64RotateLeft(hash64Mul(hash64Xor(hash, value), FNV_PRIME), 11);
 }
 
-export function macroSignatureForActions(
-  actions: readonly TurnAction[],
-): Hash64 {
+function macroSignatureForActions(actions: readonly TurnAction[]): Hash64 {
   let hash = FNV_OFFSET_BASIS;
   for (const action of actions) {
     const [tag, first, second, third] = actionKeyTuple(action);
@@ -964,7 +962,7 @@ export function macroSignatureForActions(
   return hash;
 }
 
-export function macroPlanSignature(
+function macroPlanSignature(
   previous: Hash64,
   opportunity: MacroOpportunity,
 ): Hash64 {
@@ -974,7 +972,7 @@ export function macroPlanSignature(
   );
 }
 
-export function buildMacroFromHeadOpportunity(
+function buildMacroFromHeadOpportunity(
   execution: AutomoveExecutionContext,
   root: MonsGame,
   perspective: Color,
@@ -1209,7 +1207,7 @@ export function buildMacroFromHeadOpportunity(
   };
 }
 
-export function discoverMacroOpportunities(
+function discoverMacroOpportunities(
   execution: AutomoveExecutionContext,
   game: MonsGame,
   perspective: Color,
@@ -1275,7 +1273,7 @@ export function discoverMacroOpportunities(
     : macros.slice(0, Math.max(opportunityCap, 1));
 }
 
-export function macroNodeToPlan(
+function macroNodeToPlan(
   utilityContext: TurnUtilityEvalContext,
   node: MacroPlanNode,
 ): TurnPlan {
@@ -1295,7 +1293,7 @@ export function macroNodeToPlan(
   };
 }
 
-export function generateMacroPlans(
+function generateMacroPlans(
   execution: AutomoveExecutionContext,
   game: MonsGame,
   perspective: Color,
@@ -1502,7 +1500,7 @@ export function generateMacroPlans(
   return { status: "ok", plans };
 }
 
-export function generateTurnPlans(
+function generateTurnPlans(
   execution: AutomoveExecutionContext,
   game: MonsGame,
   perspective: Color,
@@ -1717,7 +1715,7 @@ function compareOrderedNodes(
     : compareChunks(left.node.compiledChunks, right.node.compiledChunks);
 }
 
-export function fallbackSingleActionPlan(
+function fallbackSingleActionPlan(
   execution: AutomoveExecutionContext,
   game: MonsGame,
   perspective: Color,
@@ -1783,7 +1781,7 @@ export function fallbackSingleActionPlan(
   return execution.session.checkpoint() ? undefined : best;
 }
 
-export function fallbackSingleActionPlanFromAllowedHeads(
+function fallbackSingleActionPlanFromAllowedHeads(
   execution: AutomoveExecutionContext,
   game: MonsGame,
   perspective: Color,
@@ -1875,11 +1873,11 @@ export function fallbackSingleActionPlanFromAllowedHeads(
   return execution.session.checkpoint() ? undefined : best?.plan;
 }
 
-export function replyShortlistLength(total: number, beam: number): number {
+function replyShortlistLength(total: number, beam: number): number {
   return Math.min(total, Math.min(Math.max(Math.max(beam, 0) * 2, 4), 8));
 }
 
-export function evaluatePlanWithReplies(
+function evaluatePlanWithReplies(
   execution: AutomoveExecutionContext,
   plan: TurnPlan,
   perspective: Color,

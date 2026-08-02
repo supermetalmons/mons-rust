@@ -33,11 +33,11 @@ import {
 
 export { spiritScoreChallengeOrder };
 
-export function closeSpiritGoalFamilyPriority(family: TurnPlanFamily): number {
+function closeSpiritGoalFamilyPriority(family: TurnPlanFamily): number {
   return TURN_PLAN_FAMILY_PRIORITY_ORDER.length - familyRank(family) - 1;
 }
 
-export function compareCloseSpiritGoalFamily(
+function compareCloseSpiritGoalFamily(
   candidate: TurnEngineRootProjection,
   incumbent: TurnEngineRootProjection,
 ): number {

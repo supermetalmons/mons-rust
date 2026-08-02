@@ -184,7 +184,7 @@ function turnOracleContextAfterCheckpoint(
   return built;
 }
 
-export function emptyOracleContext(): TurnOracleContext {
+function emptyOracleContext(): TurnOracleContext {
   return {
     opportunity: defaultOpportunityContext(),
     strategic: defaultColorSummary(),
@@ -221,7 +221,7 @@ export function activeTurnScoreWindow(
   );
 }
 
-export function winnerState(game: MonsGame, perspective: Color): number {
+function winnerState(game: MonsGame, perspective: Color): number {
   const winner = game.winnerColor();
   return winner === undefined ? 0 : winner === perspective ? 2 : -2;
 }
@@ -294,7 +294,7 @@ export function findAwakeDrainerLocation(
   return undefined;
 }
 
-export function ownDrainerCarriesSafeMana(
+function ownDrainerCarriesSafeMana(
   execution: AutomoveExecutionContext,
   board: Board,
   color: Color,
@@ -307,18 +307,6 @@ export function ownDrainerCarriesSafeMana(
     item?.kind === "mon-with-mana" &&
     manaEquals(item.mana, wanted) &&
     isDrainerExactlySafeNextTurnOnBoard(execution, board, color, at)
-  );
-}
-
-export function evaluateStateUtility(
-  context: TurnUtilityEvalContext,
-  game: MonsGame,
-): TurnUtility {
-  if (context.execution.session.checkpoint()) return EMPTY_TURN_UTILITY;
-  return evaluateStateUtilityAfterCheckpoint(
-    context,
-    game,
-    exactSearchStateHash(game),
   );
 }
 

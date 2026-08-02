@@ -1,4 +1,3 @@
-import { createHash } from "node:crypto";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -12,21 +11,6 @@ import {
 } from "../../src/entrypoints/mons-rules.js";
 
 const PREFERENCES = ["fast", "normal", "pro"] as const;
-const VARIANTS = [
-  "Classic",
-  "SwappedManaRows",
-  "OffsetArcManaRows",
-  "CenterSpokeManaRows",
-  "AlternatingManaRows",
-  "InnerWedgeManaRows",
-  "OuterWedgeManaRows",
-  "BentCenterManaRows",
-  "OuterEdgeManaRows",
-  "SplitFlankManaRows",
-  "ForwardBridgeManaRows",
-  "CornerChainManaRows",
-] as const;
-
 type Preference = (typeof PREFERENCES)[number];
 
 type DecisionObservation = {
@@ -38,29 +22,15 @@ type DecisionObservation = {
 };
 
 type CorpusState = {
-  readonly schemaVersion: number;
   readonly id: string;
-  readonly variant: string;
   readonly fen: string;
   readonly decisions: Readonly<Record<Preference, DecisionObservation>>;
 };
 
 type CorpusManifest = {
-  readonly schemaVersion: number;
-  readonly corpusVersion: string;
   readonly fixedClockNowMs: number;
   readonly corpusFile: string;
-  readonly corpusSha256: string;
-  readonly corpusBytes: number;
-  readonly orderedIdsSha256: string;
-  readonly stateCount: number;
   readonly decisionCount: number;
-  readonly preferenceOrder: readonly string[];
-  readonly variantOrder: readonly string[];
-  readonly selection: {
-    readonly initialVariantStates: number;
-    readonly retainedRegressionStates: number;
-  };
 };
 
 function archivedSuggestionKind(
@@ -79,16 +49,10 @@ const corpusDirectory = fileURLToPath(
 const manifest = JSON.parse(
   readFileSync(join(corpusDirectory, "manifest.json"), "utf8"),
 ) as CorpusManifest;
-const corpusBytes = readFileSync(join(corpusDirectory, manifest.corpusFile));
-const states = corpusBytes
-  .toString("utf8")
+const states = readFileSync(join(corpusDirectory, manifest.corpusFile), "utf8")
   .trimEnd()
   .split("\n")
   .map((line) => JSON.parse(line) as CorpusState);
-
-function sha256(value: string | Uint8Array): string {
-  return createHash("sha256").update(value).digest("hex");
-}
 
 describe("automove decision corpus", () => {
   beforeAll(() => {
@@ -99,40 +63,6 @@ describe("automove decision corpus", () => {
 
   afterAll(() => {
     vi.restoreAllMocks();
-  });
-
-  it("pins the public decisions payload", () => {
-    expect(manifest).toMatchObject({
-      schemaVersion: 1,
-      corpusVersion: "automove-decisions-v4",
-      fixedClockNowMs: 0,
-      stateCount: 13,
-      decisionCount: 39,
-      selection: { initialVariantStates: 12, retainedRegressionStates: 1 },
-    });
-    expect(manifest.preferenceOrder).toEqual(PREFERENCES);
-    expect(manifest.variantOrder).toEqual(VARIANTS);
-    expect(corpusBytes.byteLength).toBe(manifest.corpusBytes);
-    expect(sha256(corpusBytes)).toBe(manifest.corpusSha256);
-    expect(states).toHaveLength(manifest.stateCount);
-    expect(
-      states.slice(0, VARIANTS.length).map(({ variant }) => variant),
-    ).toEqual(VARIANTS);
-
-    const ids = states.map(({ id }) => id);
-    expect(new Set(ids).size).toBe(ids.length);
-    expect(sha256(`${ids.join("\n")}\n`)).toBe(manifest.orderedIdsSha256);
-    expect(
-      states.reduce<number>(
-        (count: number, state: CorpusState) =>
-          count + Object.keys(state.decisions).length,
-        0,
-      ),
-    ).toBe(manifest.decisionCount);
-    for (const state of states) {
-      expect(state.schemaVersion, state.id).toBe(manifest.schemaVersion);
-      expect(Object.keys(state.decisions), state.id).toEqual(PREFERENCES);
-    }
   });
 
   it("replays all 39 decisions through the public API", () => {

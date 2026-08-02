@@ -54,7 +54,7 @@ const SQ_REGULAR = 0;
 const SQ_CONSUMABLE_BASE = 1;
 export const SQ_SUPERMANA_BASE = 2;
 const SQ_MANA_BASE = 3;
-export const SQ_POOL = 5;
+const SQ_POOL = 5;
 export const SQ_MON_BASE = 7;
 
 export const SUPERMANA_BASE_INDEX = locationIndex(SUPERMANA_BASE);

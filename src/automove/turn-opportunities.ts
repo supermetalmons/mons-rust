@@ -72,9 +72,7 @@ import {
   type TurnOpportunity,
 } from "./turn-types.js";
 
-export function opportunityKindForFamily(
-  family: TurnPlanFamily,
-): OpportunityKind {
+function opportunityKindForFamily(family: TurnPlanFamily): OpportunityKind {
   switch (family) {
     case TurnPlanFamily.ImmediateScore:
       return OpportunityKind.ImmediateScore;
@@ -95,9 +93,7 @@ export function opportunityKindForFamily(
   }
 }
 
-export function opportunityBudgetForAction(
-  action: TurnAction,
-): OpportunityBudget {
+function opportunityBudgetForAction(action: TurnAction): OpportunityBudget {
   switch (action.kind) {
     case "walk":
     case "safety-retreat":
@@ -112,7 +108,7 @@ export function opportunityBudgetForAction(
   }
 }
 
-export function budgetAllowsOpportunity(
+function budgetAllowsOpportunity(
   available: ExactOpportunityBudget,
   required: OpportunityBudget,
 ): boolean {
@@ -123,7 +119,7 @@ export function budgetAllowsOpportunity(
   );
 }
 
-export function opportunityDeltaForSeed(
+function opportunityDeltaForSeed(
   seed: ActionSeed,
   context: ExactOpportunityContext,
 ): OpportunityDelta {
@@ -166,7 +162,7 @@ export function opportunityDeltaForSeed(
   };
 }
 
-export function turnOpportunityFromSeed(
+function turnOpportunityFromSeed(
   seed: ActionSeed,
   context: ExactOpportunityContext,
 ): TurnOpportunity {
@@ -226,7 +222,7 @@ export function opportunityScore(
   );
 }
 
-export function familyAllowed(
+function familyAllowed(
   allowedFamilies: readonly TurnPlanFamily[] | undefined,
   family: TurnPlanFamily,
 ): boolean {
@@ -483,10 +479,7 @@ export function generateActionSeeds(
   return result;
 }
 
-export function immediateScoreSeeds(
-  game: MonsGame,
-  perspective: Color,
-): ActionSeed[] {
+function immediateScoreSeeds(game: MonsGame, perspective: Color): ActionSeed[] {
   const result: ActionSeed[] = [];
   for (const [at, item] of game.board.entries()) {
     if (
@@ -518,7 +511,7 @@ export function immediateScoreSeeds(
   return result;
 }
 
-export function denyWindowSeeds(
+function denyWindowSeeds(
   execution: AutomoveExecutionContext,
   game: MonsGame,
   perspective: Color,
@@ -562,7 +555,7 @@ export function denyWindowSeeds(
   return result;
 }
 
-export function drainerKillSeeds(
+function drainerKillSeeds(
   execution: AutomoveExecutionContext,
   game: MonsGame,
   perspective: Color,
@@ -574,7 +567,7 @@ export function drainerKillSeeds(
     : attackFamilySeeds(game, perspective, TurnPlanFamily.DrainerKill, 9_000);
 }
 
-export function attackFamilySeeds(
+function attackFamilySeeds(
   game: MonsGame,
   perspective: Color,
   family: TurnPlanFamily,
@@ -644,7 +637,7 @@ export function attackFamilySeeds(
   return result;
 }
 
-export function safeSupermanaProgressSeeds(
+function safeSupermanaProgressSeeds(
   execution: AutomoveExecutionContext,
   game: MonsGame,
   perspective: Color,
@@ -659,7 +652,7 @@ export function safeSupermanaProgressSeeds(
   );
 }
 
-export function safeOpponentManaProgressSeeds(
+function safeOpponentManaProgressSeeds(
   execution: AutomoveExecutionContext,
   game: MonsGame,
   perspective: Color,
@@ -674,13 +667,13 @@ export function safeOpponentManaProgressSeeds(
   );
 }
 
-export type SafeProgressExactSnapshot = {
+type SafeProgressExactSnapshot = {
   readonly progressSteps: number | undefined;
   readonly scorePathBestSteps: number | undefined;
   readonly sameTurnScoreWindowValue: number;
 };
 
-export function safeProgressExactSnapshot(
+function safeProgressExactSnapshot(
   execution: AutomoveExecutionContext,
   game: MonsGame,
   perspective: Color,
@@ -732,7 +725,7 @@ export function safeProgressExactSnapshot(
   };
 }
 
-export function safeProgressSeeds(
+function safeProgressSeeds(
   execution: AutomoveExecutionContext,
   game: MonsGame,
   perspective: Color,
@@ -857,7 +850,7 @@ export function safeProgressSeeds(
   return result;
 }
 
-export function safetyRecoverySeeds(
+function safetyRecoverySeeds(
   execution: AutomoveExecutionContext,
   game: MonsGame,
   perspective: Color,
@@ -965,7 +958,7 @@ export function fallbackWalkSeeds(
   return result;
 }
 
-export function bestFollowUpSafetyRecoveryPriority(
+function bestFollowUpSafetyRecoveryPriority(
   execution: AutomoveExecutionContext,
   game: MonsGame,
   perspective: Color,
@@ -998,7 +991,7 @@ export function bestFollowUpSafetyRecoveryPriority(
   return best;
 }
 
-export function riskyRecoverySetupSeeds(
+function riskyRecoverySetupSeeds(
   execution: AutomoveExecutionContext,
   game: MonsGame,
   perspective: Color,
@@ -1057,7 +1050,7 @@ export function riskyRecoverySetupSeeds(
   return result;
 }
 
-export function tacticalProjectionFlags(
+function tacticalProjectionFlags(
   needSupermanaProgress: boolean,
   needOpponentManaProgress: boolean,
   needSpiritScore: boolean,
@@ -1075,14 +1068,14 @@ export function tacticalProjectionFlags(
   return flags;
 }
 
-export type OracleWalkProjectionProfile =
+type OracleWalkProjectionProfile =
   | "safe-progress-only"
   | "opponent-progress-only"
   | "drainer-opportunity"
   | "spirit-score-only"
   | "spirit-opportunity";
 
-export type OracleWalkActorCapabilities = {
+type OracleWalkActorCapabilities = {
   readonly canEmitSupermana: boolean;
   readonly canEmitOpponentMana: boolean;
   readonly canEmitSafety: boolean;
@@ -1092,7 +1085,7 @@ export type OracleWalkActorCapabilities = {
   readonly needsScoreWindow: boolean;
 };
 
-export function tacticalProjectionProfileFlags(
+function tacticalProjectionProfileFlags(
   profile: OracleWalkProjectionProfile,
 ): number {
   switch (profile) {
@@ -1109,7 +1102,7 @@ export function tacticalProjectionProfileFlags(
   }
 }
 
-export function oracleWalkActorCapabilities(
+function oracleWalkActorCapabilities(
   monKind: MonKind,
   allowSupermana: boolean,
   allowOpponentMana: boolean,
@@ -1149,7 +1142,7 @@ export function oracleWalkActorCapabilities(
   };
 }
 
-export function strategicSpiritSignalWithSearchHash(
+function strategicSpiritSignalWithSearchHash(
   execution: AutomoveExecutionContext,
   game: MonsGame,
   perspective: Color,
@@ -1163,7 +1156,7 @@ export function strategicSpiritSignalWithSearchHash(
   return [spirit.nextTurnSetupGain, spirit.utility];
 }
 
-export function oracleWalkSeeds(
+function oracleWalkSeeds(
   execution: AutomoveExecutionContext,
   game: MonsGame,
   perspective: Color,
@@ -1430,7 +1423,7 @@ export function oracleWalkSeeds(
   return result;
 }
 
-export function progressPriorityBonus(
+function progressPriorityBonus(
   before: number | undefined,
   after: number | undefined,
 ): number {
@@ -1439,7 +1432,7 @@ export function progressPriorityBonus(
   return afterSteps >= beforeSteps ? 0 : (beforeSteps - afterSteps) * 220;
 }
 
-export function spiritImpactSeeds(
+function spiritImpactSeeds(
   execution: AutomoveExecutionContext,
   game: MonsGame,
   perspective: Color,
@@ -1567,10 +1560,7 @@ export function spiritImpactSeeds(
   return result.slice(0, 12);
 }
 
-export function manaTempoSeeds(
-  game: MonsGame,
-  perspective: Color,
-): ActionSeed[] {
+function manaTempoSeeds(game: MonsGame, perspective: Color): ActionSeed[] {
   if (
     !game.playerCanMoveMana() ||
     findAwakeDrainerLocation(game.board, perspective) !== undefined
