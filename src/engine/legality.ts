@@ -20,9 +20,16 @@ export type RulesStateView = {
   readonly turnNumber: number;
 };
 
+export function winnerForScores(
+  whiteScore: number,
+  blackScore: number,
+): ColorValue | undefined {
+  if (whiteScore >= TARGET_SCORE) return Color.White;
+  return blackScore >= TARGET_SCORE ? Color.Black : undefined;
+}
+
 export function winnerForState(state: RulesStateView): ColorValue | undefined {
-  if (state.whiteScore >= TARGET_SCORE) return Color.White;
-  return state.blackScore >= TARGET_SCORE ? Color.Black : undefined;
+  return winnerForScores(state.whiteScore, state.blackScore);
 }
 
 export function scoreForColor(
@@ -42,28 +49,110 @@ export function currentPlayerPotions(state: RulesStateView): number {
     : state.blackPotionsCount;
 }
 
+export function canMoveMonForCounts(monsMovesCount: number): boolean {
+  return monsMovesCount < MONS_MOVES_PER_TURN;
+}
+
 export function canPlayerMoveMon(state: RulesStateView): boolean {
-  return state.monsMovesCount < MONS_MOVES_PER_TURN;
+  return canMoveMonForCounts(state.monsMovesCount);
+}
+
+export function canMoveManaForCounts(
+  firstTurn: boolean,
+  manaMovesCount: number,
+): boolean {
+  return !firstTurn && manaMovesCount < MANA_MOVES_PER_TURN;
 }
 
 export function canPlayerMoveMana(state: RulesStateView): boolean {
-  return !isFirstTurnState(state) && state.manaMovesCount < MANA_MOVES_PER_TURN;
+  return canMoveManaForCounts(isFirstTurnState(state), state.manaMovesCount);
 }
 
-export function canPlayerUseAction(state: RulesStateView): boolean {
+export function canUseActionForCounts(
+  firstTurn: boolean,
+  actionsUsedCount: number,
+  currentPotionsCount: number,
+): boolean {
   return (
-    !isFirstTurnState(state) &&
-    (currentPlayerPotions(state) > 0 ||
-      state.actionsUsedCount < ACTIONS_PER_TURN)
+    !firstTurn &&
+    (currentPotionsCount > 0 || actionsUsedCount < ACTIONS_PER_TURN)
   );
 }
 
-export function shouldAdvanceTurn(state: RulesStateView): boolean {
+export function canPlayerUseAction(state: RulesStateView): boolean {
+  return canUseActionForCounts(
+    isFirstTurnState(state),
+    state.actionsUsedCount,
+    currentPlayerPotions(state),
+  );
+}
+
+export function shouldSuggestRegularManaStartsFromScalars(
+  firstTurn: boolean,
+  monsMovesCount: number,
+  manaMovesCount: number,
+  actionsUsedCount: number,
+  currentPotionsCount: number,
+  hasSuggestedMonStart: boolean,
+  includeManaStartsWithPotionAction: boolean,
+): boolean {
+  if (!canMoveManaForCounts(firstTurn, manaMovesCount)) return false;
+  const canMoveMon = canMoveMonForCounts(monsMovesCount);
   return (
-    (isFirstTurnState(state) && !canPlayerMoveMon(state)) ||
-    (!isFirstTurnState(state) && !canPlayerMoveMana(state)) ||
-    (!isFirstTurnState(state) &&
-      !canPlayerMoveMon(state) &&
-      state.board.findMana(state.activeColor) === undefined)
+    (!canMoveMon &&
+      !canUseActionForCounts(
+        firstTurn,
+        actionsUsedCount,
+        currentPotionsCount,
+      )) ||
+    !hasSuggestedMonStart ||
+    (includeManaStartsWithPotionAction &&
+      !canMoveMon &&
+      actionsUsedCount >= ACTIONS_PER_TURN &&
+      currentPotionsCount > 0)
+  );
+}
+
+export function shouldSuggestRegularManaStarts(
+  state: RulesStateView,
+  hasSuggestedMonStart: boolean,
+  includeManaStartsWithPotionAction: boolean,
+): boolean {
+  return shouldSuggestRegularManaStartsFromScalars(
+    isFirstTurnState(state),
+    state.monsMovesCount,
+    state.manaMovesCount,
+    state.actionsUsedCount,
+    currentPlayerPotions(state),
+    hasSuggestedMonStart,
+    includeManaStartsWithPotionAction,
+  );
+}
+
+export function shouldAdvanceTurnForCounts(
+  firstTurn: boolean,
+  monsMovesCount: number,
+  manaMovesCount: number,
+  hasFreeRegularMana: boolean,
+): boolean {
+  if (firstTurn) return !canMoveMonForCounts(monsMovesCount);
+  if (!canMoveManaForCounts(firstTurn, manaMovesCount)) return true;
+  return !canMoveMonForCounts(monsMovesCount) && !hasFreeRegularMana;
+}
+
+export function shouldAdvanceTurn(state: RulesStateView): boolean {
+  const firstTurn = isFirstTurnState(state);
+  const needsFreeManaCheck =
+    !firstTurn &&
+    canMoveManaForCounts(firstTurn, state.manaMovesCount) &&
+    !canMoveMonForCounts(state.monsMovesCount);
+  const hasFreeRegularMana =
+    !needsFreeManaCheck ||
+    state.board.findMana(state.activeColor) !== undefined;
+  return shouldAdvanceTurnForCounts(
+    firstTurn,
+    state.monsMovesCount,
+    state.manaMovesCount,
+    hasFreeRegularMana,
   );
 }

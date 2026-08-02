@@ -182,6 +182,44 @@ describe("cooperative automove deadlines", () => {
     expect(session.takePreviousTimeout()).toBe(false);
   });
 
+  it("does not record an owned unrecorded deadline timeout", () => {
+    const clock = mockClock();
+    const result = session.withUnrecordedDeadlineIfAbsent(10, () => {
+      clock.set(10);
+      expect(session.checkpoint()).toBe(true);
+      expect(session.cancelled).toBe(true);
+      return 7;
+    });
+
+    expect(result).toBe(7);
+    expect(session.cancelled).toBe(false);
+    expect(session.takePreviousTimeout()).toBe(false);
+  });
+
+  it("preserves timeout recording for an enclosing deadline", () => {
+    const clock = mockClock();
+    session.withDeadlineIfAbsent(10, () => {
+      session.withUnrecordedDeadlineIfAbsent(100, () => {
+        clock.set(10);
+        expect(session.checkpoint()).toBe(true);
+      });
+    });
+
+    expect(session.takePreviousTimeout()).toBe(true);
+  });
+
+  it("upgrades an unrecorded deadline when recorded work is nested", () => {
+    const clock = mockClock();
+    session.withUnrecordedDeadlineIfAbsent(10, () => {
+      session.withDeadlineIfAbsent(100, () => {
+        clock.set(10);
+        expect(session.checkpoint()).toBe(true);
+      });
+    });
+
+    expect(session.takePreviousTimeout()).toBe(true);
+  });
+
   it("restores session state when an operation throws", () => {
     mockClock();
     expect(() =>
@@ -215,6 +253,9 @@ describe("cooperative automove deadlines", () => {
     for (const invalid of [-1, Number.NaN, Number.POSITIVE_INFINITY]) {
       expect(() =>
         session.withDeadlineIfAbsent(invalid, () => undefined),
+      ).toThrow("deadline budget must be a finite nonnegative number");
+      expect(() =>
+        session.withUnrecordedDeadlineIfAbsent(invalid, () => undefined),
       ).toThrow("deadline budget must be a finite nonnegative number");
       expect(() =>
         session.withCooperativeSubdeadline(invalid, () => undefined),

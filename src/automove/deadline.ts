@@ -22,6 +22,7 @@ type ActiveDeadline = {
   endMs: number;
   timedOut: boolean;
   nesting: number;
+  recordTimeout: boolean;
 };
 
 function systemMonotonicClock(): number {
@@ -55,13 +56,23 @@ export class SearchSession implements SearchControl {
     return this.#caches;
   }
 
-  public withDeadlineIfAbsent<T>(budgetMs: number, operation: () => T): T {
-    this.#enterDeadline(validateDuration(budgetMs, "deadline budget"));
-    try {
-      return operation();
-    } finally {
-      this.#exitDeadline();
+  public now(): number {
+    const currentTime = this.#clock();
+    if (!Number.isFinite(currentTime)) {
+      throw new RangeError("monotonic clock must return a finite number");
     }
+    return currentTime;
+  }
+
+  public withDeadlineIfAbsent<T>(budgetMs: number, operation: () => T): T {
+    return this.#runWithDeadlineIfAbsent(budgetMs, true, operation);
+  }
+
+  public withUnrecordedDeadlineIfAbsent<T>(
+    budgetMs: number,
+    operation: () => T,
+  ): T {
+    return this.#runWithDeadlineIfAbsent(budgetMs, false, operation);
   }
 
   public withCooperativeSubdeadline<T>(
@@ -83,7 +94,7 @@ export class SearchSession implements SearchControl {
     const deadline = this.#activeDeadline;
     if (deadline === undefined) return false;
     if (deadline.timedOut) return true;
-    if (this.#now() >= deadline.endMs) {
+    if (this.now() >= deadline.endMs) {
       deadline.timedOut = true;
       return true;
     }
@@ -95,7 +106,7 @@ export class SearchSession implements SearchControl {
     const deadline = this.#activeDeadline;
     if (deadline === undefined) return false;
     if (deadline.timedOut) return true;
-    if (this.#now() + validatedReserve >= deadline.endMs) {
+    if (this.now() + validatedReserve >= deadline.endMs) {
       deadline.timedOut = true;
       return true;
     }
@@ -117,15 +128,33 @@ export class SearchSession implements SearchControl {
     return result;
   }
 
-  #enterDeadline(budgetMs: number): void {
+  #runWithDeadlineIfAbsent<T>(
+    budgetMs: number,
+    recordTimeout: boolean,
+    operation: () => T,
+  ): T {
+    this.#enterDeadline(
+      validateDuration(budgetMs, "deadline budget"),
+      recordTimeout,
+    );
+    try {
+      return operation();
+    } finally {
+      this.#exitDeadline();
+    }
+  }
+
+  #enterDeadline(budgetMs: number, recordTimeout: boolean): void {
     if (this.#activeDeadline === undefined) {
       this.#activeDeadline = {
-        endMs: this.#now() + budgetMs,
+        endMs: this.now() + budgetMs,
         timedOut: false,
         nesting: 1,
+        recordTimeout,
       };
       return;
     }
+    this.#activeDeadline.recordTimeout ||= recordTimeout;
     this.#activeDeadline.nesting = Math.min(
       Number.MAX_SAFE_INTEGER,
       this.#activeDeadline.nesting + 1,
@@ -136,7 +165,8 @@ export class SearchSession implements SearchControl {
     const deadline = this.#activeDeadline;
     if (deadline === undefined) return;
     if (deadline.nesting <= 1) {
-      this.#previousSelectionTimedOut ||= deadline.timedOut;
+      this.#previousSelectionTimedOut ||=
+        deadline.timedOut && deadline.recordTimeout;
       this.#activeDeadline = undefined;
     } else {
       deadline.nesting -= 1;
@@ -157,11 +187,13 @@ export class SearchSession implements SearchControl {
   }
 
   #restoreOuterDeadline(outer: ActiveDeadline): boolean {
-    const currentTime = this.#now();
+    const currentTime = this.now();
+    const activeDeadline = this.#activeDeadline;
     const childTimedOut =
-      this.#activeDeadline === undefined ||
-      this.#activeDeadline.timedOut ||
-      currentTime >= this.#activeDeadline.endMs;
+      activeDeadline === undefined ||
+      activeDeadline.timedOut ||
+      currentTime >= activeDeadline.endMs;
+    outer.recordTimeout ||= activeDeadline?.recordTimeout ?? false;
     if (currentTime >= outer.endMs) outer.timedOut = true;
     this.#activeDeadline = outer;
     return childTimedOut;
@@ -175,7 +207,7 @@ export class SearchSession implements SearchControl {
     if (this.checkpoint()) return undefined;
 
     const outer = { ...outerDeadline };
-    outerDeadline.endMs = Math.min(outerDeadline.endMs, this.#now() + budgetMs);
+    outerDeadline.endMs = Math.min(outerDeadline.endMs, this.now() + budgetMs);
     if (this.checkpoint()) {
       this.#restoreOuterDeadline(outer);
       return undefined;
@@ -190,13 +222,5 @@ export class SearchSession implements SearchControl {
     } finally {
       if (!restored) this.#restoreOuterDeadline(outer);
     }
-  }
-
-  #now(): number {
-    const currentTime = this.#clock();
-    if (!Number.isFinite(currentTime)) {
-      throw new RangeError("monotonic clock must return a finite number");
-    }
-    return currentTime;
   }
 }

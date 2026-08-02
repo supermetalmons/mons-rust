@@ -62,6 +62,7 @@ import {
   canPlayerUseAction,
   currentPlayerPotions,
   isFirstTurnState,
+  shouldSuggestRegularManaStarts,
   winnerForState,
 } from "./legality.js";
 
@@ -625,14 +626,11 @@ export class MonsGame {
       }
     }
 
-    const shouldAddRegularManaStarts =
-      this.playerCanMoveMana() &&
-      ((!this.playerCanMoveMon() && !this.playerCanUseAction()) ||
-        suggestedLocations.length === 0 ||
-        (suggestedStartOptions.includeManaStartsWithPotionAction &&
-          !this.playerCanMoveMon() &&
-          this.actionsUsedCount >= ACTIONS_PER_TURN &&
-          this.playerPotionsCount() > 0));
+    const shouldAddRegularManaStarts = shouldSuggestRegularManaStarts(
+      this,
+      suggestedLocations.length !== 0,
+      suggestedStartOptions.includeManaStartsWithPotionAction,
+    );
 
     if (shouldAddRegularManaStarts) {
       for (const at of this.board.allFreeRegularManaLocations(

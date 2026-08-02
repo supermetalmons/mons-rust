@@ -29,11 +29,14 @@ function suggestStrategicMove(
   preference: SmartAutomovePreference,
 ): AutomoveSuggestion {
   const sourceFen = game.fen();
-  const base = automoveConfigForGame(game, preference);
   const selected =
     preference === "pro"
-      ? selectProductionInputsWithDeadline(execution, game, base)
-      : selectStrategicSearchInputsWithDeadline(execution, game, base);
+      ? selectProductionInputsWithDeadline(execution, game)
+      : selectStrategicSearchInputsWithDeadline(
+          execution,
+          game,
+          automoveConfigForGame(game, preference),
+        );
   const inputs: readonly Input[] =
     selected.length === 0 ? deterministicLegalFallbackInputs(game) : selected;
   let applied = applyInputsForSearchWithEvents(game, inputs);

@@ -30,9 +30,15 @@ if (result.kind === "complete") {
   console.log(result.events);
 }
 
-const suggestion = game.suggestMove(AutomovePreference.Normal);
+const suggestion = game.suggestMove(AutomovePreference.Pro);
 console.log(suggestion?.inputFen);
 ```
+
+`AutomovePreference.Pro` uses the packed Pro search engine pinned by the v4
+decision corpus. When a position cannot be represented safely, Pro attempts
+canonical selection within the same shared deadline. It retains a legal
+timeout result while canonical selection runs, starting with a packed move
+when available or a deterministic legal fallback otherwise.
 
 FEN helpers are available when a wire-format boundary is more convenient:
 

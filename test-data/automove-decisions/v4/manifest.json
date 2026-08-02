@@ -1,0 +1,35 @@
+{
+  "schemaVersion": 1,
+  "corpusVersion": "automove-decisions-v4",
+  "description": "Deterministic public suggestMove decisions after full-depth LMR verification and exact frozen-clock work limits.",
+  "fixedClockNowMs": 0,
+  "corpusFile": "decisions.jsonl",
+  "corpusSha256": "96bc554ccd66d398ee79f031383a9dfadc96924df89c94a770714351fb22d02d",
+  "corpusBytes": 21921,
+  "orderedIdsSha256": "3c3e6062268009985d9c947fb05cea4586af8b81909a68025dd364ef15564ad6",
+  "stateCount": 13,
+  "decisionCount": 39,
+  "preferenceOrder": [
+    "fast",
+    "normal",
+    "pro"
+  ],
+  "variantOrder": [
+    "Classic",
+    "SwappedManaRows",
+    "OffsetArcManaRows",
+    "CenterSpokeManaRows",
+    "AlternatingManaRows",
+    "InnerWedgeManaRows",
+    "OuterWedgeManaRows",
+    "BentCenterManaRows",
+    "OuterEdgeManaRows",
+    "SplitFlankManaRows",
+    "ForwardBridgeManaRows",
+    "CornerChainManaRows"
+  ],
+  "selection": {
+    "initialVariantStates": 12,
+    "retainedRegressionStates": 1
+  }
+}

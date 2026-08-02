@@ -17,6 +17,12 @@ const protectedFiles = Object.freeze({
     "f6e52b3e4cf112e6e36f36776e7d587f491b46d169ff0df9fa1070651a04e324",
   "test-data/automove-decisions/v1/manifest.json":
     "70f9aae306523880b82874543517bc407b0897d16f344385da8ba4d31ccfaade",
+  "test-data/automove-decisions/v4/README.md":
+    "5fbd0d59891e3bd0823b60c30381fcb388c056f5e4351ce7f85c447b5ebc8f68",
+  "test-data/automove-decisions/v4/decisions.jsonl":
+    "96bc554ccd66d398ee79f031383a9dfadc96924df89c94a770714351fb22d02d",
+  "test-data/automove-decisions/v4/manifest.json":
+    "b9b9c74dfa1054265d9ae3865ac0cc7ba25ef633613f1898b51f237c5a6b717d",
   "test-data/compatibility-edge-cases/v1/coordinate-cases.jsonl":
     "bc5f2b96f4755cd3c4e2d45f8b5b1753d56c27a7947d572c6956db3e85ddad66",
   "test-data/compatibility-edge-cases/v1/fen-cases.jsonl":
@@ -35,6 +41,7 @@ const protectedFiles = Object.freeze({
 
 const protectedDirectories = Object.freeze([
   "test-data/automove-decisions/v1",
+  "test-data/automove-decisions/v4",
   "test-data/compatibility-edge-cases/v1",
   "test-data/complete-games/v1",
 ]);

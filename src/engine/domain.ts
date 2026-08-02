@@ -242,11 +242,18 @@ export function manaEquals(left: Mana, right: Mana): boolean {
   return right.kind === "regular" && left.color === right.color;
 }
 
+export function manaScoreForOwnership(
+  isSupermana: boolean,
+  ownedByPlayer: boolean,
+): number {
+  return isSupermana || !ownedByPlayer ? 2 : 1;
+}
+
 export function manaScore(mana: Mana, player: Color): number {
-  if (mana.kind === "supermana") {
-    return 2;
-  }
-  return mana.color === player ? 1 : 2;
+  return manaScoreForOwnership(
+    mana.kind === "supermana",
+    mana.kind === "regular" && mana.color === player,
+  );
 }
 
 export function monItem(mon: Mon): MonItem {

@@ -168,20 +168,23 @@ describe("production automove runtime characterization", () => {
   });
 
   it("selects the same strategic move with cold and warm engine caches", () => {
-    const options = {
-      clock: () => 0,
-      randomSource: { nextUint32: () => 0 },
-    } as const;
+    const newEngine = (): AutomoveEngine => {
+      let now = 0;
+      return new AutomoveEngine({
+        clock: () => now++,
+        randomSource: { nextUint32: () => 0 },
+      });
+    };
     for (const preference of ["normal", "pro"] as const) {
       const game = new MonsGame(true, GameVariant.Classic);
-      const warmEngine = new AutomoveEngine(options);
+      const warmEngine = newEngine();
       const first = warmEngine.run((execution) =>
         suggestMove(execution, game, preference),
       );
       const warm = warmEngine.run((execution) =>
         suggestMove(execution, game, preference),
       );
-      const cold = new AutomoveEngine(options).run((execution) =>
+      const cold = newEngine().run((execution) =>
         suggestMove(execution, game, preference),
       );
 

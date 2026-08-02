@@ -40,7 +40,7 @@
     "format:check": "prettier --check .",
     "lint": "eslint .",
     "publish": "./scripts/publish.sh",
-    "test": "vitest run",
+    "test": "vitest run --dir tests",
     "test:complete-games": "node ./scripts/run-complete-games.mjs",
     "typecheck": "tsc -p tsconfig.json --noEmit"
   },

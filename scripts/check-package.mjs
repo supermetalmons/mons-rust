@@ -207,6 +207,7 @@ try {
   const runtimeSource = `
     import assert from "node:assert/strict";
     import {
+      AutomovePreference,
       Color,
       Game,
       GameVariant,
@@ -234,6 +235,13 @@ try {
       }),
       { kind: "ongoing" },
     );
+
+    const proGame = new Game({ variant: GameVariant.Classic });
+    const proSourceFen = proGame.toFen();
+    const proSuggestion = proGame.suggestMove(AutomovePreference.Pro);
+    assert(proSuggestion !== undefined, "Pro produced no opening move");
+    assert.equal(proGame.preview(proSuggestion.inputs).kind, "complete");
+    assert.equal(proGame.toFen(), proSourceFen, "Pro mutated the source game");
   `;
   fs.writeFileSync(path.join(consumerDirectory, "runtime.mjs"), runtimeSource);
   run(process.execPath, ["runtime.mjs"], { cwd: consumerDirectory });
@@ -267,7 +275,7 @@ try {
         black: { fen: game.toFen(), moves: [] },
       };
       resolveMatch(submission);
-      game.suggestMove(AutomovePreference.Fast);
+      game.suggestMove(AutomovePreference.Pro);
       game.canTakeback(Color.White);
       void color;
       void result;
@@ -329,9 +337,14 @@ try {
         GameVariant,
       } from ${JSON.stringify(packageName)};
       const game = new Game({ variant: GameVariant.Classic });
-      document.body.dataset["openingFen"] = game.toFen();
+      const openingFen = game.toFen();
+      const suggestion = game.suggestMove(AutomovePreference.Pro);
+      document.body.dataset["openingFen"] = openingFen;
       document.body.dataset["suggestion"] =
-        game.suggestMove(AutomovePreference.Random)?.inputFen ?? "";
+        suggestion?.inputFen ?? "";
+      document.body.dataset["previewKind"] =
+        suggestion === undefined ? "" : game.preview(suggestion.inputs).kind;
+      document.body.dataset["sourceFenAfter"] = game.toFen();
     `,
   );
   fs.writeFileSync(
@@ -344,10 +357,14 @@ try {
       } from ${JSON.stringify(packageName)};
       self.onmessage = () => {
         const game = new Game({ variant: GameVariant.Classic });
+        const openingFen = game.toFen();
+        const suggestion = game.suggestMove(AutomovePreference.Pro);
         postMessage({
-          fen: game.toFen(),
-          suggestion:
-            game.suggestMove(AutomovePreference.Random)?.inputFen ?? "",
+          openingFen,
+          previewKind:
+            suggestion === undefined ? "" : game.preview(suggestion.inputs).kind,
+          sourceFenAfter: game.toFen(),
+          suggestion: suggestion?.inputFen ?? "",
         });
       };
     `,
@@ -388,10 +405,20 @@ try {
     /^0 0 w /u,
     "browser bundle did not initialize a game",
   );
-  assert.notEqual(
+  assert.equal(
     browserDataset.suggestion,
-    "",
-    "browser bundle did not execute random automove",
+    "l10,5;l9,4",
+    "browser Pro suggestion diverged from the v4 opening decision",
+  );
+  assert.equal(
+    browserDataset.previewKind,
+    "complete",
+    "browser Pro suggestion was not applicable",
+  );
+  assert.equal(
+    browserDataset.sourceFenAfter,
+    browserDataset.openingFen,
+    "browser Pro mutated the source game",
   );
 
   const workerScope = {};
@@ -411,14 +438,24 @@ try {
   );
   workerScope.onmessage();
   assert.match(
-    workerMessage?.fen ?? "",
+    workerMessage?.openingFen ?? "",
     /^0 0 w /u,
     "worker bundle did not initialize a game",
   );
-  assert.notEqual(
+  assert.equal(
     workerMessage?.suggestion,
-    "",
-    "worker bundle did not execute random automove",
+    "l10,5;l9,4",
+    "worker Pro suggestion diverged from the v4 opening decision",
+  );
+  assert.equal(
+    workerMessage?.previewKind,
+    "complete",
+    "worker Pro suggestion was not applicable",
+  );
+  assert.equal(
+    workerMessage?.sourceFenAfter,
+    workerMessage?.openingFen,
+    "worker Pro mutated the source game",
   );
 
   console.log(

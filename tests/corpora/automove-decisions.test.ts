@@ -55,13 +55,6 @@ type CorpusManifest = {
   readonly orderedIdsSha256: string;
   readonly stateCount: number;
   readonly decisionCount: number;
-  readonly internalObservations: {
-    readonly file: string;
-    readonly sha256: string;
-    readonly bytes: number;
-    readonly lineCount: number;
-    readonly archivalOnly: boolean;
-  };
   readonly preferenceOrder: readonly string[];
   readonly variantOrder: readonly string[];
   readonly selection: {
@@ -81,7 +74,7 @@ function archivedPlayResultKind(result: PlayResult): number {
 }
 
 const corpusDirectory = fileURLToPath(
-  new URL("../../test-data/automove-decisions/v1/", import.meta.url),
+  new URL("../../test-data/automove-decisions/v4/", import.meta.url),
 );
 const manifest = JSON.parse(
   readFileSync(join(corpusDirectory, "manifest.json"), "utf8"),
@@ -92,9 +85,6 @@ const states = corpusBytes
   .trimEnd()
   .split("\n")
   .map((line) => JSON.parse(line) as CorpusState);
-const internalObservationBytes = readFileSync(
-  join(corpusDirectory, manifest.internalObservations.file),
-);
 
 function sha256(value: string | Uint8Array): string {
   return createHash("sha256").update(value).digest("hex");
@@ -111,10 +101,10 @@ describe("automove decision corpus", () => {
     vi.restoreAllMocks();
   });
 
-  it("pins the public decisions and archived observation payload", () => {
+  it("pins the public decisions payload", () => {
     expect(manifest).toMatchObject({
       schemaVersion: 1,
-      corpusVersion: "automove-decisions-v1",
+      corpusVersion: "automove-decisions-v4",
       fixedClockNowMs: 0,
       stateCount: 13,
       decisionCount: 39,
@@ -143,17 +133,6 @@ describe("automove decision corpus", () => {
       expect(state.schemaVersion, state.id).toBe(manifest.schemaVersion);
       expect(Object.keys(state.decisions), state.id).toEqual(PREFERENCES);
     }
-
-    expect(manifest.internalObservations.archivalOnly).toBe(true);
-    expect(internalObservationBytes.byteLength).toBe(
-      manifest.internalObservations.bytes,
-    );
-    expect(sha256(internalObservationBytes)).toBe(
-      manifest.internalObservations.sha256,
-    );
-    expect(
-      internalObservationBytes.toString("utf8").trimEnd().split("\n"),
-    ).toHaveLength(manifest.internalObservations.lineCount);
   });
 
   it("replays all 39 decisions through the public API", () => {
@@ -175,6 +154,16 @@ describe("automove decision corpus", () => {
         expect(suggestion?.inputFen, `${state.id} ${preference}: input`).toBe(
           expected.inputFen,
         );
+        if (suggestion !== undefined) {
+          expect(
+            game.preview(suggestion.inputs),
+            `${state.id} ${preference}: suggestion preview`,
+          ).toEqual({
+            kind: "complete",
+            inputFen: suggestion.inputFen,
+            events: suggestion.events,
+          });
+        }
         expect(game.toFen(), `${state.id} ${preference}: source mutation`).toBe(
           before,
         );
