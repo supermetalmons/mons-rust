@@ -10,24 +10,110 @@ import {
 } from "../engine/domain.js";
 import { MonsGame } from "../engine/game.js";
 import { locationIndex } from "../engine/geometry.js";
-import {
-  hash64,
-  type Hash64,
-  hash64Add,
-  hash64FromNonnegativeInteger,
-  hash64FromLowWord,
-  hash64Mul,
-  hash64RotateLeft,
-  hash64ShiftRight,
-  hash64Xor,
-} from "./hash64.js";
+import { type Hash64 } from "./hash64.js";
 
-const SEARCH_SEED = hash64(0x6a09_e667, 0xf3bc_c909);
-const GOLDEN_ODD = hash64(0x9e37_79b1, 0x85eb_ca87);
-const MIX_ODD = hash64(0x94d0_49bb, 0x1331_11eb);
-const SPLITMIX_INCREMENT = hash64(0x9e37_79b9, 0x7f4a_7c15);
-const SPLITMIX_FIRST = hash64(0xbf58_476d, 0x1ce4_e5b9);
-const SPLITMIX_SECOND = hash64(0x94d0_49bb, 0x1331_11eb);
+const SEARCH_SEED_HI = 0x6a09_e667;
+const SEARCH_SEED_LO = 0xf3bc_c909;
+const GOLDEN_ODD_HI = 0x9e37_79b1;
+const GOLDEN_ODD_LO = 0x85eb_ca87;
+const MIX_ODD_HI = 0x94d0_49bb;
+const MIX_ODD_LO = 0x1331_11eb;
+const SPLITMIX_INCREMENT_HI = 0x9e37_79b9;
+const SPLITMIX_INCREMENT_LO = 0x7f4a_7c15;
+const SPLITMIX_FIRST_HI = 0xbf58_476d;
+const SPLITMIX_FIRST_LO = 0x1ce4_e5b9;
+const SPLITMIX_SECOND_HI = 0x94d0_49bb;
+const SPLITMIX_SECOND_LO = 0x1331_11eb;
+const MON_COOLDOWN_SHIFT = 11;
+
+type MutableHash64 = {
+  hi: number;
+  lo: number;
+};
+
+function multiplyInto(
+  result: MutableHash64,
+  leftHi: number,
+  leftLo: number,
+  rightHi: number,
+  rightLo: number,
+): void {
+  const leftLoLow = leftLo & 0xffff;
+  const leftLoHigh = leftLo >>> 16;
+  const rightLoLow = rightLo & 0xffff;
+  const rightLoHigh = rightLo >>> 16;
+  const lowProduct = leftLoLow * rightLoLow;
+  const middle =
+    (lowProduct >>> 16) + leftLoHigh * rightLoLow + leftLoLow * rightLoHigh;
+  result.lo = ((lowProduct & 0xffff) | ((middle & 0xffff) << 16)) >>> 0;
+  result.hi =
+    (leftLoHigh * rightLoHigh +
+      Math.floor(middle / 0x1_0000) +
+      (Math.imul(leftHi, rightLo) >>> 0) +
+      (Math.imul(leftLo, rightHi) >>> 0)) >>>
+    0;
+}
+
+function xorShiftRightInto(
+  result: MutableHash64,
+  hi: number,
+  lo: number,
+  shift: number,
+): void {
+  result.hi = (hi ^ (hi >>> shift)) >>> 0;
+  result.lo = (lo ^ ((lo >>> shift) | (hi << (32 - shift)))) >>> 0;
+}
+
+function mixBoardHashInto(
+  result: MutableHash64,
+  valueHi: number,
+  valueLo: number,
+): void {
+  xorShiftRightInto(result, valueHi, valueLo, 30);
+  multiplyInto(
+    result,
+    result.hi,
+    result.lo,
+    SPLITMIX_FIRST_HI,
+    SPLITMIX_FIRST_LO,
+  );
+  xorShiftRightInto(result, result.hi, result.lo, 27);
+  multiplyInto(
+    result,
+    result.hi,
+    result.lo,
+    SPLITMIX_SECOND_HI,
+    SPLITMIX_SECOND_LO,
+  );
+  xorShiftRightInto(result, result.hi, result.lo, 31);
+}
+
+function mixSearchHashInto(
+  result: MutableHash64,
+  valueHi: number,
+  valueLo: number,
+): void {
+  const addedLo = (valueLo + SPLITMIX_INCREMENT_LO) >>> 0;
+  const addedHi =
+    (valueHi + SPLITMIX_INCREMENT_HI + (addedLo < valueLo >>> 0 ? 1 : 0)) >>> 0;
+  xorShiftRightInto(result, addedHi, addedLo, 30);
+  multiplyInto(
+    result,
+    result.hi,
+    result.lo,
+    SPLITMIX_FIRST_HI,
+    SPLITMIX_FIRST_LO,
+  );
+  xorShiftRightInto(result, result.hi, result.lo, 27);
+  multiplyInto(
+    result,
+    result.hi,
+    result.lo,
+    SPLITMIX_SECOND_HI,
+    SPLITMIX_SECOND_LO,
+  );
+  xorShiftRightInto(result, result.hi, result.lo, 31);
+}
 
 function exactHashColorBits(color: Color): number {
   return color === Color.White ? 1 : 2;
@@ -86,12 +172,12 @@ function exactHashMonBits(mon: Mon): number {
   return (
     (exactHashMonKindBits(mon.kind) |
       (exactHashColorBits(mon.color) << 4) |
-      ((mon.cooldown & 0xff) << 8)) >>>
+      ((mon.cooldown & 0xff) << MON_COOLDOWN_SHIFT)) >>>
     0
   );
 }
 
-function exactHashItem(item: Item): Hash64 {
+function exactHashItemBits(item: Item): number {
   let bits: number;
   switch (item.kind) {
     case "mon":
@@ -116,10 +202,10 @@ function exactHashItem(item: Item): Hash64 {
       bits = 0x500 | exactHashConsumableBits(item.consumable);
       break;
   }
-  return hash64FromLowWord(bits >>> 0);
+  return bits >>> 0;
 }
 
-function exactSearchHashItem(item: Item): Hash64 {
+function exactSearchHashItemBits(item: Item): number {
   let bits: number;
   switch (item.kind) {
     case "mon":
@@ -144,88 +230,117 @@ function exactSearchHashItem(item: Item): Hash64 {
       bits = 0x500 | exactSearchHashConsumableBits(item.consumable);
       break;
   }
-  return hash64FromLowWord(bits >>> 0);
+  return bits >>> 0;
 }
 
-function mixBoardHash(value: Hash64): Hash64 {
-  let mixed = value;
-  mixed = hash64Xor(mixed, hash64ShiftRight(mixed, 30));
-  mixed = hash64Mul(mixed, SPLITMIX_FIRST);
-  mixed = hash64Xor(mixed, hash64ShiftRight(mixed, 27));
-  mixed = hash64Mul(mixed, SPLITMIX_SECOND);
-  return hash64Xor(mixed, hash64ShiftRight(mixed, 31));
-}
-
-function mixSearchHash(value: Hash64): Hash64 {
-  let mixed = hash64Add(value, SPLITMIX_INCREMENT);
-  mixed = hash64Mul(
-    hash64Xor(mixed, hash64ShiftRight(mixed, 30)),
-    SPLITMIX_FIRST,
-  );
-  mixed = hash64Mul(
-    hash64Xor(mixed, hash64ShiftRight(mixed, 27)),
-    SPLITMIX_SECOND,
-  );
-  return hash64Xor(mixed, hash64ShiftRight(mixed, 31));
-}
-
-function exactBoardEntryHash(index: number, item: Item): Hash64 {
-  return mixBoardHash(
-    hash64Xor(
-      hash64Mul(hash64FromLowWord(index + 1), GOLDEN_ODD),
-      hash64Mul(exactHashItem(item), MIX_ODD),
-    ),
+function mixSearchFieldInto(
+  result: MutableHash64,
+  value: number,
+  salt: number,
+): void {
+  mixSearchHashInto(
+    result,
+    Math.floor(value / 0x1_0000_0000),
+    (value ^ salt) >>> 0,
   );
 }
 
-function exactBoardVariantHash(variant: GameVariant): Hash64 {
-  return mixBoardHash(
-    hash64Add(
-      hash64FromNonnegativeInteger(gameVariantId(variant)),
-      hash64(0x243f_6a88, 0x85a3_08d3),
-    ),
-  );
+function exactBoardVariantHashInto(
+  result: MutableHash64,
+  variant: GameVariant,
+): void {
+  const value = gameVariantId(variant);
+  const valueLo = value >>> 0;
+  const lo = (valueLo + 0x85a3_08d3) >>> 0;
+  const hi =
+    (Math.floor(value / 0x1_0000_0000) +
+      0x243f_6a88 +
+      (lo < valueLo ? 1 : 0)) >>>
+    0;
+  mixBoardHashInto(result, hi, lo);
 }
 
 export function exactBoardHash(board: Board): Hash64 {
-  let state = hash64Xor(SEARCH_SEED, exactBoardVariantHash(board.variant));
+  const result: MutableHash64 = { hi: 0, lo: 0 };
+  exactBoardVariantHashInto(result, board.variant);
+  let stateHi = (SEARCH_SEED_HI ^ result.hi) >>> 0;
+  let stateLo = (SEARCH_SEED_LO ^ result.lo) >>> 0;
   for (const [location, item] of board.entries()) {
-    state = hash64Xor(
-      state,
-      exactBoardEntryHash(locationIndex(location), item),
+    multiplyInto(
+      result,
+      0,
+      locationIndex(location) + 1,
+      GOLDEN_ODD_HI,
+      GOLDEN_ODD_LO,
     );
+    const indexHi = result.hi;
+    const indexLo = result.lo;
+    multiplyInto(result, 0, exactHashItemBits(item), MIX_ODD_HI, MIX_ODD_LO);
+    mixBoardHashInto(result, indexHi ^ result.hi, indexLo ^ result.lo);
+    stateHi = (stateHi ^ result.hi) >>> 0;
+    stateLo = (stateLo ^ result.lo) >>> 0;
   }
-  return state;
+  result.hi = stateHi;
+  result.lo = stateLo;
+  return result;
 }
 
 export function exactSearchStateHash(game: MonsGame): Hash64 {
-  let state = SEARCH_SEED;
+  const result: MutableHash64 = { hi: 0, lo: 0 };
+  let stateHi = SEARCH_SEED_HI;
+  let stateLo = SEARCH_SEED_LO;
   for (const [location, item] of game.board.entries()) {
-    const entry = hash64Xor(
-      hash64Mul(hash64FromLowWord(locationIndex(location) + 1), GOLDEN_ODD),
-      exactSearchHashItem(item),
+    multiplyInto(
+      result,
+      0,
+      locationIndex(location) + 1,
+      GOLDEN_ODD_HI,
+      GOLDEN_ODD_LO,
     );
-    state = hash64Xor(state, mixSearchHash(entry));
-    state = hash64Mul(hash64RotateLeft(state, 17), MIX_ODD);
+    mixSearchHashInto(
+      result,
+      result.hi,
+      result.lo ^ exactSearchHashItemBits(item),
+    );
+    stateHi = (stateHi ^ result.hi) >>> 0;
+    stateLo = (stateLo ^ result.lo) >>> 0;
+    const rotatedHi = ((stateHi << 17) | (stateLo >>> 15)) >>> 0;
+    const rotatedLo = ((stateLo << 17) | (stateHi >>> 15)) >>> 0;
+    multiplyInto(result, rotatedHi, rotatedLo, MIX_ODD_HI, MIX_ODD_LO);
+    stateHi = result.hi;
+    stateLo = result.lo;
   }
 
-  const fields: readonly (readonly [Hash64, number])[] = [
-    [hash64FromNonnegativeInteger(game.whiteScore), 0x11],
-    [hash64FromNonnegativeInteger(game.blackScore), 0x23],
-    [hash64FromLowWord(exactHashColorBits(game.activeColor)), 0x35],
-    [hash64FromNonnegativeInteger(game.actionsUsedCount), 0x47],
-    [hash64FromNonnegativeInteger(game.manaMovesCount), 0x59],
-    [hash64FromNonnegativeInteger(game.monsMovesCount), 0x6b],
-    [hash64FromNonnegativeInteger(game.whitePotionsCount), 0x7d],
-    [hash64FromNonnegativeInteger(game.blackPotionsCount), 0x8f],
-    [hash64FromNonnegativeInteger(game.turnNumber), 0xa1],
-    [hash64FromNonnegativeInteger(gameVariantId(game.variant())), 0xb3],
-  ];
-  for (const [value, salt] of fields) {
-    state = hash64Xor(
-      state,
-      mixSearchHash(hash64Xor(value, hash64FromLowWord(salt))),
-    );
-  }
-  return mixSearchHash(state);
+  mixSearchFieldInto(result, game.whiteScore, 0x11);
+  stateHi = (stateHi ^ result.hi) >>> 0;
+  stateLo = (stateLo ^ result.lo) >>> 0;
+  mixSearchFieldInto(result, game.blackScore, 0x23);
+  stateHi = (stateHi ^ result.hi) >>> 0;
+  stateLo = (stateLo ^ result.lo) >>> 0;
+  mixSearchFieldInto(result, exactHashColorBits(game.activeColor), 0x35);
+  stateHi = (stateHi ^ result.hi) >>> 0;
+  stateLo = (stateLo ^ result.lo) >>> 0;
+  mixSearchFieldInto(result, game.actionsUsedCount, 0x47);
+  stateHi = (stateHi ^ result.hi) >>> 0;
+  stateLo = (stateLo ^ result.lo) >>> 0;
+  mixSearchFieldInto(result, game.manaMovesCount, 0x59);
+  stateHi = (stateHi ^ result.hi) >>> 0;
+  stateLo = (stateLo ^ result.lo) >>> 0;
+  mixSearchFieldInto(result, game.monsMovesCount, 0x6b);
+  stateHi = (stateHi ^ result.hi) >>> 0;
+  stateLo = (stateLo ^ result.lo) >>> 0;
+  mixSearchFieldInto(result, game.whitePotionsCount, 0x7d);
+  stateHi = (stateHi ^ result.hi) >>> 0;
+  stateLo = (stateLo ^ result.lo) >>> 0;
+  mixSearchFieldInto(result, game.blackPotionsCount, 0x8f);
+  stateHi = (stateHi ^ result.hi) >>> 0;
+  stateLo = (stateLo ^ result.lo) >>> 0;
+  mixSearchFieldInto(result, game.turnNumber, 0xa1);
+  stateHi = (stateHi ^ result.hi) >>> 0;
+  stateLo = (stateLo ^ result.lo) >>> 0;
+  mixSearchFieldInto(result, gameVariantId(game.variant()), 0xb3);
+  stateHi = (stateHi ^ result.hi) >>> 0;
+  stateLo = (stateLo ^ result.lo) >>> 0;
+  mixSearchHashInto(result, stateHi, stateLo);
+  return result;
 }

@@ -5,6 +5,7 @@ import {
   Consumable,
   MonKind,
   createMon,
+  monItem,
   monWithConsumableItem,
   monWithManaItem,
   regularMana,
@@ -135,6 +136,65 @@ describe("move-efficiency snapshots", () => {
     );
     expect(rebuilt).not.toBe(approximate);
     expect(rebuilt).toEqual(approximate);
+  });
+
+  it("uses each cooldown state's distinct hash for its after snapshot", () => {
+    const awake = new MonsGame(false, GameVariant.Classic);
+    const whiteSpirit = createMon(MonKind.Spirit, Color.White, 0);
+    const spiritBase = awake.board.base(whiteSpirit);
+    const cooling = awake.copy();
+    const coolingBoard = cooling.board.fork();
+    coolingBoard.set(
+      spiritBase,
+      monItem(createMon(MonKind.Spirit, Color.White, 1)),
+    );
+    cooling.replaceBoardItems(coolingBoard.entries());
+
+    const awakeHash = exactSearchStateHash(awake);
+    const coolingHash = exactSearchStateHash(cooling);
+    expect(coolingHash).not.toEqual(awakeHash);
+
+    const before = moveEfficiencySnapshotUncachedWithHash(
+      execution,
+      awake,
+      Color.White,
+      false,
+      false,
+      awakeHash,
+    );
+    const options = {
+      isRoot: false,
+      applyBacktrackPenalty: false,
+      applyRootManaHandoffGuard: false,
+      rootBacktrackPenalty: 0,
+      rootManaHandoffPenalty: 0,
+      includeTacticalExact: false,
+      includeStrategicExact: false,
+    } as const;
+
+    const awakeDelta = moveEfficiencyDeltaFromBeforeSnapshot(
+      execution,
+      awake,
+      awake,
+      Color.White,
+      [],
+      before,
+      awakeHash,
+      options,
+    );
+    const coolingDelta = moveEfficiencyDeltaFromBeforeSnapshot(
+      execution,
+      awake,
+      cooling,
+      Color.White,
+      [],
+      before,
+      coolingHash,
+      options,
+    );
+
+    expect(awakeDelta).toBe(0);
+    expect(coolingDelta).toBe(90);
   });
 
   it("observes live carriers and consumed spirits without counting fainted carriers", () => {

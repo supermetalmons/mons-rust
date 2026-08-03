@@ -64,6 +64,10 @@ export class GameHistory {
     return this.#verboseTrackingEnabled;
   }
 
+  public get eventApplicationTrackingEnabled(): boolean {
+    return this.#takebackTrackingEnabled || this.#verboseTrackingEnabled;
+  }
+
   public copy(): GameHistory {
     const history = new GameHistory(this.#verboseTrackingEnabled);
     history.#takebackFens = [...this.#takebackFens];

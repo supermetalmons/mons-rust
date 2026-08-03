@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 
 import { MutableBoard } from "../../src/engine/board.js";
 import { GameVariant } from "../../src/engine/config.js";
@@ -10,6 +10,7 @@ import {
   NextInputKind,
   consumableItem,
   createMon,
+  inputEquals,
   manaItem,
   monItem,
   monWithManaItem,
@@ -33,6 +34,7 @@ import {
   type Location,
 } from "../../src/engine/geometry.js";
 import {
+  CACHE_MISS,
   RulesQueryCache,
   type InputStageResult,
 } from "../../src/engine/query-cache.js";
@@ -135,7 +137,36 @@ function mutableEvents(output: Output, stage: string): Event[] {
   return output.events as Event[];
 }
 
+function boardCacheSnapshot(board: MutableBoard): {
+  readonly occupiedEntries: unknown;
+  readonly categoryDerived: unknown;
+} {
+  const storage = (
+    board as unknown as {
+      readonly storage: {
+        readonly occupiedEntries: unknown;
+        readonly categoryDerived: unknown;
+      };
+    }
+  ).storage;
+  return {
+    occupiedEntries: storage.occupiedEntries,
+    categoryDerived: storage.categoryDerived,
+  };
+}
+
 describe("RulesQueryCache structural copies", () => {
+  it("distinguishes stage misses from cached undefined results", () => {
+    const cache = new RulesQueryCache();
+
+    expect(cache.lookupSecondStage("second")).toBe(CACHE_MISS);
+    expect(cache.lookupThirdStage("third")).toBe(CACHE_MISS);
+    cache.setSecondStage("second", undefined);
+    cache.setThirdStage("third", undefined);
+    expect(cache.lookupSecondStage("second")).toBeUndefined();
+    expect(cache.lookupThirdStage("third")).toBeUndefined();
+  });
+
   it("detaches start suggestions on insertion and lookup", () => {
     const cache = new RulesQueryCache();
     const originalLocation = { i: 4, j: 3 };
@@ -148,11 +179,11 @@ describe("RulesQueryCache structural copies", () => {
       locations: [{ i: 4, j: 3 }],
     };
 
-    cache.setStartSuggestion("start", original);
+    cache.setStartSuggestion(0, original);
     originalLocation.i = 99;
     expect(Reflect.set(original, "locations", [])).toBe(true);
 
-    const firstHit = cache.getStartSuggestion("start");
+    const firstHit = cache.getStartSuggestion(0);
     expect(firstHit).toEqual(expected);
     if (firstHit?.kind !== "locations-to-start-from") {
       throw new Error("start suggestion must contain locations");
@@ -164,7 +195,7 @@ describe("RulesQueryCache structural copies", () => {
     expect(Reflect.set(firstLocation, "j", 99)).toBe(true);
     expect(Reflect.set(firstHit, "locations", [])).toBe(true);
 
-    expect(cache.getStartSuggestion("start")).toEqual(expected);
+    expect(cache.getStartSuggestion(0)).toEqual(expected);
   });
 
   it("detaches second-input options while preserving optional actor shape", () => {
@@ -271,18 +302,16 @@ describe("RulesQueryCache structural copies", () => {
       true,
     );
 
-    const stages = [
-      {
-        get: (): InputStageResult => cache.getSecondStage("second-stage"),
-      },
-      {
-        get: (): InputStageResult => cache.getThirdStage("third-stage"),
-      },
+    const lookups = [
+      (): InputStageResult | typeof CACHE_MISS =>
+        cache.lookupSecondStage("second-stage"),
+      (): InputStageResult | typeof CACHE_MISS =>
+        cache.lookupThirdStage("third-stage"),
     ];
-    for (const stage of stages) {
-      const firstHit = stage.get();
+    for (const lookup of lookups) {
+      const firstHit = lookup();
       expect(firstHit).toEqual(expected);
-      if (firstHit === undefined) {
+      if (firstHit === CACHE_MISS || firstHit === undefined) {
         throw new Error("cached stage must be present");
       }
       const event = firstHit[0][0];
@@ -296,19 +325,66 @@ describe("RulesQueryCache structural copies", () => {
       expect(Reflect.set(option.input.location, "i", 99)).toBe(true);
       expect(Reflect.set(option, "input", { kind: "takeback" })).toBe(true);
 
-      expect(stage.get()).toEqual(expected);
+      expect(lookup()).toEqual(expected);
     }
 
     cache.setSecondStage("undefined-second", undefined);
     cache.setThirdStage("undefined-third", undefined);
-    expect(cache.hasSecondStage("undefined-second")).toBe(true);
-    expect(cache.getSecondStage("undefined-second")).toBeUndefined();
-    expect(cache.hasThirdStage("undefined-third")).toBe(true);
-    expect(cache.getThirdStage("undefined-third")).toBeUndefined();
+    expect(cache.lookupSecondStage("undefined-second")).toBeUndefined();
+    expect(cache.lookupThirdStage("undefined-third")).toBeUndefined();
   });
 });
 
 describe("MonsGame staged-input caches", () => {
+  it("keeps one option from each generated second-input kind", () => {
+    const { game, pair } = demonAdditionalStepGame();
+    const prefix = pair.slice(0, 1);
+    const expectedAction: NextInput = {
+      input: { kind: "location", location: location(5, 5) },
+      kind: NextInputKind.DemonAction,
+    };
+    const expectedLimited: NextInput[] = [
+      {
+        input: { kind: "location", location: location(4, 2) },
+        kind: NextInputKind.MonMove,
+      },
+      expectedAction,
+    ];
+
+    expect(game.processInput(prefix, true, true)).toEqual({
+      kind: "next-input-options",
+      nextInputs: expectedLimited,
+    });
+
+    const full = mutableNextInputs(
+      game.processInput(prefix, true, false),
+      "full second-input query",
+    );
+    expect(full.length).toBeGreaterThan(expectedLimited.length);
+    expect(
+      full.filter((option) => option.kind === NextInputKind.DemonAction),
+    ).toEqual([expectedAction]);
+  });
+
+  it("reuses the complete ordered second-input set for target validation", () => {
+    const game = new MonsGame(false, GameVariant.Classic);
+    const start = { kind: "location", location: location(10, 3) } as const;
+    const nextInputs = vi.spyOn(game, "nextInputsFromLocations");
+    const angelQueries = vi.spyOn(game.board, "findAwakeAngel");
+
+    const options = game.processInput([start], true, false);
+    expect(options.kind).toBe("next-input-options");
+    if (options.kind !== "next-input-options") return;
+    const target = options.nextInputs[0]?.input;
+    expect(target?.kind).toBe("location");
+    if (target?.kind !== "location") return;
+    const generationCalls = nextInputs.mock.calls.length;
+
+    expect(game.processInput([start, target], true, false).kind).toBe("events");
+    expect(nextInputs).toHaveBeenCalledTimes(generationCalls);
+    expect(angelQueries).not.toHaveBeenCalled();
+  });
+
   it("returns identical values from warm and cold second- and third-stage caches", () => {
     const { game, pair, chain } = demonAdditionalStepGame();
     const warm = game.fork();
@@ -396,6 +472,36 @@ describe("MonsGame staged-input caches", () => {
       ),
     ).toEqual({ kind: "invalid-input" });
     expect(game.fen()).toBe(before);
+  });
+});
+
+describe("input value equality", () => {
+  it("compares discriminants and payload values directly", () => {
+    expect(inputEquals({ kind: "takeback" }, { kind: "takeback" })).toBe(true);
+    expect(
+      inputEquals(
+        { kind: "location", location: { i: 4, j: 3 } },
+        { kind: "location", location: { i: 4, j: 3 } },
+      ),
+    ).toBe(true);
+    expect(
+      inputEquals(
+        { kind: "location", location: { i: 4, j: 3 } },
+        { kind: "location", location: { i: 3, j: 4 } },
+      ),
+    ).toBe(false);
+    expect(
+      inputEquals(
+        { kind: "modifier", modifier: Modifier.SelectBomb },
+        { kind: "modifier", modifier: Modifier.SelectPotion },
+      ),
+    ).toBe(false);
+    expect(
+      inputEquals(
+        { kind: "modifier", modifier: Modifier.SelectBomb },
+        { kind: "takeback" },
+      ),
+    ).toBe(false);
   });
 });
 
@@ -504,6 +610,188 @@ describe("MonsGame serialized state copying", () => {
 });
 
 describe("MonsGame board ownership", () => {
+  it("warms, forks, and invalidates occupied and category caches independently", () => {
+    const cold = new MutableBoard(GameVariant.Classic);
+    const coldFork = cold.fork();
+    expect(boardCacheSnapshot(cold)).toMatchObject({
+      occupiedEntries: undefined,
+      categoryDerived: undefined,
+    });
+    expect(boardCacheSnapshot(coldFork)).toMatchObject({
+      occupiedEntries: undefined,
+      categoryDerived: undefined,
+    });
+
+    const entriesFirst = new MutableBoard(GameVariant.Classic);
+    expect([...entriesFirst.entries()].length).toBeGreaterThan(0);
+    const entriesCache = boardCacheSnapshot(entriesFirst);
+    expect(entriesCache.occupiedEntries).toBeDefined();
+    expect(entriesCache.categoryDerived).toBeUndefined();
+
+    const entriesFork = entriesFirst.fork();
+    const entriesForkCache = boardCacheSnapshot(entriesFork);
+    expect(entriesForkCache.occupiedEntries).toBe(entriesCache.occupiedEntries);
+    expect(entriesForkCache.categoryDerived).toBeUndefined();
+
+    expect(entriesFirst.allMonsLocations(Color.White).length).toBeGreaterThan(
+      0,
+    );
+    const fullyWarmCache = boardCacheSnapshot(entriesFirst);
+    expect(fullyWarmCache.occupiedEntries).toBe(entriesCache.occupiedEntries);
+    expect(fullyWarmCache.categoryDerived).toBeDefined();
+
+    const fullyWarmFork = entriesFirst.fork();
+    const fullyWarmForkCache = boardCacheSnapshot(fullyWarmFork);
+    expect(fullyWarmForkCache.occupiedEntries).toBe(
+      fullyWarmCache.occupiedEntries,
+    );
+    expect(fullyWarmForkCache.categoryDerived).toBe(
+      fullyWarmCache.categoryDerived,
+    );
+
+    entriesFirst.set(location(5, 5), manaItem(regularMana(Color.White)));
+    expect(boardCacheSnapshot(entriesFirst)).toMatchObject({
+      occupiedEntries: undefined,
+      categoryDerived: undefined,
+    });
+    expect(boardCacheSnapshot(fullyWarmFork)).toMatchObject({
+      occupiedEntries: fullyWarmCache.occupiedEntries,
+      categoryDerived: fullyWarmCache.categoryDerived,
+    });
+
+    const categoriesFirst = new MutableBoard(GameVariant.Classic);
+    expect(categoriesFirst.findMana(Color.White)).toBeDefined();
+    const categoryCache = boardCacheSnapshot(categoriesFirst);
+    expect(categoryCache.occupiedEntries).toBeUndefined();
+    expect(categoryCache.categoryDerived).toBeDefined();
+    const categoryFork = categoriesFirst.fork();
+    expect(boardCacheSnapshot(categoryFork)).toMatchObject({
+      occupiedEntries: undefined,
+      categoryDerived: categoryCache.categoryDerived,
+    });
+    categoryFork.delete(location(5, 5));
+    expect(boardCacheSnapshot(categoryFork)).toMatchObject({
+      occupiedEntries: undefined,
+      categoryDerived: undefined,
+    });
+    expect(boardCacheSnapshot(categoriesFirst)).toMatchObject({
+      occupiedEntries: undefined,
+      categoryDerived: categoryCache.categoryDerived,
+    });
+  });
+
+  it("does not treat invalid runtime colors as Black", () => {
+    const invalidColor = "invalid-color" as Color;
+    const source = new MutableBoard(
+      GameVariant.Classic,
+      new Array<Item | undefined>(BOARD_CELLS).fill(undefined),
+    );
+    source.set(
+      location(1, 1),
+      monItem(createMon(MonKind.Angel, invalidColor, 0)),
+    );
+    source.set(
+      location(1, 2),
+      monItem(createMon(MonKind.Mystic, invalidColor, 2)),
+    );
+    source.set(location(1, 3), manaItem(regularMana(invalidColor)));
+    source.set(
+      location(2, 1),
+      monItem(createMon(MonKind.Angel, Color.Black, 0)),
+    );
+    source.set(
+      location(2, 2),
+      monItem(createMon(MonKind.Mystic, Color.Black, 2)),
+    );
+    source.set(location(2, 3), manaItem(regularMana(Color.Black)));
+    const view = source.readonlyView();
+
+    expect(view.allMonsLocations(invalidColor)).toEqual([]);
+    expect(view.allFreeRegularManaLocations(invalidColor)).toEqual([]);
+    expect(view.faintedMonsLocations(invalidColor)).toEqual([]);
+    expect(view.findMana(invalidColor)).toBeUndefined();
+    expect(view.findAwakeAngel(invalidColor)).toBeUndefined();
+
+    expect(view.allMonsLocations(Color.Black)).toEqual([
+      location(2, 1),
+      location(2, 2),
+    ]);
+    expect(view.allFreeRegularManaLocations(Color.Black)).toEqual([
+      location(2, 3),
+    ]);
+    expect(view.faintedMonsLocations(Color.Black)).toEqual([location(2, 2)]);
+    expect(view.findMana(Color.Black)).toEqual(location(2, 3));
+    expect(view.findAwakeAngel(Color.Black)).toEqual(location(2, 1));
+  });
+
+  it("returns detached coordinates from cold and warm derived queries", () => {
+    const source = new MutableBoard(GameVariant.Classic);
+    const view = source.readonlyView();
+    source.set(
+      location(10, 3),
+      monItem(createMon(MonKind.Mystic, Color.White, 2)),
+    );
+
+    const expectDetachedArray = (query: () => Location[]): void => {
+      const cold = query();
+      const expected = cold.map((at) => ({ ...at }));
+      const warm = query();
+      expect(warm).toEqual(expected);
+      expect(warm).not.toBe(cold);
+      for (let index = 0; index < cold.length; index += 1) {
+        expect(warm[index]).not.toBe(cold[index]);
+      }
+      const first = cold[0];
+      expect(first).toBeDefined();
+      if (first === undefined) return;
+      expect(Reflect.set(first, "i", 99)).toBe(true);
+      cold.length = 0;
+      expect(query()).toEqual(expected);
+    };
+
+    expectDetachedArray(() => view.allMonsLocations(Color.White));
+    expectDetachedArray(() => view.allFreeRegularManaLocations(Color.White));
+    expectDetachedArray(() => view.faintedMonsLocations(Color.White));
+
+    const expectDetachedSingle = (
+      query: () => Location | undefined,
+    ): Location => {
+      const cold = query();
+      const warm = query();
+      expect(cold).toBeDefined();
+      expect(warm).toEqual(cold);
+      expect(warm).not.toBe(cold);
+      if (cold === undefined) {
+        throw new Error("query must return a location");
+      }
+      const expected = { ...cold };
+      expect(Reflect.set(cold, "j", 99)).toBe(true);
+      expect(query()).toEqual(expected);
+      return expected;
+    };
+
+    const whiteMana = expectDetachedSingle(() => view.findMana(Color.White));
+    const whiteAngel = expectDetachedSingle(() =>
+      view.findAwakeAngel(Color.White),
+    );
+    const blackAngel = expectDetachedSingle(() =>
+      view.findAwakeAngel(Color.Black),
+    );
+
+    const fork = view.fork();
+    const forkMana = fork.findMana(Color.White);
+    expect(forkMana).toEqual(whiteMana);
+    expect(forkMana).not.toBe(view.findMana(Color.White));
+    expect(fork.findAwakeAngel(Color.White)).toEqual(whiteAngel);
+    source.delete(whiteAngel);
+    expect(view.findAwakeAngel(Color.White)).toBeUndefined();
+    expect(fork.findAwakeAngel(Color.White)).toEqual(whiteAngel);
+
+    fork.delete(blackAngel);
+    expect(fork.findAwakeAngel(Color.Black)).toBeUndefined();
+    expect(view.findAwakeAngel(Color.Black)).toEqual(blackAngel);
+  });
+
   it("exposes a live readonly view and independently mutable forks", () => {
     const game = new MonsGame(false, GameVariant.Classic);
     const boardView = game.board;

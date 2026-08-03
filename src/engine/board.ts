@@ -22,7 +22,6 @@ import {
   ALL_LOCATIONS,
   BOARD_CELLS,
   assertValidLocation,
-  fromLocationIndex,
   isValidLocation,
   locationIndex,
   type Location,
@@ -30,9 +29,50 @@ import {
 
 type BoardEntry = readonly [Location, Item];
 
+function detachedLocation(at: Location | undefined): Location | undefined {
+  return at === undefined ? undefined : { i: at.i, j: at.j };
+}
+
+function detachedLocations(locations: readonly Location[]): Location[] {
+  const result = new Array<Location>(locations.length);
+  for (let index = 0; index < locations.length; index += 1) {
+    const at = locations[index];
+    if (at !== undefined) {
+      result[index] = { i: at.i, j: at.j };
+    }
+  }
+  return result;
+}
+
+function boardColorIndex(color: Color): 0 | 1 | undefined {
+  const runtimeColor: unknown = color;
+  return runtimeColor === Color.White
+    ? 0
+    : runtimeColor === Color.Black
+      ? 1
+      : undefined;
+}
+
+type BoardCategoryDerived = {
+  readonly monsLocations: readonly [readonly Location[], readonly Location[]];
+  readonly freeRegularManaLocations: readonly [
+    readonly Location[],
+    readonly Location[],
+  ];
+  readonly faintedMonsLocations: readonly [
+    readonly Location[],
+    readonly Location[],
+  ];
+  readonly awakeAngelLocations: readonly [
+    Location | undefined,
+    Location | undefined,
+  ];
+};
+
 type BoardStorage = {
   readonly itemSlots: (Item | undefined)[];
   occupiedEntries: readonly BoardEntry[] | undefined;
+  categoryDerived: BoardCategoryDerived | undefined;
 };
 
 export class Board {
@@ -60,6 +100,7 @@ export class Board {
               item === undefined ? undefined : immutableItem(item),
             ),
       occupiedEntries: undefined,
+      categoryDerived: undefined,
     };
   }
 
@@ -82,7 +123,8 @@ export class Board {
       undefined,
       true,
     );
-    fork.storage.occupiedEntries = this.getOccupiedEntries();
+    fork.storage.occupiedEntries = this.storage.occupiedEntries;
+    fork.storage.categoryDerived = this.storage.categoryDerived;
     return fork;
   }
 
@@ -91,6 +133,11 @@ export class Board {
       return undefined;
     }
     return this.storage.itemSlots[locationIndex(at)];
+  }
+
+  /** @internal Read a slot whose index has already been validated. */
+  public itemAtIndex(index: number): Item | undefined {
+    return this.storage.itemSlots[index];
   }
 
   public squareAt(at: Location): Square {
@@ -107,29 +154,19 @@ export class Board {
   }
 
   public allMonsLocations(color: Color): Location[] {
-    const result: Location[] = [];
-    for (let index = 0; index < BOARD_CELLS; index += 1) {
-      const item = this.storage.itemSlots[index];
-      if (item !== undefined && itemMon(item)?.color === color) {
-        result.push(fromLocationIndex(index));
-      }
-    }
-    return result;
+    const colorIndex = boardColorIndex(color);
+    if (colorIndex === undefined) return [];
+    return detachedLocations(
+      this.getCategoryDerived().monsLocations[colorIndex],
+    );
   }
 
   public allFreeRegularManaLocations(color: Color): Location[] {
-    const result: Location[] = [];
-    for (let index = 0; index < BOARD_CELLS; index += 1) {
-      const item = this.storage.itemSlots[index];
-      if (
-        item?.kind === "mana" &&
-        item.mana.kind === "regular" &&
-        item.mana.color === color
-      ) {
-        result.push(fromLocationIndex(index));
-      }
-    }
-    return result;
+    const colorIndex = boardColorIndex(color);
+    if (colorIndex === undefined) return [];
+    return detachedLocations(
+      this.getCategoryDerived().freeRegularManaLocations[colorIndex],
+    );
   }
 
   public base(mon: Mon): Location {
@@ -137,47 +174,27 @@ export class Board {
   }
 
   public faintedMonsLocations(color: Color): Location[] {
-    const result: Location[] = [];
-    for (let index = 0; index < BOARD_CELLS; index += 1) {
-      const item = this.storage.itemSlots[index];
-      if (
-        item?.kind === "mon" &&
-        item.mon.color === color &&
-        isMonFainted(item.mon)
-      ) {
-        result.push(fromLocationIndex(index));
-      }
-    }
-    return result;
+    const colorIndex = boardColorIndex(color);
+    if (colorIndex === undefined) return [];
+    return detachedLocations(
+      this.getCategoryDerived().faintedMonsLocations[colorIndex],
+    );
   }
 
   public findMana(color: Color): Location | undefined {
-    for (let index = 0; index < BOARD_CELLS; index += 1) {
-      const item = this.storage.itemSlots[index];
-      if (
-        item?.kind === "mana" &&
-        item.mana.kind === "regular" &&
-        item.mana.color === color
-      ) {
-        return fromLocationIndex(index);
-      }
-    }
-    return undefined;
+    const colorIndex = boardColorIndex(color);
+    if (colorIndex === undefined) return undefined;
+    return detachedLocation(
+      this.getCategoryDerived().freeRegularManaLocations[colorIndex][0],
+    );
   }
 
   public findAwakeAngel(color: Color): Location | undefined {
-    for (let index = 0; index < BOARD_CELLS; index += 1) {
-      const item = this.storage.itemSlots[index];
-      const mon = item === undefined ? undefined : itemMon(item);
-      if (
-        mon?.color === color &&
-        mon.kind === MonKind.Angel &&
-        !isMonFainted(mon)
-      ) {
-        return fromLocationIndex(index);
-      }
-    }
-    return undefined;
+    const colorIndex = boardColorIndex(color);
+    if (colorIndex === undefined) return undefined;
+    return detachedLocation(
+      this.getCategoryDerived().awakeAngelLocations[colorIndex],
+    );
   }
 
   /** @internal Compare board storage without allocating public snapshots. */
@@ -203,15 +220,67 @@ export class Board {
     const occupiedEntries: BoardEntry[] = [];
     for (let index = 0; index < BOARD_CELLS; index += 1) {
       const item = this.storage.itemSlots[index];
-      if (item !== undefined) {
-        const at = ALL_LOCATIONS[index];
-        if (at !== undefined) {
-          occupiedEntries.push([at, item]);
-        }
+      const at = ALL_LOCATIONS[index];
+      if (item !== undefined && at !== undefined) {
+        occupiedEntries.push([at, item]);
       }
     }
     this.storage.occupiedEntries = occupiedEntries;
     return occupiedEntries;
+  }
+
+  private getCategoryDerived(): BoardCategoryDerived {
+    if (this.storage.categoryDerived !== undefined) {
+      return this.storage.categoryDerived;
+    }
+    const whiteMons: Location[] = [];
+    const blackMons: Location[] = [];
+    const whiteFreeMana: Location[] = [];
+    const blackFreeMana: Location[] = [];
+    const whiteFaintedMons: Location[] = [];
+    const blackFaintedMons: Location[] = [];
+    let whiteAwakeAngel: Location | undefined;
+    let blackAwakeAngel: Location | undefined;
+    for (let index = 0; index < BOARD_CELLS; index += 1) {
+      const item = this.storage.itemSlots[index];
+      if (item !== undefined) {
+        const at = ALL_LOCATIONS[index];
+        if (at !== undefined) {
+          const mon = itemMon(item);
+          if (mon !== undefined) {
+            const colorIndex = boardColorIndex(mon.color);
+            if (colorIndex === undefined) continue;
+            const mons = colorIndex === 0 ? whiteMons : blackMons;
+            mons.push(at);
+            if (item.kind === "mon" && isMonFainted(mon)) {
+              const faintedMons =
+                colorIndex === 0 ? whiteFaintedMons : blackFaintedMons;
+              faintedMons.push(at);
+            } else if (mon.kind === MonKind.Angel && !isMonFainted(mon)) {
+              if (colorIndex === 0 && whiteAwakeAngel === undefined) {
+                whiteAwakeAngel = at;
+              } else if (colorIndex === 1 && blackAwakeAngel === undefined) {
+                blackAwakeAngel = at;
+              }
+            }
+          } else if (item.kind === "mana" && item.mana.kind === "regular") {
+            const colorIndex = boardColorIndex(item.mana.color);
+            if (colorIndex !== undefined) {
+              const freeMana = colorIndex === 0 ? whiteFreeMana : blackFreeMana;
+              freeMana.push(at);
+            }
+          }
+        }
+      }
+    }
+    const derived: BoardCategoryDerived = {
+      monsLocations: [whiteMons, blackMons],
+      freeRegularManaLocations: [whiteFreeMana, blackFreeMana],
+      faintedMonsLocations: [whiteFaintedMons, blackFaintedMons],
+      awakeAngelLocations: [whiteAwakeAngel, blackAwakeAngel],
+    };
+    this.storage.categoryDerived = derived;
+    return derived;
   }
 
   /** Iterate a snapshot of the board's occupied locations in row-major order. */
@@ -233,12 +302,14 @@ export class MutableBoard extends Board {
     assertValidLocation(at);
     this.storage.itemSlots[locationIndex(at)] = undefined;
     this.storage.occupiedEntries = undefined;
+    this.storage.categoryDerived = undefined;
   }
 
   public set(at: Location, item: Item): void {
     assertValidLocation(at);
     this.storage.itemSlots[locationIndex(at)] = immutableItem(item);
     this.storage.occupiedEntries = undefined;
+    this.storage.categoryDerived = undefined;
   }
 
   /** A stable, live view that intentionally has no mutating methods. */

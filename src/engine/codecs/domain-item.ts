@@ -14,7 +14,6 @@ import {
   type Mon,
   MonKind,
 } from "../domain.js";
-import { isAscii } from "./common.js";
 
 export function colorFen(color: Color): string {
   return color === Color.White ? "w" : "b";
@@ -54,38 +53,60 @@ export function monFen(mon: Mon): string {
 }
 
 export function parseMonFen(fen: string): Mon | undefined {
-  if (!/^[A-Za-z][0-2]$/u.test(fen)) return undefined;
-  const kindCharacter = fen[0];
-  const cooldownCharacter = fen[1];
-  if (kindCharacter === undefined || cooldownCharacter === undefined) {
-    return undefined;
-  }
+  return fen.length === 2 ? parseMonFenAt(fen, 0) : undefined;
+}
 
-  const kind = (() => {
-    switch (kindCharacter.toLowerCase()) {
-      case "e":
-        return MonKind.Demon;
-      case "d":
-        return MonKind.Drainer;
-      case "a":
-        return MonKind.Angel;
-      case "s":
-        return MonKind.Spirit;
-      case "y":
-        return MonKind.Mystic;
-      default:
-        return undefined;
-    }
-  })();
-  if (kind === undefined) {
-    return undefined;
+function parseMonFenAt(fen: string, index: number): Mon | undefined {
+  let color: Color;
+  let kind: MonKind;
+  switch (fen.charCodeAt(index)) {
+    case 69:
+      color = Color.White;
+      kind = MonKind.Demon;
+      break;
+    case 101:
+      color = Color.Black;
+      kind = MonKind.Demon;
+      break;
+    case 68:
+      color = Color.White;
+      kind = MonKind.Drainer;
+      break;
+    case 100:
+      color = Color.Black;
+      kind = MonKind.Drainer;
+      break;
+    case 65:
+      color = Color.White;
+      kind = MonKind.Angel;
+      break;
+    case 97:
+      color = Color.Black;
+      kind = MonKind.Angel;
+      break;
+    case 83:
+      color = Color.White;
+      kind = MonKind.Spirit;
+      break;
+    case 115:
+      color = Color.Black;
+      kind = MonKind.Spirit;
+      break;
+    case 89:
+      color = Color.White;
+      kind = MonKind.Mystic;
+      break;
+    case 121:
+      color = Color.Black;
+      kind = MonKind.Mystic;
+      break;
+    default:
+      return undefined;
   }
-
-  return createMon(
-    kind,
-    kindCharacter === kindCharacter.toUpperCase() ? Color.White : Color.Black,
-    cooldownCharacter.charCodeAt(0) - 48,
-  );
+  const cooldownCode = fen.charCodeAt(index + 1);
+  return cooldownCode < 48 || cooldownCode > 50
+    ? undefined
+    : createMon(kind, color, cooldownCode - 48);
 }
 
 export function manaFen(mana: Mana): string {
@@ -95,13 +116,13 @@ export function manaFen(mana: Mana): string {
   return mana.color === Color.White ? "M" : "m";
 }
 
-function parseManaFen(fen: string): Mana | undefined {
-  switch (fen) {
-    case "M":
+function parseManaCode(code: number): Mana | undefined {
+  switch (code) {
+    case 77:
       return regularMana(Color.White);
-    case "m":
+    case 109:
       return regularMana(Color.Black);
-    case "U":
+    case 85:
       return SUPERMANA;
     default:
       return undefined;
@@ -119,13 +140,13 @@ function consumableFen(consumable: Consumable): string {
   }
 }
 
-function parseConsumableFen(fen: string): Consumable | undefined {
-  switch (fen) {
-    case "P":
+function parseConsumableCode(code: number): Consumable | undefined {
+  switch (code) {
+    case 80:
       return Consumable.Potion;
-    case "B":
+    case 66:
       return Consumable.Bomb;
-    case "Q":
+    case 81:
       return Consumable.BombOrPotion;
     default:
       return undefined;
@@ -148,29 +169,29 @@ export function itemFen(item: Item): string {
 }
 
 export function parseItemFen(fen: string): Item | undefined {
-  if (fen.length !== 3 || !isAscii(fen)) return undefined;
-  const monCode = fen.slice(0, 2);
-  const contentCode = fen.slice(2);
-  if (monCode === "xx") {
-    const mana = parseManaFen(contentCode);
-    if (mana !== undefined) {
-      return manaItem(mana);
-    }
-    const consumable = parseConsumableFen(contentCode);
+  return fen.length === 3 ? parseItemFenAt(fen, 0) : undefined;
+}
+
+export function parseItemFenAt(fen: string, index: number): Item | undefined {
+  const first = fen.charCodeAt(index);
+  const content = fen.charCodeAt(index + 2);
+  if (first === 120) {
+    if (fen.charCodeAt(index + 1) !== 120) return undefined;
+    const mana = parseManaCode(content);
+    if (mana !== undefined) return manaItem(mana);
+    const consumable = parseConsumableCode(content);
     return consumable === undefined ? undefined : consumableItem(consumable);
   }
 
-  const mon = parseMonFen(monCode);
-  if (mon === undefined) {
-    return undefined;
-  }
-  const mana = parseManaFen(contentCode);
+  const mon = parseMonFenAt(fen, index);
+  if (mon === undefined) return undefined;
+  const mana = parseManaCode(content);
   if (mana !== undefined) {
     return monWithManaItem(mon, mana);
   }
-  const consumable = parseConsumableFen(contentCode);
+  const consumable = parseConsumableCode(content);
   if (consumable !== undefined) {
     return monWithConsumableItem(mon, consumable);
   }
-  return contentCode === "x" ? monItem(mon) : undefined;
+  return content === 120 ? monItem(mon) : undefined;
 }

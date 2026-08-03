@@ -38,37 +38,9 @@ type EventReduction = {
   readonly winner: Color | undefined;
 };
 
-type CounterPreflight = {
-  actionsUsedCount: number;
-  manaMovesCount: number;
-  monsMovesCount: number;
-  whitePotionsCount: number;
-  blackPotionsCount: number;
-  whiteScore: number;
-  blackScore: number;
-};
-
 function incrementSafe(value: number, amount = 1): number | undefined {
   const result = value + amount;
   return Number.isSafeInteger(result) ? result : undefined;
-}
-
-function consumeActionForPreflight(
-  counters: CounterPreflight,
-  activeColor: Color,
-): boolean {
-  if (counters.actionsUsedCount < ACTIONS_PER_TURN) {
-    counters.actionsUsedCount += 1;
-    return true;
-  }
-  if (activeColor === Color.White) {
-    if (counters.whitePotionsCount <= 0) return false;
-    counters.whitePotionsCount -= 1;
-  } else {
-    if (counters.blackPotionsCount <= 0) return false;
-    counters.blackPotionsCount -= 1;
-  }
-  return true;
 }
 
 /**
@@ -80,61 +52,66 @@ export function canApplyRulesEvents(
   state: MutableRulesState,
   events: readonly Event[],
 ): boolean {
-  const counters: CounterPreflight = {
-    actionsUsedCount: state.actionsUsedCount,
-    manaMovesCount: state.manaMovesCount,
-    monsMovesCount: state.monsMovesCount,
-    whitePotionsCount: state.whitePotionsCount,
-    blackPotionsCount: state.blackPotionsCount,
-    whiteScore: state.whiteScore,
-    blackScore: state.blackScore,
-  };
+  let actionsUsedCount = state.actionsUsedCount;
+  let manaMovesCount = state.manaMovesCount;
+  let monsMovesCount = state.monsMovesCount;
+  let whitePotionsCount = state.whitePotionsCount;
+  let blackPotionsCount = state.blackPotionsCount;
+  let whiteScore = state.whiteScore;
+  let blackScore = state.blackScore;
 
   for (const event of events) {
     switch (event.kind) {
       case "mon-move": {
-        const next = incrementSafe(counters.monsMovesCount);
+        const next = incrementSafe(monsMovesCount);
         if (next === undefined) return false;
-        counters.monsMovesCount = next;
+        monsMovesCount = next;
         break;
       }
       case "mana-move": {
-        const next = incrementSafe(counters.manaMovesCount);
+        const next = incrementSafe(manaMovesCount);
         if (next === undefined) return false;
-        counters.manaMovesCount = next;
+        manaMovesCount = next;
         break;
       }
       case "mana-scored": {
         const score = manaScore(event.mana, state.activeColor);
         if (state.activeColor === Color.White) {
-          const next = incrementSafe(counters.whiteScore, score);
+          const next = incrementSafe(whiteScore, score);
           if (next === undefined) return false;
-          counters.whiteScore = next;
+          whiteScore = next;
         } else {
-          const next = incrementSafe(counters.blackScore, score);
+          const next = incrementSafe(blackScore, score);
           if (next === undefined) return false;
-          counters.blackScore = next;
+          blackScore = next;
         }
         break;
       }
       case "mystic-action":
       case "demon-action":
-      case "spirit-target-move":
-        if (!consumeActionForPreflight(counters, state.activeColor)) {
-          return false;
+      case "spirit-target-move": {
+        if (actionsUsedCount < ACTIONS_PER_TURN) {
+          actionsUsedCount += 1;
+        } else if (state.activeColor === Color.White) {
+          if (whitePotionsCount <= 0) return false;
+          whitePotionsCount -= 1;
+        } else {
+          if (blackPotionsCount <= 0) return false;
+          blackPotionsCount -= 1;
         }
         break;
+      }
       case "pickup-potion": {
         const mon = itemMon(event.by);
         if (mon === undefined) break;
         if (mon.color === Color.White) {
-          const next = incrementSafe(counters.whitePotionsCount);
+          const next = incrementSafe(whitePotionsCount);
           if (next === undefined) return false;
-          counters.whitePotionsCount = next;
+          whitePotionsCount = next;
         } else {
-          const next = incrementSafe(counters.blackPotionsCount);
+          const next = incrementSafe(blackPotionsCount);
           if (next === undefined) return false;
-          counters.blackPotionsCount = next;
+          blackPotionsCount = next;
         }
         break;
       }

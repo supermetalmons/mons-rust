@@ -8,6 +8,7 @@ import {
   MODIFIER_RANK,
   type Event,
   type Input,
+  type NextInput,
 } from "../engine/domain.js";
 import {
   BOARD_CELLS,
@@ -51,25 +52,31 @@ function compareNumber(left: number, right: number): number {
   return left < right ? -1 : left > right ? 1 : 0;
 }
 
+function inputTag(value: Input): number {
+  switch (value.kind) {
+    case "takeback":
+      return 0;
+    case "location":
+      return 1;
+    case "modifier":
+      return 2;
+  }
+}
+
+function compareLocations(left: Location, right: Location): number {
+  return compareNumber(left.i, right.i) || compareNumber(left.j, right.j);
+}
+
+function compareNextInputs(left: NextInput, right: NextInput): number {
+  return compareInputs(left.input, right.input);
+}
+
 /** Stable input order: Takeback, Location(i,j), then Modifier. */
 export function compareInputs(left: Input, right: Input): number {
-  const tag = (value: Input): number => {
-    switch (value.kind) {
-      case "takeback":
-        return 0;
-      case "location":
-        return 1;
-      case "modifier":
-        return 2;
-    }
-  };
-  const tagOrder = compareNumber(tag(left), tag(right));
+  const tagOrder = compareNumber(inputTag(left), inputTag(right));
   if (tagOrder !== 0) return tagOrder;
   if (left.kind === "location" && right.kind === "location") {
-    return (
-      compareNumber(left.location.i, right.location.i) ||
-      compareNumber(left.location.j, right.location.j)
-    );
+    return compareLocations(left.location, right.location);
   }
   if (left.kind === "modifier" && right.kind === "modifier") {
     return compareNumber(
@@ -95,23 +102,40 @@ export function compareInputChains(
   return compareNumber(left.length, right.length);
 }
 
+function lexicographicValues<T>(
+  values: readonly T[],
+  compare: (left: T, right: T) => number,
+): readonly T[] {
+  for (let index = 1; index < values.length; index += 1) {
+    const previous = values[index - 1];
+    const current = values[index];
+    if (
+      previous !== undefined &&
+      current !== undefined &&
+      compare(previous, current) > 0
+    ) {
+      return [...values].sort(compare);
+    }
+  }
+  return values;
+}
+
 function appendAppliedTransition(
   game: MonsGame,
   inputs: readonly Input[],
   events: readonly Event[],
   transitions: LegalInputTransition[],
 ): void {
-  const afterGame = game.fork();
-  const appliedEvents = afterGame.applyAndAddResultingEvents(events);
-  if (appliedEvents === undefined) return;
+  const applied = game.forkAndApplyEventsForSimulation(events);
+  if (applied === undefined) return;
   transitions.push({
     inputs: inputs.slice(),
-    game: afterGame,
-    events: appliedEvents,
+    game: applied.game,
+    events: applied.events,
   });
 }
 
-function collectLegalTransitions(
+function collectGeneratedTransitions(
   control: SearchControl,
   game: MonsGame,
   partialInputs: Input[],
@@ -135,69 +159,42 @@ function collectLegalTransitions(
     false,
     startOptions,
   );
-  switch (output.kind) {
-    case "invalid-input":
-      return;
-    case "events": {
-      appendAppliedTransition(game, partialInputs, output.events, transitions);
-      return;
-    }
-    case "locations-to-start-from":
-      for (const at of output.locations) {
-        if (transitions.length >= maxMoves) break;
-        partialInputs.push({
-          kind: "location",
-          location: { i: at.i, j: at.j },
-        });
-        collectLegalTransitions(
-          control,
-          game,
-          partialInputs,
-          transitions,
-          maxMoves,
-          startOptions,
-        );
-        partialInputs.pop();
-      }
-      return;
-    case "next-input-options":
-      for (const option of output.nextInputs) {
-        if (transitions.length >= maxMoves) break;
-        partialInputs.push(option.input);
-        collectLegalTransitions(
-          control,
-          game,
-          partialInputs,
-          transitions,
-          maxMoves,
-          startOptions,
-        );
-        partialInputs.pop();
-      }
+  if (output.kind === "invalid-input") return;
+  if (output.kind === "events") {
+    appendAppliedTransition(game, partialInputs, output.events, transitions);
+    return;
   }
-}
 
-export function enumerateLegalTransitions(
-  context: AutomoveExecutionContext,
-  game: MonsGame,
-  maxMoves: number,
-  startOptions: SuggestedStartInputOptions = FOR_AUTOMOVE_START_INPUT_OPTIONS,
-): LegalInputTransition[] {
-  if (context.session.checkpoint() || maxMoves <= 0) return [];
-  const transitions: LegalInputTransition[] = [];
-  collectLegalTransitions(
-    context.session,
-    game.fork(),
-    [],
-    transitions,
-    maxMoves,
-    startOptions,
-  );
-  if (context.session.cancelled) return [];
-  transitions.sort((left, right) =>
-    compareInputChains(left.inputs, right.inputs),
-  );
-  return transitions;
+  if (output.kind === "locations-to-start-from") {
+    for (const at of output.locations) {
+      if (transitions.length >= maxMoves) break;
+      partialInputs.push({ kind: "location", location: at });
+      collectGeneratedTransitions(
+        control,
+        game,
+        partialInputs,
+        transitions,
+        maxMoves,
+        startOptions,
+      );
+      partialInputs.pop();
+    }
+    return;
+  }
+
+  for (const nextInput of output.nextInputs) {
+    if (transitions.length >= maxMoves) break;
+    partialInputs.push(nextInput.input);
+    collectGeneratedTransitions(
+      control,
+      game,
+      partialInputs,
+      transitions,
+      maxMoves,
+      startOptions,
+    );
+    partialInputs.pop();
+  }
 }
 
 function locationMask(locations: readonly Location[]): Uint8Array {
@@ -253,10 +250,11 @@ export function enumerateLegalTransitionsWithPriority(
       break;
     }
   }
-  return [...priority, ...others];
+  priority.push(...others);
+  return priority;
 }
 
-function collectLexicographicBounded(
+function collectLexicographicTransitions(
   control: SearchControl,
   game: MonsGame,
   partialInputs: Input[],
@@ -289,16 +287,36 @@ function collectLexicographicBounded(
     return;
   }
 
-  const childInputs: Input[] =
-    output.kind === "locations-to-start-from"
-      ? output.locations.map((at) => ({
-          kind: "location",
-          location: { i: at.i, j: at.j },
-        }))
-      : output.nextInputs.map((next) => next.input);
-  childInputs.sort(compareInputs);
-  for (const input of childInputs) {
+  if (output.kind === "locations-to-start-from") {
+    const locations = lexicographicValues(output.locations, compareLocations);
+    for (const at of locations) {
+      if (transitions.length >= maxMoves) break;
+      if (
+        partialInputs.length === 0 &&
+        allowedFirstLocations !== undefined &&
+        allowedFirstLocations[locationIndex(at)] !== 1
+      ) {
+        continue;
+      }
+      partialInputs.push({ kind: "location", location: at });
+      collectLexicographicTransitions(
+        control,
+        game,
+        partialInputs,
+        transitions,
+        maxMoves,
+        startOptions,
+        allowedFirstLocations,
+      );
+      partialInputs.pop();
+    }
+    return;
+  }
+
+  const nextInputs = lexicographicValues(output.nextInputs, compareNextInputs);
+  for (const nextInput of nextInputs) {
     if (transitions.length >= maxMoves) break;
+    const input = nextInput.input;
     if (
       partialInputs.length === 0 &&
       allowedFirstLocations !== undefined &&
@@ -308,7 +326,7 @@ function collectLexicographicBounded(
       continue;
     }
     partialInputs.push(input);
-    collectLexicographicBounded(
+    collectLexicographicTransitions(
       control,
       game,
       partialInputs,
@@ -319,6 +337,29 @@ function collectLexicographicBounded(
     );
     partialInputs.pop();
   }
+}
+
+export function enumerateLegalTransitions(
+  context: AutomoveExecutionContext,
+  game: MonsGame,
+  maxMoves: number,
+  startOptions: SuggestedStartInputOptions = FOR_AUTOMOVE_START_INPUT_OPTIONS,
+): LegalInputTransition[] {
+  if (context.session.checkpoint() || maxMoves <= 0) return [];
+  const transitions: LegalInputTransition[] = [];
+  collectGeneratedTransitions(
+    context.session,
+    game.fork(),
+    [],
+    transitions,
+    maxMoves,
+    startOptions,
+  );
+  if (context.session.cancelled) return [];
+  transitions.sort((left, right) =>
+    compareInputChains(left.inputs, right.inputs),
+  );
+  return transitions;
 }
 
 export function enumerateLegalTransitionsLexicographicBounded(
@@ -334,7 +375,7 @@ export function enumerateLegalTransitionsLexicographicBounded(
       ? undefined
       : locationMask(allowedFirstLocations);
   const transitions: LegalInputTransition[] = [];
-  collectLexicographicBounded(
+  collectLexicographicTransitions(
     context.session,
     game.fork(),
     [],

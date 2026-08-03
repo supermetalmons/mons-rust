@@ -50,7 +50,11 @@ import {
   spiritReachableLocations,
   type Location,
 } from "./geometry.js";
-import { RulesQueryCache, type InputStageResult } from "./query-cache.js";
+import {
+  CACHE_MISS,
+  RulesQueryCache,
+  type InputStageResult,
+} from "./query-cache.js";
 import {
   GameHistory,
   type HistoryReplacement,
@@ -86,8 +90,22 @@ function nextInput(
   kind: NextInputKind,
   actorMonItem?: Item,
 ): NextInput {
-  const base = { input, kind };
-  return actorMonItem === undefined ? base : { ...base, actorMonItem };
+  return actorMonItem === undefined
+    ? { input, kind }
+    : { input, kind, actorMonItem };
+}
+
+function firstOptionFromEachKindGroup(
+  options: readonly NextInput[],
+): NextInput[] {
+  const result: NextInput[] = [];
+  let previousKind: NextInput["kind"] | undefined;
+  for (const option of options) {
+    if (option.kind === previousKind) continue;
+    result.push(option);
+    previousKind = option.kind;
+  }
+  return result;
 }
 
 function regularSquareForMovement(square: Square): boolean {
@@ -356,9 +374,9 @@ export class MonsGame {
       return { kind: "invalid-input" };
     }
     if (input.length === 0) {
-      const key = `${filterCounterCapacityOptions ? 1 : 0}:${
-        suggestedStartOptions.includeManaStartsWithPotionAction ? 1 : 0
-      }`;
+      const key =
+        (filterCounterCapacityOptions ? 2 : 0) |
+        (suggestedStartOptions.includeManaStartsWithPotionAction ? 1 : 0);
       const cached = this.#queryCache.getStartSuggestion(key);
       if (cached !== undefined) {
         return cached;
@@ -387,7 +405,6 @@ export class MonsGame {
       }
       this.#updateWith(previousGame);
       this.#history.commitTakeback(prepared);
-      this.invalidateProcessInputCache();
       return { kind: "events", events: [{ kind: "takeback" }] };
     }
 
@@ -401,19 +418,29 @@ export class MonsGame {
     }
     const startItem = boardStartItem;
     const specificSecondInput = input[1];
+    if (
+      specificSecondInput !== undefined &&
+      specificSecondInput.kind !== "location"
+    ) {
+      return { kind: "invalid-input" };
+    }
     const filterCounterCapacity =
       filterCounterCapacityOptions && this.#requiresCounterCapacityFiltering();
     const secondInputOptions = this.#secondInputOptions(
       startLocation,
       startItem,
-      oneOptionEnough && !filterCounterCapacity,
-      specificSecondInput,
+      doNotApplyEvents,
+      doNotApplyEvents ? undefined : specificSecondInput?.location,
     );
 
     if (specificSecondInput === undefined) {
+      const presentedOptions =
+        oneOptionEnough && !filterCounterCapacity
+          ? firstOptionFromEachKindGroup(secondInputOptions)
+          : secondInputOptions;
       const applicableOptions = this.#applicableInputOptions(
         input,
-        secondInputOptions,
+        presentedOptions,
         suggestedStartOptions,
         filterCounterCapacity,
         oneOptionEnough,
@@ -421,9 +448,6 @@ export class MonsGame {
       return applicableOptions.length === 0
         ? { kind: "invalid-input" }
         : { kind: "next-input-options", nextInputs: applicableOptions };
-    }
-    if (specificSecondInput.kind !== "location") {
-      return { kind: "invalid-input" };
     }
     const targetLocation = specificSecondInput.location;
     const secondOption = secondInputOptions.find((option) =>
@@ -439,6 +463,7 @@ export class MonsGame {
       startItem,
       startLocation,
       targetLocation,
+      doNotApplyEvents,
     );
     const events = secondResult?.[0] ?? [];
     const thirdInputOptions = secondResult?.[1] ?? [];
@@ -474,6 +499,7 @@ export class MonsGame {
       startItem,
       startLocation,
       targetLocation,
+      doNotApplyEvents,
     );
     events.push(...(thirdResult?.[0] ?? []));
     const fourthInputOptions = thirdResult?.[1] ?? [];
@@ -663,22 +689,15 @@ export class MonsGame {
   #secondInputOptions(
     startLocation: Location,
     startItem: Item,
-    onlyOne: boolean,
-    specificNext: Input | undefined,
+    cacheComputed: boolean,
+    specificLocation: Location | undefined,
   ): NextInput[] {
-    const cacheKey = `${locationIndex(startLocation)}|${itemKey(startItem)}|${onlyOne ? 1 : 0}|${
-      specificNext === undefined ? "" : inputKey(specificNext)
-    }`;
+    const cacheKey = String(locationIndex(startLocation));
     const cached = this.#queryCache.getSecondInputOptions(cacheKey);
     if (cached !== undefined) {
       return cached;
     }
 
-    const specificLocation =
-      specificNext?.kind === "location" ? specificNext.location : undefined;
-    const opponentsAngelLocation = this.board.findAwakeAngel(
-      otherColor(this.activeColor),
-    );
     const startSquare = this.board.squareAt(startLocation);
     const options: NextInput[] = [];
 
@@ -693,12 +712,7 @@ export class MonsGame {
             ...this.nextInputsFromLocations(
               nearbyLocations(startLocation),
               NextInputKind.MonMove,
-              onlyOne,
-              specificNext === undefined
-                ? undefined
-                : specificNext.kind === "location"
-                  ? specificNext.location
-                  : startLocation,
+              specificLocation,
               (at) => {
                 const item = this.board.get(at);
                 const square = this.board.squareAt(at);
@@ -748,12 +762,14 @@ export class MonsGame {
             case MonKind.Angel:
             case MonKind.Drainer:
               break;
-            case MonKind.Mystic:
+            case MonKind.Mystic: {
+              const opponentsAngelLocation = this.board.findAwakeAngel(
+                otherColor(this.activeColor),
+              );
               options.push(
                 ...this.nextInputsFromLocations(
                   mysticReachableLocations(startLocation),
                   NextInputKind.MysticAction,
-                  onlyOne,
                   specificLocation,
                   (at) => {
                     const item = this.board.get(at);
@@ -776,12 +792,15 @@ export class MonsGame {
                 ),
               );
               break;
-            case MonKind.Demon:
+            }
+            case MonKind.Demon: {
+              const opponentsAngelLocation = this.board.findAwakeAngel(
+                otherColor(this.activeColor),
+              );
               options.push(
                 ...this.nextInputsFromLocations(
                   demonReachableLocations(startLocation),
                   NextInputKind.DemonAction,
-                  onlyOne,
                   specificLocation,
                   (at) => {
                     const item = this.board.get(at);
@@ -809,12 +828,12 @@ export class MonsGame {
                 ),
               );
               break;
+            }
             case MonKind.Spirit:
               options.push(
                 ...this.nextInputsFromLocations(
                   spiritReachableLocations(startLocation),
                   NextInputKind.SpiritTargetCapture,
-                  onlyOne,
                   specificLocation,
                   (at) => {
                     const item = this.board.get(at);
@@ -840,7 +859,6 @@ export class MonsGame {
             ...this.nextInputsFromLocations(
               nearbyLocations(startLocation),
               NextInputKind.ManaMove,
-              onlyOne,
               specificLocation,
               (at) => {
                 const item = this.board.get(at);
@@ -869,7 +887,6 @@ export class MonsGame {
             ...this.nextInputsFromLocations(
               nearbyLocations(startLocation),
               NextInputKind.MonMove,
-              onlyOne,
               specificLocation,
               (at) => {
                 const item = this.board.get(at);
@@ -906,7 +923,6 @@ export class MonsGame {
             ...this.nextInputsFromLocations(
               nearbyLocations(startLocation),
               NextInputKind.MonMove,
-              onlyOne,
               specificLocation,
               (at) => {
                 const item = this.board.get(at);
@@ -931,7 +947,6 @@ export class MonsGame {
             ...this.nextInputsFromLocations(
               bombReachableLocations(startLocation),
               NextInputKind.BombAttack,
-              onlyOne,
               specificLocation,
               (at) => {
                 const item = this.board.get(at);
@@ -952,7 +967,9 @@ export class MonsGame {
         break;
     }
 
-    this.#queryCache.setSecondInputOptions(cacheKey, options);
+    if (cacheComputed) {
+      this.#queryCache.setSecondInputOptions(cacheKey, options);
+    }
     return options;
   }
 
@@ -961,12 +978,14 @@ export class MonsGame {
     startItem: Item,
     startLocation: Location,
     targetLocation: Location,
+    cacheComputed: boolean,
   ): InputStageResult {
     const cacheKey = `${kind}|${itemKey(startItem)}|${locationIndex(startLocation)}|${locationIndex(
       targetLocation,
     )}`;
-    if (this.#queryCache.hasSecondStage(cacheKey)) {
-      return this.#queryCache.getSecondStage(cacheKey);
+    const cached = this.#queryCache.lookupSecondStage(cacheKey);
+    if (cached !== CACHE_MISS) {
+      return cached;
     }
     const computed = this.#processSecondInputUncached(
       kind,
@@ -974,7 +993,9 @@ export class MonsGame {
       startLocation,
       targetLocation,
     );
-    this.#queryCache.setSecondStage(cacheKey, computed);
+    if (cacheComputed) {
+      this.#queryCache.setSecondStage(cacheKey, computed);
+    }
     return computed;
   }
 
@@ -1271,7 +1292,6 @@ export class MonsGame {
           ...this.nextInputsFromLocations(
             nearbyLocations(targetLocation),
             NextInputKind.SpiritTargetMove,
-            false,
             undefined,
             (at) => {
               const destinationItem = this.board.get(at);
@@ -1379,14 +1399,16 @@ export class MonsGame {
     startItem: Item,
     startLocation: Location,
     targetLocation: Location,
+    cacheComputed: boolean,
   ): InputStageResult {
     const cacheKey = `${inputKey(thirdInput.input)}|${thirdInput.kind}|${
       thirdInput.actorMonItem === undefined
         ? ""
         : itemKey(thirdInput.actorMonItem)
     }|${itemKey(startItem)}|${locationIndex(startLocation)}|${locationIndex(targetLocation)}`;
-    if (this.#queryCache.hasThirdStage(cacheKey)) {
-      return this.#queryCache.getThirdStage(cacheKey);
+    const cached = this.#queryCache.lookupThirdStage(cacheKey);
+    if (cached !== CACHE_MISS) {
+      return cached;
     }
     const computed = this.#processThirdInputUncached(
       thirdInput,
@@ -1394,7 +1416,9 @@ export class MonsGame {
       startLocation,
       targetLocation,
     );
-    this.#queryCache.setThirdStage(cacheKey, computed);
+    if (cacheComputed) {
+      this.#queryCache.setThirdStage(cacheKey, computed);
+    }
     return computed;
   }
 
@@ -1669,10 +1693,34 @@ export class MonsGame {
   public applyAndAddResultingEvents(
     events: readonly Event[],
   ): Event[] | undefined {
+    return this.#applyAndAddResultingEvents(
+      events,
+      this.#history.eventApplicationTrackingEnabled,
+    );
+  }
+
+  /** @internal Fork and apply without creating history snapshots. */
+  public forkAndApplyEventsForSimulation(
+    events: readonly Event[],
+  ): { readonly game: MonsGame; readonly events: Event[] } | undefined {
+    const game = this.fork();
+    const appliedEvents = game.#applyAndAddResultingEvents(events, false);
+    return appliedEvents === undefined
+      ? undefined
+      : { game, events: appliedEvents };
+  }
+
+  #applyAndAddResultingEvents(
+    events: readonly Event[],
+    trackHistory: boolean,
+  ): Event[] | undefined {
     if (!canApplyRulesEvents(this.#state, events)) {
       return undefined;
     }
     this.invalidateProcessInputCache();
+    if (!trackHistory) {
+      return applyRulesEvents(this.#state, events).events;
+    }
     const snapshotFen = (): string => this.fen();
     this.#history.beginEventApplication(snapshotFen, this.activeColor);
     const reduction = applyRulesEvents(this.#state, events);
@@ -1699,28 +1747,24 @@ export class MonsGame {
   public nextInputsFromLocations(
     locations: readonly Location[],
     kind: NextInputKind,
-    onlyOne: boolean,
     specific: Location | undefined,
     filter: (location: Location) => boolean,
   ): NextInput[] {
     if (specific !== undefined) {
-      if (
-        locations.some((candidate) => locationEquals(candidate, specific)) &&
-        filter(specific)
-      ) {
-        return [nextInput({ kind: "location", location: specific }, kind)];
+      for (const candidate of locations) {
+        if (!locationEquals(candidate, specific)) continue;
+        return filter(specific)
+          ? [nextInput({ kind: "location", location: specific }, kind)]
+          : [];
       }
       return [];
     }
-    if (onlyOne) {
-      const one = locations.find(filter);
-      return one === undefined
-        ? []
-        : [nextInput({ kind: "location", location: one }, kind)];
+    const options: NextInput[] = [];
+    for (const at of locations) {
+      if (!filter(at)) continue;
+      options.push(nextInput({ kind: "location", location: at }, kind));
     }
-    return locations
-      .filter(filter)
-      .map((at) => nextInput({ kind: "location", location: at }, kind));
+    return options;
   }
 
   public availableMoveKinds(): Map<AvailableMoveKind, number> {

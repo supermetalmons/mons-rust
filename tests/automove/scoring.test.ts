@@ -189,6 +189,7 @@ describe("scoring evaluation", () => {
       expect(context.game).toBe(game);
       expect(context.board).toBe(game.board);
       expect(context.allowExactStrategic).toBe(allowExactStrategic);
+      expect(context.boardHash).toBe(context.boardHash);
       expect(context.boardSummary()).toBe(context.boardSummary());
       expect(context.manaPathSnapshot()).toBe(context.manaPathSnapshot());
       expect(context.exactAnalysis()).toBe(context.exactAnalysis());
@@ -212,6 +213,30 @@ describe("scoring evaluation", () => {
       );
     },
   );
+
+  it("retains inline threat entries after promoting the memo to a map", () => {
+    const context = new ScoringEvalContext(
+      createTestAutomoveExecutionContext(),
+      emptyClassicGame(),
+      { allowExactStrategic: false },
+    );
+    const firstLocation = { i: 5, j: 5 } as const;
+    const secondLocation = { i: 5, j: 6 } as const;
+    const thirdLocation = { i: 6, j: 5 } as const;
+    const first = context.drainerImmediateThreats(Color.White, firstLocation);
+    const second = context.drainerImmediateThreats(Color.White, secondLocation);
+    const third = context.drainerImmediateThreats(Color.White, thirdLocation);
+
+    expect(context.drainerImmediateThreats(Color.White, firstLocation)).toBe(
+      first,
+    );
+    expect(context.drainerImmediateThreats(Color.White, secondLocation)).toBe(
+      second,
+    );
+    expect(context.drainerImmediateThreats(Color.White, thirdLocation)).toBe(
+      third,
+    );
+  });
 
   it.each([
     ["plain spirit", monItem(createMon(MonKind.Spirit, Color.White, 0))],

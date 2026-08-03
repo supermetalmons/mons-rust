@@ -1,5 +1,6 @@
 import { AutomoveEngine } from "../automove/automove-engine.js";
 import { suggestMove as suggestAutomove } from "../automove/runtime.js";
+import type { Input as EngineInput } from "../engine/domain.js";
 import {
   eventArrayFen,
   inputArrayFen,
@@ -132,39 +133,49 @@ export class Game {
 
   public preview(inputs: readonly Input[]): InputResolution {
     const engineInputs = inputs.map(toEngineInput);
-    const inputFen = inputArrayFen(engineInputs);
-    const simulation =
-      engineInputs.length === 1 && engineInputs[0]?.kind === "takeback"
-        ? this.#engine.copy()
-        : this.#engine.fork();
-    return fromEngineOutput(
-      simulation.processInput(engineInputs, false, false),
-      inputFen,
-    );
+    return this.#previewEngineInputs(engineInputs, inputArrayFen(engineInputs));
   }
 
   public previewFen(inputFen: string): InputResolution {
-    const inputs = parseStrictInputArrayFen(inputFen);
-    return inputs === undefined
-      ? { kind: "invalid", inputFen }
-      : this.preview(inputs);
+    const engineInputs = parseInputArrayFen(inputFen);
+    if (engineInputs === undefined) return { kind: "invalid", inputFen };
+    return this.#previewEngineInputs(engineInputs, inputArrayFen(engineInputs));
   }
 
   public play(inputs: readonly Input[]): PlayResult {
     const engineInputs = inputs.map(toEngineInput);
-    const inputFen = inputArrayFen(engineInputs);
-    const result = fromEngineOutput(
-      this.#engine.processInput(engineInputs, false, false),
-      inputFen,
-    );
-    return result.kind === "complete" ? result : { kind: "invalid", inputFen };
+    return this.#playEngineInputs(engineInputs, inputArrayFen(engineInputs));
   }
 
   public playFen(inputFen: string): PlayResult {
-    const inputs = parseStrictInputArrayFen(inputFen);
-    return inputs === undefined
-      ? { kind: "invalid", inputFen }
-      : this.play(inputs);
+    const engineInputs = parseInputArrayFen(inputFen);
+    if (engineInputs === undefined) return { kind: "invalid", inputFen };
+    return this.#playEngineInputs(engineInputs, inputArrayFen(engineInputs));
+  }
+
+  #previewEngineInputs(
+    inputs: readonly EngineInput[],
+    inputFen: string,
+  ): InputResolution {
+    const simulation =
+      inputs.length === 1 && inputs[0]?.kind === "takeback"
+        ? this.#engine.copy()
+        : this.#engine.fork();
+    return fromEngineOutput(
+      simulation.processInput(inputs, false, false),
+      inputFen,
+    );
+  }
+
+  #playEngineInputs(
+    inputs: readonly EngineInput[],
+    inputFen: string,
+  ): PlayResult {
+    const result = fromEngineOutput(
+      this.#engine.processInput(inputs, false, false),
+      inputFen,
+    );
+    return result.kind === "complete" ? result : { kind: "invalid", inputFen };
   }
 
   public itemAt(position: Position): BoardItem | undefined {
@@ -306,10 +317,6 @@ export class Game {
   public clearTracking(): void {
     this.#engine.clearTracking();
   }
-}
-
-function parseStrictInputArrayFen(inputFen: string): Input[] | undefined {
-  return parseInputArrayFen(inputFen)?.map(fromEngineInput);
 }
 
 function isColor(value: unknown): value is ColorValue {

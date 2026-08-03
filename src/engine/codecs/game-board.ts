@@ -1,29 +1,33 @@
-import { Board } from "../board.js";
+import { Board, MutableBoard } from "../board.js";
 import {
   ACTIONS_PER_TURN,
   DEFAULT_GAME_VARIANT,
   GameVariant,
+  gameVariantFromId,
   gameVariantId,
   MANA_MOVES_PER_TURN,
   MONS_MOVES_PER_TURN,
-  parseGameVariant,
   TARGET_SCORE,
 } from "../config.js";
 import { Color, type Item } from "../domain.js";
 import { BOARD_CELLS, BOARD_SIZE } from "../geometry.js";
-import {
-  isAscii,
-  parseNonnegativeInteger,
-  splitGameFenFields,
-} from "./common.js";
-import {
-  colorFen,
-  itemFen,
-  parseColorFen,
-  parseItemFen,
-} from "./domain-item.js";
+import { colorFen, itemFen, parseItemFenAt } from "./domain-item.js";
 
 const MAX_CANONICAL_SCORE = TARGET_SCORE + 1;
+const EMPTY_RUN_FENS: readonly string[] = Object.freeze([
+  "",
+  "n01",
+  "n02",
+  "n03",
+  "n04",
+  "n05",
+  "n06",
+  "n07",
+  "n08",
+  "n09",
+  "n10",
+  "n11",
+]);
 
 /** The portion of game state serialized by the stable game FEN format. */
 export type GameFenState = {
@@ -40,54 +44,58 @@ export type GameFenState = {
 };
 
 export function boardFen(board: Board): string {
-  const lines: string[] = [];
-  for (let i = 0; i < BOARD_SIZE; i += 1) {
-    let line = "";
+  let fen = "";
+  let index = 0;
+  for (let row = 0; row < BOARD_SIZE; row += 1) {
+    if (row > 0) fen += "/";
+    const rowEnd = index + BOARD_SIZE;
     let emptySpaceCount = 0;
-    for (let j = 0; j < BOARD_SIZE; j += 1) {
-      const item = board.get({ i, j });
+    while (index < rowEnd) {
+      const item = board.itemAtIndex(index);
+      index += 1;
       if (item === undefined) {
         emptySpaceCount += 1;
         continue;
       }
       if (emptySpaceCount > 0) {
-        line += emptyRunFen(emptySpaceCount);
+        fen += emptyRunFen(emptySpaceCount);
         emptySpaceCount = 0;
       }
-      line += itemFen(item);
+      fen += itemFen(item);
     }
     if (emptySpaceCount > 0) {
-      line += emptyRunFen(emptySpaceCount);
+      fen += emptyRunFen(emptySpaceCount);
     }
-    lines.push(line);
   }
-  return lines.join("/");
+  return fen;
 }
 
 export function parseBoardFen(
   fen: string,
   variant: GameVariant,
 ): Board | undefined {
-  if (!isAscii(fen)) return undefined;
-  const lines = fen.split("/");
-  if (lines.length !== BOARD_SIZE) {
-    return undefined;
-  }
+  return parseBoardFenRange(fen, 0, fen.length, variant);
+}
 
-  const items: (Item | undefined)[] = Array.from(
-    { length: BOARD_CELLS },
-    () => undefined,
-  );
-  for (const [i, line] of lines.entries()) {
-    let characterIndex = 0;
+function parseBoardFenRange(
+  fen: string,
+  start: number,
+  end: number,
+  variant: GameVariant,
+): Board | undefined {
+  const items = new Array<Item | undefined>(BOARD_CELLS).fill(undefined);
+  let characterIndex = start;
+  for (let i = 0; i < BOARD_SIZE; i += 1) {
     let j = 0;
     let previousWasEmptyRun = false;
-    while (characterIndex < line.length) {
-      if (line[characterIndex] === "n") {
+    while (characterIndex < end && fen.charCodeAt(characterIndex) !== 47) {
+      if (fen.charCodeAt(characterIndex) === 110) {
         if (previousWasEmptyRun) return undefined;
-        const countCode = line.slice(characterIndex + 1, characterIndex + 3);
-        if (!/^\d{2}$/u.test(countCode)) return undefined;
-        const count = Number(countCode);
+        if (characterIndex + 2 >= end) return undefined;
+        const tens = fen.charCodeAt(characterIndex + 1) - 48;
+        const ones = fen.charCodeAt(characterIndex + 2) - 48;
+        if (tens < 0 || tens > 9 || ones < 0 || ones > 9) return undefined;
+        const count = tens * 10 + ones;
         if (count < 1 || j + count > BOARD_SIZE) return undefined;
         j += count;
         characterIndex += 3;
@@ -95,9 +103,8 @@ export function parseBoardFen(
         continue;
       }
 
-      const itemCode = line.slice(characterIndex, characterIndex + 3);
-      if (itemCode.length !== 3 || j >= BOARD_SIZE) return undefined;
-      const item = parseItemFen(itemCode);
+      if (characterIndex + 2 >= end || j >= BOARD_SIZE) return undefined;
+      const item = parseItemFenAt(fen, characterIndex);
       if (item === undefined) return undefined;
       items[i * BOARD_SIZE + j] = item;
       j += 1;
@@ -105,92 +112,81 @@ export function parseBoardFen(
       previousWasEmptyRun = false;
     }
     if (j !== BOARD_SIZE) return undefined;
+    if (i < BOARD_SIZE - 1) {
+      if (fen.charCodeAt(characterIndex) !== 47) return undefined;
+      characterIndex += 1;
+    }
   }
+  if (characterIndex !== end) return undefined;
 
-  return Board.fromItems(items, variant);
+  return new MutableBoard(variant, items, undefined, true);
 }
 
 export function gameFen(game: GameFenState): string {
-  const fields = [
-    game.whiteScore,
-    game.blackScore,
-    colorFen(game.activeColor),
-    game.actionsUsedCount,
-    game.manaMovesCount,
-    game.monsMovesCount,
-    game.whitePotionsCount,
-    game.blackPotionsCount,
-    game.turnNumber,
-    boardFen(game.board),
-  ].map(String);
+  const fen = `${game.whiteScore} ${game.blackScore} ${colorFen(game.activeColor)} ${game.actionsUsedCount} ${game.manaMovesCount} ${game.monsMovesCount} ${game.whitePotionsCount} ${game.blackPotionsCount} ${game.turnNumber} ${boardFen(game.board)}`;
   const variant = game.board.variant;
-  if (variant !== DEFAULT_GAME_VARIANT) {
-    fields.push(String(gameVariantId(variant)));
-  }
-  return fields.join(" ");
+  return variant === DEFAULT_GAME_VARIANT
+    ? fen
+    : `${fen} ${gameVariantId(variant)}`;
 }
 
 export function parseGameFen(fen: string): GameFenState | undefined {
-  const fields = splitGameFenFields(fen);
-  if (fields === undefined) return undefined;
-  if (fields.length !== 10 && fields.length !== 11) {
-    return undefined;
-  }
+  let characterIndex = 0;
+  const readInteger = (spaceTerminated: boolean): number => {
+    const start = characterIndex;
+    let parsed = 0;
+    let leadingZero = false;
+    while (characterIndex < fen.length) {
+      const code = fen.charCodeAt(characterIndex);
+      if (code === 32) break;
+      if (code < 48 || code > 57) return -1;
+      if (characterIndex === start) {
+        leadingZero = code === 48;
+      } else if (leadingZero) {
+        return -1;
+      }
+      parsed = parsed * 10 + (code - 48);
+      if (!Number.isSafeInteger(parsed)) return -1;
+      characterIndex += 1;
+    }
+    if (characterIndex === start) return -1;
+    if (spaceTerminated) {
+      if (characterIndex >= fen.length) return -1;
+      characterIndex += 1;
+    } else if (characterIndex !== fen.length) {
+      return -1;
+    }
+    return parsed;
+  };
 
-  const variant =
-    fields.length === 10
-      ? DEFAULT_GAME_VARIANT
-      : parseGameVariant(fields[10] ?? "");
-  if (variant === undefined) {
+  const whiteScore = readInteger(true);
+  const blackScore = readInteger(true);
+  const colorCode = fen.charCodeAt(characterIndex);
+  const activeColor =
+    colorCode === 119
+      ? Color.White
+      : colorCode === 98
+        ? Color.Black
+        : undefined;
+  if (activeColor === undefined || fen.charCodeAt(characterIndex + 1) !== 32) {
     return undefined;
   }
-  if (fields.length === 11 && variant === DEFAULT_GAME_VARIANT) {
-    return undefined;
-  }
-
-  const boardCode = fields[9];
-  const colorCode = fields[2];
-  if (boardCode === undefined || colorCode === undefined) {
-    return undefined;
-  }
-  const board = parseBoardFen(boardCode, variant);
-  const activeColor = parseColorFen(colorCode);
-  if (board === undefined || activeColor === undefined) {
-    return undefined;
-  }
-
-  const numbers = [
-    fields[0],
-    fields[1],
-    fields[3],
-    fields[4],
-    fields[5],
-    fields[6],
-    fields[7],
-    fields[8],
-  ].map((field) => parseNonnegativeInteger(field ?? ""));
-  if (numbers.some((number) => number === undefined)) {
-    return undefined;
-  }
-  const [
-    whiteScore,
-    blackScore,
-    actionsUsedCount,
-    manaMovesCount,
-    monsMovesCount,
-    whitePotionsCount,
-    blackPotionsCount,
-    turnNumber,
-  ] = numbers;
+  characterIndex += 2;
+  const actionsUsedCount = readInteger(true);
+  const manaMovesCount = readInteger(true);
+  const monsMovesCount = readInteger(true);
+  const whitePotionsCount = readInteger(true);
+  const blackPotionsCount = readInteger(true);
+  const turnNumber = readInteger(true);
   if (
-    whiteScore === undefined ||
-    blackScore === undefined ||
-    actionsUsedCount === undefined ||
-    manaMovesCount === undefined ||
-    monsMovesCount === undefined ||
-    whitePotionsCount === undefined ||
-    blackPotionsCount === undefined ||
-    turnNumber === undefined ||
+    whiteScore < 0 ||
+    blackScore < 0 ||
+    actionsUsedCount < 0 ||
+    manaMovesCount < 0 ||
+    monsMovesCount < 0 ||
+    whitePotionsCount < 0 ||
+    blackPotionsCount < 0 ||
+    turnNumber < 0 ||
     whiteScore > MAX_CANONICAL_SCORE ||
     blackScore > MAX_CANONICAL_SCORE ||
     actionsUsedCount > ACTIONS_PER_TURN ||
@@ -200,6 +196,24 @@ export function parseGameFen(fen: string): GameFenState | undefined {
   ) {
     return undefined;
   }
+
+  const boardStart = characterIndex;
+  while (characterIndex < fen.length && fen.charCodeAt(characterIndex) !== 32) {
+    characterIndex += 1;
+  }
+  const boardEnd = characterIndex;
+  let variant: GameVariant = DEFAULT_GAME_VARIANT;
+  if (characterIndex < fen.length) {
+    characterIndex += 1;
+    const variantId = readInteger(false);
+    const parsedVariant = gameVariantFromId(variantId);
+    if (parsedVariant === undefined || parsedVariant === DEFAULT_GAME_VARIANT) {
+      return undefined;
+    }
+    variant = parsedVariant;
+  }
+  const board = parseBoardFenRange(fen, boardStart, boardEnd, variant);
+  if (board === undefined) return undefined;
   return {
     board,
     whiteScore,
@@ -215,5 +229,5 @@ export function parseGameFen(fen: string): GameFenState | undefined {
 }
 
 function emptyRunFen(count: number): string {
-  return `n${String(count).padStart(2, "0")}`;
+  return EMPTY_RUN_FENS[count] ?? "";
 }

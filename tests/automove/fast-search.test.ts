@@ -17,6 +17,10 @@ import {
 } from "../../src/automove/fast/position.js";
 import { selectProFastSelection } from "../../src/automove/fast/index.js";
 import {
+  DEFAULT_WEIGHTS,
+  normalizeEvalWeights,
+} from "../../src/automove/fast/evaluate.js";
+import {
   FastSearcher,
   MAX_SEARCH_DEPTH,
   normalizeSearchLimits,
@@ -350,6 +354,47 @@ describe("packed-state automove search", () => {
     expect(
       game.fork().processInput(moveToInputs(sampled.move), false, false).kind,
     ).toBe("events");
+  });
+
+  it("honors custom weights when reusing a searcher", () => {
+    const game = new MonsGame(true, GameVariant.Classic);
+    const zeroWeights = normalizeEvalWeights(
+      Object.fromEntries(Object.keys(DEFAULT_WEIGHTS).map((key) => [key, 0])),
+    );
+    const limits = { maxDepth: 3, maxNodes: 100_000 };
+
+    const reused = new FastSearcher();
+    loadSearchRoot(reused, game);
+    reused.search(limits, () => false);
+    loadSearchRoot(reused, game);
+    const reusedOutcome = reused.search(limits, () => false, zeroWeights);
+
+    const fresh = new FastSearcher();
+    loadSearchRoot(fresh, game);
+    const freshOutcome = fresh.search(limits, () => false, zeroWeights);
+
+    expect(reusedOutcome).toEqual(freshOutcome);
+  });
+
+  it("does not allocate leaf-evaluation cache arrays", () => {
+    const NativeInt32Array = globalThis.Int32Array;
+    const allocationLengths: number[] = [];
+    const TrackingInt32Array = new Proxy(NativeInt32Array, {
+      construct(target, argumentsList, newTarget) {
+        const length = argumentsList[0];
+        if (typeof length === "number") allocationLengths.push(length);
+        return Reflect.construct(target, argumentsList, newTarget);
+      },
+    });
+
+    vi.stubGlobal("Int32Array", TrackingInt32Array);
+    try {
+      new FastSearcher();
+    } finally {
+      vi.unstubAllGlobals();
+    }
+
+    expect(allocationLengths).not.toContain(1 << 14);
   });
 
   it("validates limits and skips search work for terminal roots", () => {

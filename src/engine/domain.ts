@@ -601,7 +601,18 @@ export function inputChainKey(inputs: readonly Input[]): string {
 }
 
 export function inputEquals(left: Input, right: Input): boolean {
-  return inputKey(left) === inputKey(right);
+  switch (left.kind) {
+    case "takeback":
+      return right.kind === "takeback";
+    case "location":
+      return (
+        right.kind === "location" &&
+        left.location.i === right.location.i &&
+        left.location.j === right.location.j
+      );
+    case "modifier":
+      return right.kind === "modifier" && left.modifier === right.modifier;
+  }
 }
 
 export function inputChainsShareFirstInput(

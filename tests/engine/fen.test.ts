@@ -3,11 +3,13 @@ import { describe, expect, it } from "vitest";
 import { ALL_GAME_VARIANTS, GameVariant } from "../../src/engine/config.js";
 import { Color, Modifier, MonKind } from "../../src/engine/domain.js";
 import {
+  boardFen,
   eventArrayFen,
   gameFen,
   inputArrayFen,
   monFen,
   outputFen,
+  parseBoardFen,
   parseGameFen,
   parseInputArrayFen,
   parseInputFen,
@@ -80,6 +82,10 @@ describe("strict FEN codecs", () => {
         parseGameFen(withField(index, "9007199254740992")),
       ).toBeUndefined();
     }
+    for (const index of [0, 1, 3, 4, 5, 6, 7, 8]) {
+      expect(parseGameFen(withField(index, "00"))).toBeUndefined();
+      expect(parseGameFen(withField(index, "01"))).toBeUndefined();
+    }
   });
 
   it("round-trips the largest safe turn and rejects overflow atomically", () => {
@@ -132,6 +138,23 @@ describe("strict FEN codecs", () => {
   it("rejects noncanonical board run encodings", () => {
     const canonical = new MonsGame(false, GameVariant.Classic).fen();
     expect(parseGameFen(canonical.replace("n11", "n01n10"))).toBeUndefined();
+  });
+
+  it("requires exactly eleven complete board rows", () => {
+    const boardCode = boardFen(new MonsGame(false).board);
+    for (const malformed of [
+      boardCode.slice(0, -1),
+      `${boardCode}/n11`,
+      boardCode.replace("/n11/", "//n11/"),
+      boardCode.replace("n11", "n1"),
+      boardCode.replace("y0x", "z0x"),
+      `${boardCode}é`,
+    ]) {
+      expect(
+        parseBoardFen(malformed, GameVariant.Classic),
+        malformed,
+      ).toBeUndefined();
+    }
   });
 
   it("rejects partial input arrays and the removed cancel modifier", () => {

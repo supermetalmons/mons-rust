@@ -331,6 +331,30 @@ describe("game history", () => {
 });
 
 describe("failed engine input application", () => {
+  it("forks and applies simulation events without history ownership", () => {
+    const source = new MonsGame(true, GameVariant.Classic);
+    const parsed = parseGameFen(source.fen());
+    if (parsed === undefined) {
+      throw new Error("initial game must have a parseable FEN");
+    }
+    const event = monMove(
+      { ...parsed, board: parsed.board.fork() },
+      { i: 10, j: 3 },
+      { i: 9, j: 2 },
+    );
+    const before = stateSnapshot(source);
+    const expected = source.fork();
+    const expectedEvents = expected.applyAndAddResultingEvents([event]);
+
+    const simulation = source.forkAndApplyEventsForSimulation([event]);
+
+    expect(simulation?.events).toEqual(expectedEvents);
+    expect(simulation?.game.fen()).toBe(expected.fen());
+    expect(simulation?.game.takebackFens).toEqual([]);
+    expect(simulation?.game.verboseTrackingEntities).toEqual([]);
+    expect(stateSnapshot(source)).toEqual(before);
+  });
+
   it("leaves gameplay and history state unchanged", () => {
     const game = new MonsGame(true, GameVariant.Classic);
     const invalidMove = [

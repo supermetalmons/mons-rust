@@ -70,6 +70,7 @@ type ScoringDangerSource = {
 type ScoringManaEntry = {
   readonly location: Location;
   readonly mana: Mana;
+  readonly scoreSteps: number;
 };
 
 type ScoringManaCarrierEntry = ScoringManaEntry;
@@ -81,6 +82,7 @@ type ScoringBoardSummary = {
     ScoringManaCarrierEntry[],
   ];
   readonly liveMonLocations: readonly [Location[], Location[]];
+  readonly drainerTargetLocations: readonly [Location[], Location[]];
   readonly liveDrainerLocations: readonly [Location[], Location[]];
   readonly liveAngelLocations: readonly [Location[], Location[]];
   readonly dangerSources: readonly [
@@ -128,6 +130,7 @@ function scoringBoardSummary(board: Board): ScoringBoardSummary {
     manaEntries: [],
     liveManaCarriers: [[], []],
     liveMonLocations: [[], []],
+    drainerTargetLocations: [[], []],
     liveDrainerLocations: [[], []],
     liveAngelLocations: [[], []],
     dangerSources: [[], []],
@@ -139,8 +142,8 @@ function scoringBoardSummary(board: Board): ScoringBoardSummary {
   for (const [location, item] of board.entries()) {
     switch (item.kind) {
       case "mana": {
-        const scoreSteps = distance(location, { kind: "any-closest-pool" }) - 1;
-        summary.manaEntries.push({ location, mana: item.mana });
+        const scoreSteps = distanceToAnyClosestPool(location) - 1;
+        summary.manaEntries.push({ location, mana: item.mana, scoreSteps });
         if (item.mana.kind === "regular") {
           const slot = colorSlot(item.mana.color);
           const candidateSteps = scoreSteps + 1;
@@ -162,12 +165,19 @@ function scoringBoardSummary(board: Board): ScoringBoardSummary {
       case "mon-with-mana":
       case "mon-with-consumable": {
         const mon = item.mon;
+        const slot = colorSlot(mon.color);
+        if (mon.kind === MonKind.Drainer) {
+          summary.drainerTargetLocations[slot].push(location);
+        }
         if (isMonFainted(mon)) {
           break;
         }
-        const slot = colorSlot(mon.color);
         if (item.kind === "mon-with-mana") {
-          summary.liveManaCarriers[slot].push({ location, mana: item.mana });
+          summary.liveManaCarriers[slot].push({
+            location,
+            mana: item.mana,
+            scoreSteps: distanceToAnyClosestPool(location) - 1,
+          });
         }
         summary.liveMonLocations[slot].push(location);
         if (mon.kind === MonKind.Drainer) {
@@ -208,20 +218,21 @@ export class ScoringEvalContext {
   readonly #execution: AutomoveExecutionContext;
   readonly #game: MonsGame;
   readonly #board: Board;
-  readonly #boardHash: Hash64;
   readonly #allowExactStrategic: boolean;
   readonly #enableAttackReachSummary: boolean;
   readonly #enableAttackReachTargetNarrowing: boolean;
   readonly #enableAttackReachDrainerTargetNarrowing: boolean;
+  #boardHash: Hash64 | undefined;
   #boardSummary: ScoringBoardSummary | undefined;
   #manaPathSnapshot: ManaPathSnapshot | undefined;
   #exactAnalysis: ExactStrategicAnalysis | undefined;
   #attackReachTargets: readonly [Location[], Location[]] | undefined;
-  #drainerAttackTargets: readonly [Location[], Location[]] | undefined;
-  readonly #drainerImmediateThreatMemo: (
-    readonly [number, number] | undefined
-  )[];
-  readonly #attackReachSummaryMemo = new Map<number, AttackReachSummary>();
+  #firstDrainerThreatMemoIndex = -1;
+  #firstDrainerThreatMemo: readonly [number, number] | undefined;
+  #secondDrainerThreatMemoIndex = -1;
+  #secondDrainerThreatMemo: readonly [number, number] | undefined;
+  #drainerThreatMemoMap: Map<number, readonly [number, number]> | undefined;
+  #attackReachSummaryMemo: Map<number, AttackReachSummary> | undefined;
 
   public constructor(
     execution: AutomoveExecutionContext,
@@ -231,20 +242,16 @@ export class ScoringEvalContext {
     this.#execution = execution;
     this.#game = game;
     this.#board = game.board;
-    this.#boardHash = exactBoardHash(this.#board);
     this.#allowExactStrategic = options.allowExactStrategic;
     this.#enableAttackReachSummary = options.useAttackReachSummary ?? false;
     this.#enableAttackReachTargetNarrowing =
       options.narrowAttackReachTargets ?? false;
     this.#enableAttackReachDrainerTargetNarrowing =
       options.narrowAttackReachToDrainers ?? false;
-    this.#drainerImmediateThreatMemo = Array.from(
-      { length: BOARD_CELLS * 2 },
-      () => undefined,
-    );
   }
 
   public get boardHash(): Hash64 {
+    this.#boardHash ??= exactBoardHash(this.#board);
     return this.#boardHash;
   }
 
@@ -291,18 +298,7 @@ export class ScoringEvalContext {
   }
 
   #drainerTargets(targetColor: Color): readonly Location[] {
-    if (this.#drainerAttackTargets === undefined) {
-      const white: Location[] = [];
-      const black: Location[] = [];
-      for (const [location, item] of this.#board.entries()) {
-        const mon = itemMon(item);
-        if (mon?.kind === MonKind.Drainer) {
-          (mon.color === Color.White ? white : black).push(location);
-        }
-      }
-      this.#drainerAttackTargets = [white, black];
-    }
-    return this.#drainerAttackTargets[colorSlot(targetColor)];
+    return this.boardSummary().drainerTargetLocations[colorSlot(targetColor)];
   }
 
   #attackReachSummary(
@@ -323,7 +319,7 @@ export class ScoringEvalContext {
           Number(drainerTargetsOnly) * 8
         : undefined;
     if (tag !== undefined) {
-      const cached = this.#attackReachSummaryMemo.get(tag);
+      const cached = this.#attackReachSummaryMemo?.get(tag);
       if (cached !== undefined) {
         return cached;
       }
@@ -357,7 +353,9 @@ export class ScoringEvalContext {
         canUseAction,
       );
     }
-    if (tag !== undefined) this.#attackReachSummaryMemo.set(tag, summary);
+    if (tag !== undefined) {
+      (this.#attackReachSummaryMemo ??= new Map()).set(tag, summary);
+    }
     return summary;
   }
 
@@ -376,9 +374,24 @@ export class ScoringEvalContext {
     }
     const memoIndex =
       locationIndex(location) + (color === Color.Black ? BOARD_CELLS : 0);
-    const cached = this.#drainerImmediateThreatMemo[memoIndex];
-    if (cached !== undefined) {
-      return cached;
+    if (this.#drainerThreatMemoMap !== undefined) {
+      const cached = this.#drainerThreatMemoMap.get(memoIndex);
+      if (cached !== undefined) {
+        return cached;
+      }
+    } else {
+      if (
+        memoIndex === this.#firstDrainerThreatMemoIndex &&
+        this.#firstDrainerThreatMemo !== undefined
+      ) {
+        return this.#firstDrainerThreatMemo;
+      }
+      if (
+        memoIndex === this.#secondDrainerThreatMemoIndex &&
+        this.#secondDrainerThreatMemo !== undefined
+      ) {
+        return this.#secondDrainerThreatMemo;
+      }
     }
     const threats = drainerImmediateThreats(
       this.#execution,
@@ -386,7 +399,33 @@ export class ScoringEvalContext {
       color,
       location,
     );
-    this.#drainerImmediateThreatMemo[memoIndex] = threats;
+    if (this.#drainerThreatMemoMap !== undefined) {
+      this.#drainerThreatMemoMap.set(memoIndex, threats);
+    } else if (this.#firstDrainerThreatMemoIndex < 0) {
+      this.#firstDrainerThreatMemoIndex = memoIndex;
+      this.#firstDrainerThreatMemo = threats;
+    } else if (this.#secondDrainerThreatMemoIndex < 0) {
+      this.#secondDrainerThreatMemoIndex = memoIndex;
+      this.#secondDrainerThreatMemo = threats;
+    } else {
+      const memo = new Map<number, readonly [number, number]>();
+      if (this.#firstDrainerThreatMemo !== undefined) {
+        memo.set(
+          this.#firstDrainerThreatMemoIndex,
+          this.#firstDrainerThreatMemo,
+        );
+      }
+      if (this.#secondDrainerThreatMemo !== undefined) {
+        memo.set(
+          this.#secondDrainerThreatMemoIndex,
+          this.#secondDrainerThreatMemo,
+        );
+      }
+      memo.set(memoIndex, threats);
+      this.#drainerThreatMemoMap = memo;
+      this.#firstDrainerThreatMemo = undefined;
+      this.#secondDrainerThreatMemo = undefined;
+    }
     return threats;
   }
 
@@ -427,7 +466,7 @@ export class ScoringEvalContext {
     return canAttackTargetOnBoardWithHash(
       this.#execution,
       this.#board,
-      this.#boardHash,
+      this.boardHash,
       attackerColor,
       targetColor,
       target,
@@ -586,7 +625,7 @@ function scorePreferabilityBoardItems(
     addSignedRatio(
       multiplier,
       weights.position.drainerCloseToOwnPool,
-      distance(location, { kind: "closest-pool", color: mon.color }),
+      distanceToClosestPool(location, mon.color),
     );
     addSignedRatio(
       multiplier,
@@ -750,7 +789,7 @@ function scorePreferabilityBoardItems(
           addSignedRatio(
             multiplier,
             weights.position.monCloseToCenter,
-            distance(location, { kind: "center" }),
+            distanceToCenter(location),
           );
         }
         if (
@@ -795,7 +834,7 @@ function scorePreferabilityBoardItems(
           addSignedRatio(
             multiplier,
             weights.position.monCloseToCenter,
-            distance(location, { kind: "center" }),
+            distanceToCenter(location),
           );
         }
         if (
@@ -830,17 +869,14 @@ function scorePreferabilityBoardItems(
         addScore(
           Math.trunc(
             weights.position.manaCloseToSamePool /
-              distance(location, { kind: "closest-pool", color }),
+              distanceToClosestPool(location, color),
           ),
         );
         let manaBonus: number;
         if (item.mana.kind === "regular") {
           const manaColor = item.mana.color;
           const ownerMultiplier = manaColor === color ? 1 : -1;
-          const ownerPoolDistance = distance(location, {
-            kind: "closest-pool",
-            color: manaColor,
-          });
+          const ownerPoolDistance = distanceToClosestPool(location, manaColor);
           const ownerDrainerDistance =
             nearestFriendlyDrainerDistanceWithContext(
               manaColor,
@@ -895,9 +931,7 @@ function scorePreferabilityBoardItems(
       case "mon-with-mana": {
         const { mon, mana } = item;
         const multiplier = mon.color === color ? 1 : -1;
-        const nearestPoolDistance = distance(location, {
-          kind: "any-closest-pool",
-        });
+        const nearestPoolDistance = distanceToAnyClosestPool(location);
         const manaExtra =
           mana.kind === "supermana"
             ? weights.position.extraForSupermana
@@ -998,7 +1032,7 @@ function scorePreferabilityBoardItems(
           addSignedRatio(
             multiplier,
             weights.position.drainerCloseToOwnPool,
-            distance(location, { kind: "closest-pool", color: mon.color }),
+            distanceToClosestPool(location, mon.color),
           );
           const [actionThreats, bombThreats] =
             drainerImmediateThreatsWithContext(mon.color, location, context);
@@ -1380,11 +1414,7 @@ type ImmediateScoreWindow = {
   readonly multiPressure: number;
 };
 
-type ManaPathCandidate = {
-  readonly location: Location;
-  readonly scoreSteps: number;
-  readonly mana: Mana;
-};
+type ManaPathCandidate = ScoringManaEntry;
 
 type ManaPathSnapshot = {
   readonly candidates: ManaPathCandidate[];
@@ -1393,11 +1423,7 @@ type ManaPathSnapshot = {
 
 function manaPathSnapshot(summary: ScoringBoardSummary): ManaPathSnapshot {
   return {
-    candidates: summary.manaEntries.map((entry) => ({
-      location: entry.location,
-      scoreSteps: distance(entry.location, { kind: "any-closest-pool" }) - 1,
-      mana: entry.mana,
-    })),
+    candidates: summary.manaEntries.slice(),
     regularManaMoveScores: [
       summary.regularManaMoveScores[0],
       summary.regularManaMoveScores[1],
@@ -1437,10 +1463,7 @@ function scorePathWindowToAnyPoolForContext(
   const summary = context.boardSummary();
   const topSteps = [0x7fff_ffff, 0x7fff_ffff, 0x7fff_ffff];
   for (const carrier of summary.liveManaCarriers[colorSlot(color)]) {
-    insertLowestStep(
-      topSteps,
-      distance(carrier.location, { kind: "any-closest-pool" }),
-    );
+    insertLowestStep(topSteps, carrier.scoreSteps + 1);
   }
   if (includeDrainerPickups) {
     const snapshot = context.manaPathSnapshot();
@@ -1505,9 +1528,7 @@ function immediateScoreWindowSummaryForContext(
   const summary = context.boardSummary();
   const topScores = [0, 0, 0];
   for (const carrier of summary.liveManaCarriers[colorSlot(color)]) {
-    const poolSteps =
-      distance(carrier.location, { kind: "any-closest-pool" }) - 1;
-    if (poolSteps <= remainingMonMoves) {
+    if (carrier.scoreSteps <= remainingMonMoves) {
       insertTopScore(topScores, manaScore(carrier.mana, color));
     }
   }
@@ -1826,36 +1847,29 @@ function nearestFriendlyDrainerDistanceWithContext(
   return Math.max(1, best);
 }
 
-type Destination =
-  | { readonly kind: "center" }
-  | { readonly kind: "any-closest-pool" }
-  | { readonly kind: "closest-pool"; readonly color: Color };
-
 function distanceToLocation(location: Location, destination: Location): number {
   return locationDistance(location, destination) + 1;
 }
 
-function distance(location: Location, destination: Destination): number {
-  let result: number;
-  switch (destination.kind) {
-    case "center":
-      result = Math.max(1, Math.abs(BOARD_CENTER_INDEX - location.i));
-      break;
-    case "any-closest-pool":
-      result = Math.max(
-        Math.min(location.i, Math.abs(MAX_LOCATION_INDEX - location.i)),
-        Math.min(location.j, Math.abs(MAX_LOCATION_INDEX - location.j)),
-      );
-      break;
-    case "closest-pool": {
-      const poolRow =
-        destination.color === Color.White ? MAX_LOCATION_INDEX : 0;
-      result = Math.max(
-        Math.abs(poolRow - location.i),
-        Math.min(location.j, Math.abs(MAX_LOCATION_INDEX - location.j)),
-      );
-      break;
-    }
-  }
-  return result + 1;
+function distanceToCenter(location: Location): number {
+  return Math.max(1, Math.abs(BOARD_CENTER_INDEX - location.i)) + 1;
+}
+
+function distanceToAnyClosestPool(location: Location): number {
+  return (
+    Math.max(
+      Math.min(location.i, Math.abs(MAX_LOCATION_INDEX - location.i)),
+      Math.min(location.j, Math.abs(MAX_LOCATION_INDEX - location.j)),
+    ) + 1
+  );
+}
+
+function distanceToClosestPool(location: Location, color: Color): number {
+  const poolRow = color === Color.White ? MAX_LOCATION_INDEX : 0;
+  return (
+    Math.max(
+      Math.abs(poolRow - location.i),
+      Math.min(location.j, Math.abs(MAX_LOCATION_INDEX - location.j)),
+    ) + 1
+  );
 }

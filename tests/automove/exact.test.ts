@@ -4,6 +4,7 @@ import {
   clearExactStateAnalysisCache,
   defaultColorSummary,
   exactBoardHash,
+  exactOwnDrainerSafetyScoreWithHash,
   exactOpportunityContext,
   exactSearchStateHash,
   exactStrategicAnalysis,
@@ -11,7 +12,18 @@ import {
 } from "../../src/automove/exact.js";
 import { applyInputsForSearchWithEvents } from "../../src/automove/transitions.js";
 import { GameVariant } from "../../src/engine/config.js";
-import { Color, type Input } from "../../src/engine/domain.js";
+import {
+  Color,
+  Consumable,
+  MonKind,
+  createMon,
+  monItem,
+  monWithConsumableItem,
+  monWithManaItem,
+  regularMana,
+  type Input,
+  type Item,
+} from "../../src/engine/domain.js";
 import { MonsGame } from "../../src/engine/game.js";
 import { createTestAutomoveExecutionContext } from "./execution-context.test-helper.js";
 
@@ -21,6 +33,79 @@ const OPENING_MOVE: readonly Input[] = [
 ];
 
 describe("exact analysis execution state", () => {
+  it("keeps cooldown states distinct for every mon item shape", () => {
+    const itemFactories: readonly ((cooldown: number) => Item)[] = [
+      (cooldown) => monItem(createMon(MonKind.Drainer, Color.White, cooldown)),
+      (cooldown) =>
+        monWithManaItem(
+          createMon(MonKind.Drainer, Color.White, cooldown),
+          regularMana(Color.Black),
+        ),
+      (cooldown) =>
+        monWithConsumableItem(
+          createMon(MonKind.Drainer, Color.White, cooldown),
+          Consumable.Potion,
+        ),
+    ];
+    const boardHashes = new Set<string>();
+    const searchHashes = new Set<string>();
+
+    for (const itemFactory of itemFactories) {
+      const itemBoardHashes = new Set<string>();
+      const itemSearchHashes = new Set<string>();
+      for (let cooldown = 0; cooldown <= 2; cooldown += 1) {
+        const game = new MonsGame(false, GameVariant.Classic);
+        game.replaceBoardItems([[{ i: 5, j: 5 }, itemFactory(cooldown)]]);
+        const boardHash = exactBoardHash(game.board);
+        const searchHash = exactSearchStateHash(game);
+        itemBoardHashes.add(`${boardHash.hi}:${boardHash.lo}`);
+        itemSearchHashes.add(`${searchHash.hi}:${searchHash.lo}`);
+        boardHashes.add(`${boardHash.hi}:${boardHash.lo}`);
+        searchHashes.add(`${searchHash.hi}:${searchHash.lo}`);
+      }
+      expect(itemBoardHashes.size).toBe(3);
+      expect(itemSearchHashes.size).toBe(3);
+    }
+
+    expect(boardHashes.size).toBe(9);
+    expect(searchHashes.size).toBe(9);
+  });
+
+  it("keeps awake and cooling Drainer safety isolated in a shared cache", () => {
+    const awake = new MonsGame(false, GameVariant.Classic);
+    const whiteDrainer = createMon(MonKind.Drainer, Color.White, 0);
+    const drainerBase = awake.board.base(whiteDrainer);
+    const cooling = awake.copy();
+    const coolingBoard = cooling.board.fork();
+    coolingBoard.set(
+      drainerBase,
+      monItem(createMon(MonKind.Drainer, Color.White, 1)),
+    );
+    cooling.replaceBoardItems(coolingBoard.entries());
+
+    const safety = (
+      execution: ReturnType<typeof createTestAutomoveExecutionContext>,
+      game: MonsGame,
+    ): number =>
+      exactOwnDrainerSafetyScoreWithHash(
+        execution,
+        game.board,
+        exactBoardHash(game.board),
+        Color.White,
+      );
+
+    expect(safety(createTestAutomoveExecutionContext(), awake)).toBe(2);
+    expect(safety(createTestAutomoveExecutionContext(), cooling)).toBe(0);
+
+    const awakeFirst = createTestAutomoveExecutionContext();
+    expect(safety(awakeFirst, awake)).toBe(2);
+    expect(safety(awakeFirst, cooling)).toBe(0);
+
+    const coolingFirst = createTestAutomoveExecutionContext();
+    expect(safety(coolingFirst, cooling)).toBe(0);
+    expect(safety(coolingFirst, awake)).toBe(2);
+  });
+
   it("preserves the exact board and search hashes for stable game states", () => {
     const execution = createTestAutomoveExecutionContext();
     const game = new MonsGame(false, GameVariant.Classic);

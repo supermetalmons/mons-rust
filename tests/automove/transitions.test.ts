@@ -91,9 +91,9 @@ function branchingGame(onApplyEvents?: () => void): MonsGame {
       }
       return { kind: "events", events: terminalEvents };
     },
-    applyAndAddResultingEvents(events: readonly Event[]): readonly Event[] {
+    forkAndApplyEventsForSimulation(events: readonly Event[]) {
       onApplyEvents?.();
-      return events;
+      return { game: game as unknown as MonsGame, events: [...events] };
     },
   };
   return game as unknown as MonsGame;

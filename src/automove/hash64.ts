@@ -120,6 +120,7 @@ type Hash64Entry<V> = {
   readonly secondaryLo: number;
   readonly qualifier: Hash64Qualifier;
   value: V;
+  next: Hash64Entry<V> | undefined;
 };
 
 function createEntry<V>(
@@ -138,6 +139,7 @@ function createEntry<V>(
     secondaryLo: secondary?.lo ?? 0,
     qualifier,
     value,
+    next: undefined,
   };
 }
 
@@ -147,19 +149,22 @@ function sameValueZero(left: Hash64Qualifier, right: Hash64Qualifier): boolean {
 
 function entryMatches<V>(
   entry: Hash64Entry<V>,
-  primary: Hash64,
+  primaryHi: number,
+  primaryLo: number,
   tag: number,
-  secondary: Hash64 | undefined,
+  hasSecondary: boolean,
+  secondaryHi: number,
+  secondaryLo: number,
   qualifier: Hash64Qualifier,
 ): boolean {
   return (
-    entry.primaryHi === primary.hi &&
-    entry.primaryLo === primary.lo &&
+    entry.primaryHi === primaryHi &&
+    entry.primaryLo === primaryLo &&
     (entry.tag === tag || (entry.tag !== entry.tag && tag !== tag)) &&
-    entry.hasSecondary === (secondary !== undefined) &&
-    (secondary === undefined ||
-      (entry.secondaryHi === secondary.hi &&
-        entry.secondaryLo === secondary.lo)) &&
+    entry.hasSecondary === hasSecondary &&
+    (!hasSecondary ||
+      (entry.secondaryHi === secondaryHi &&
+        entry.secondaryLo === secondaryLo)) &&
     sameValueZero(entry.qualifier, qualifier)
   );
 }
@@ -175,7 +180,7 @@ function validateCapacity(capacity: number): number {
 
 /** Collision-safe bounded table keyed without composite string allocation. */
 export class Hash64Table<V> {
-  readonly #buckets = new Map<number, Hash64Entry<V>[]>();
+  readonly #buckets = new Map<number, Hash64Entry<V>>();
   readonly #capacity: number;
   #size = 0;
 
@@ -202,7 +207,15 @@ export class Hash64Table<V> {
     secondary?: Hash64,
     qualifier?: Hash64Qualifier,
   ): boolean {
-    return this.#find(primary, tag, secondary, qualifier) !== undefined;
+    return (
+      this.#find(
+        this.#buckets.get(hash64Bucket(primary)),
+        primary,
+        tag,
+        secondary,
+        qualifier,
+      ) !== undefined
+    );
   }
 
   public get(
@@ -211,7 +224,13 @@ export class Hash64Table<V> {
     secondary?: Hash64,
     qualifier?: Hash64Qualifier,
   ): V | undefined {
-    return this.#find(primary, tag, secondary, qualifier)?.value;
+    return this.#find(
+      this.#buckets.get(hash64Bucket(primary)),
+      primary,
+      tag,
+      secondary,
+      qualifier,
+    )?.value;
   }
 
   public set(
@@ -223,9 +242,7 @@ export class Hash64Table<V> {
   ): this {
     const bucketKey = hash64Bucket(primary);
     let bucket = this.#buckets.get(bucketKey);
-    const existing = bucket?.find((entry) =>
-      entryMatches(entry, primary, tag, secondary, qualifier),
-    );
+    const existing = this.#find(bucket, primary, tag, secondary, qualifier);
     if (existing !== undefined) {
       existing.value = value;
       return this;
@@ -235,11 +252,9 @@ export class Hash64Table<V> {
       this.clear();
       bucket = undefined;
     }
-    if (bucket === undefined) {
-      bucket = [];
-      this.#buckets.set(bucketKey, bucket);
-    }
-    bucket.push(createEntry(primary, value, tag, secondary, qualifier));
+    const entry = createEntry(primary, value, tag, secondary, qualifier);
+    entry.next = bucket;
+    this.#buckets.set(bucketKey, entry);
     this.#size += 1;
     return this;
   }
@@ -253,27 +268,72 @@ export class Hash64Table<V> {
     const bucketKey = hash64Bucket(primary);
     const bucket = this.#buckets.get(bucketKey);
     if (bucket === undefined) return false;
-    const index = bucket.findIndex((entry) =>
-      entryMatches(entry, primary, tag, secondary, qualifier),
-    );
-    if (index < 0) return false;
-    bucket.splice(index, 1);
-    this.#size -= 1;
-    if (bucket.length === 0) this.#buckets.delete(bucketKey);
-    return true;
+    const primaryHi = primary.hi;
+    const primaryLo = primary.lo;
+    const hasSecondary = secondary !== undefined;
+    const secondaryHi = secondary?.hi ?? 0;
+    const secondaryLo = secondary?.lo ?? 0;
+    let previous: Hash64Entry<V> | undefined;
+    let entry: Hash64Entry<V> | undefined = bucket;
+    while (entry !== undefined) {
+      if (
+        !entryMatches(
+          entry,
+          primaryHi,
+          primaryLo,
+          tag,
+          hasSecondary,
+          secondaryHi,
+          secondaryLo,
+          qualifier,
+        )
+      ) {
+        previous = entry;
+        entry = entry.next;
+        continue;
+      }
+      if (previous === undefined) {
+        if (entry.next === undefined) this.#buckets.delete(bucketKey);
+        else this.#buckets.set(bucketKey, entry.next);
+      } else {
+        previous.next = entry.next;
+      }
+      this.#size -= 1;
+      return true;
+    }
+    return false;
   }
 
   #find(
+    entry: Hash64Entry<V> | undefined,
     primary: Hash64,
     tag: number,
     secondary: Hash64 | undefined,
     qualifier: Hash64Qualifier,
   ): Hash64Entry<V> | undefined {
-    return this.#buckets
-      .get(hash64Bucket(primary))
-      ?.find((entry) =>
-        entryMatches(entry, primary, tag, secondary, qualifier),
-      );
+    const primaryHi = primary.hi;
+    const primaryLo = primary.lo;
+    const hasSecondary = secondary !== undefined;
+    const secondaryHi = secondary?.hi ?? 0;
+    const secondaryLo = secondary?.lo ?? 0;
+    while (entry !== undefined) {
+      if (
+        entryMatches(
+          entry,
+          primaryHi,
+          primaryLo,
+          tag,
+          hasSecondary,
+          secondaryHi,
+          secondaryLo,
+          qualifier,
+        )
+      ) {
+        return entry;
+      }
+      entry = entry.next;
+    }
+    return undefined;
   }
 }
 

@@ -153,6 +153,18 @@ describe("Hash64 collections", () => {
     expect(table.get(third)).toBe("third");
   });
 
+  it("distinguishes a stored undefined value from a missing key", () => {
+    const present = hash64FromLowWord(1);
+    const missing = hash64FromLowWord(2);
+    const table = new Hash64Table<undefined>(2);
+
+    table.set(present, undefined);
+
+    expect(table.has(present)).toBe(true);
+    expect(table.get(present)).toBeUndefined();
+    expect(table.has(missing)).toBe(false);
+  });
+
   it("replaces a same-bucket entry cleanly when capacity is reached", () => {
     const first = hash64(2_184_130_051, 1_647_364_404);
     const second = hash64(3_713_505_163, 3_686_307_404);

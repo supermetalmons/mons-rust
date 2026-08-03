@@ -8,9 +8,12 @@ import {
 } from "./domain.js";
 
 export type InputStageResult = [Event[], NextInput[]] | undefined;
+export const CACHE_MISS = Symbol("cache-miss");
+const CACHED_UNDEFINED = Symbol("cached-undefined");
+type StoredInputStageResult =
+  Exclude<InputStageResult, undefined> | typeof CACHED_UNDEFINED;
 
 const CACHE_CAPACITY = Object.freeze({
-  startSuggestions: 8,
   completionViability: 16_384,
   secondInputOptions: 4_096,
   secondStage: 8_192,
@@ -21,6 +24,18 @@ function copyStageResult(result: InputStageResult): InputStageResult {
   return result === undefined
     ? undefined
     : [result[0].map(copyEvent), result[1].map(copyNextInput)];
+}
+
+function storeStageResult(result: InputStageResult): StoredInputStageResult {
+  return result === undefined
+    ? CACHED_UNDEFINED
+    : [result[0].map(copyEvent), result[1].map(copyNextInput)];
+}
+
+function copyStoredStageResult(
+  result: StoredInputStageResult,
+): InputStageResult {
+  return result === CACHED_UNDEFINED ? undefined : copyStageResult(result);
 }
 
 function setBounded<T>(
@@ -42,41 +57,37 @@ function setBounded<T>(
  * independent cold cache.
  */
 export class RulesQueryCache {
-  readonly #startSuggestions = new Map<string, Output>();
-  readonly #completionViability = new Map<string, boolean>();
-  readonly #secondInputOptions = new Map<string, readonly NextInput[]>();
-  readonly #secondStage = new Map<string, InputStageResult>();
-  readonly #thirdStage = new Map<string, InputStageResult>();
+  #startSuggestions: (Output | undefined)[] | undefined;
+  #completionViability: Map<string, boolean> | undefined;
+  #secondInputOptions: Map<string, readonly NextInput[]> | undefined;
+  #secondStage: Map<string, StoredInputStageResult> | undefined;
+  #thirdStage: Map<string, StoredInputStageResult> | undefined;
 
   public invalidate(): void {
-    this.#startSuggestions.clear();
-    this.#completionViability.clear();
-    this.#secondInputOptions.clear();
-    this.#secondStage.clear();
-    this.#thirdStage.clear();
+    this.#startSuggestions = undefined;
+    this.#completionViability = undefined;
+    this.#secondInputOptions = undefined;
+    this.#secondStage = undefined;
+    this.#thirdStage = undefined;
   }
 
-  public getStartSuggestion(key: string): Output | undefined {
-    const output = this.#startSuggestions.get(key);
+  public getStartSuggestion(key: number): Output | undefined {
+    const output = this.#startSuggestions?.[key];
     return output === undefined ? undefined : copyOutput(output);
   }
 
-  public setStartSuggestion(key: string, output: Output): void {
-    setBounded(
-      this.#startSuggestions,
-      key,
-      copyOutput(output),
-      CACHE_CAPACITY.startSuggestions,
-    );
+  public setStartSuggestion(key: number, output: Output): void {
+    (this.#startSuggestions ??= new Array<Output | undefined>(4))[key] =
+      copyOutput(output);
   }
 
   public getCompletionViability(key: string): boolean | undefined {
-    return this.#completionViability.get(key);
+    return this.#completionViability?.get(key);
   }
 
   public setCompletionViability(key: string, applicable: boolean): void {
     setBounded(
-      this.#completionViability,
+      (this.#completionViability ??= new Map<string, boolean>()),
       key,
       applicable,
       CACHE_CAPACITY.completionViability,
@@ -84,7 +95,7 @@ export class RulesQueryCache {
   }
 
   public getSecondInputOptions(key: string): NextInput[] | undefined {
-    const options = this.#secondInputOptions.get(key);
+    const options = this.#secondInputOptions?.get(key);
     return options === undefined ? undefined : options.map(copyNextInput);
   }
 
@@ -93,43 +104,37 @@ export class RulesQueryCache {
     options: readonly NextInput[],
   ): void {
     setBounded(
-      this.#secondInputOptions,
+      (this.#secondInputOptions ??= new Map<string, readonly NextInput[]>()),
       key,
       options.map(copyNextInput),
       CACHE_CAPACITY.secondInputOptions,
     );
   }
 
-  public hasSecondStage(key: string): boolean {
-    return this.#secondStage.has(key);
-  }
-
-  public getSecondStage(key: string): InputStageResult {
-    return copyStageResult(this.#secondStage.get(key));
+  public lookupSecondStage(key: string): InputStageResult | typeof CACHE_MISS {
+    const result = this.#secondStage?.get(key);
+    return result === undefined ? CACHE_MISS : copyStoredStageResult(result);
   }
 
   public setSecondStage(key: string, result: InputStageResult): void {
     setBounded(
-      this.#secondStage,
+      (this.#secondStage ??= new Map<string, StoredInputStageResult>()),
       key,
-      copyStageResult(result),
+      storeStageResult(result),
       CACHE_CAPACITY.secondStage,
     );
   }
 
-  public hasThirdStage(key: string): boolean {
-    return this.#thirdStage.has(key);
-  }
-
-  public getThirdStage(key: string): InputStageResult {
-    return copyStageResult(this.#thirdStage.get(key));
+  public lookupThirdStage(key: string): InputStageResult | typeof CACHE_MISS {
+    const result = this.#thirdStage?.get(key);
+    return result === undefined ? CACHE_MISS : copyStoredStageResult(result);
   }
 
   public setThirdStage(key: string, result: InputStageResult): void {
     setBounded(
-      this.#thirdStage,
+      (this.#thirdStage ??= new Map<string, StoredInputStageResult>()),
       key,
-      copyStageResult(result),
+      storeStageResult(result),
       CACHE_CAPACITY.thirdStage,
     );
   }
