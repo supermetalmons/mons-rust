@@ -257,7 +257,7 @@ describe("packed-state automove search", () => {
     );
 
     expect(outcome.depth).toBe(4);
-    expect(outcome.score).toBe(2260);
+    expect(outcome.score).toBe(2229);
     expect(outcome.supported).toBe(true);
     expect(inputArrayFen(moveToInputs(outcome.move))).toBe("l0,4;l1,4");
   });

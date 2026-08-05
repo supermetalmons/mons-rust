@@ -19,7 +19,9 @@ import {
   manaScoreValue,
 } from "../../src/automove/fast/board.js";
 import {
+  createEvalTables,
   evaluatePosition,
+  evaluateWithTables,
   type EvalWeights,
 } from "../../src/automove/fast/evaluate.js";
 import { FastPosition } from "../../src/automove/fast/position.js";
@@ -81,6 +83,7 @@ const ZERO_WEIGHTS = {
   drainerThreatImmediate: 0,
   drainerThreatWalk: 0,
   carrierThreatFactor: 0,
+  manaToNearestPool: 0,
 } satisfies EvalWeights;
 
 type Coordinates = readonly [row: number, column: number];
@@ -417,5 +420,72 @@ describe("fast position evaluation", () => {
         false,
       ).kind,
     ).toBe("events");
+  });
+
+  it("draws loose mana toward the nearest pool, not the owner's pool", () => {
+    const nearestPool = weights({ manaToNearestPool: 800 });
+
+    // (10, 1) is one step from the white pool at (10, 0) and ten from either black pool.
+    const blackManaNearWhitePool = makePosition([
+      [10, 1, makeManaCell(MANA_BLACK)],
+    ]);
+    expect(evaluatePosition(blackManaNearWhitePool, nearestPool)).toBe(-400);
+
+    const ownPool = weights({ manaToOwnerPool: 800 });
+    expect(evaluatePosition(blackManaNearWhitePool, ownPool)).toBe(-72);
+  });
+
+  it("ignores supermana when drawing mana toward a pool", () => {
+    const nearestPool = weights({ manaToNearestPool: 800 });
+    const superNearPool = makePosition([[10, 1, makeManaCell(MANA_SUPER)]]);
+
+    expect(evaluatePosition(superNearPool, nearestPool)).toBe(0);
+  });
+
+  it("builds distance tables that reproduce the inline division", () => {
+    for (const weight of [0, 1, 7, -7, 350, -1_000_000, 1_000_000]) {
+      const tables = createEvalTables(weights({ manaToNearestPool: weight }));
+      for (
+        let distance = 0;
+        distance < tables.manaToNearestPool.length;
+        distance += 1
+      ) {
+        // The table stores Int32, so -0 from truncation lands as 0.
+        expect(tables.manaToNearestPool[distance]).toBe(
+          Math.trunc(weight / (distance + 1)) | 0,
+        );
+      }
+    }
+  });
+
+  it("evaluates identically through prebuilt tables", () => {
+    const position = makePosition([
+      [10, 1, makeManaCell(MANA_BLACK)],
+      [5, 4, makeManaCell(MANA_WHITE)],
+      [6, 5, mon(KIND_DRAINER, 0)],
+      [4, 5, mon(KIND_DRAINER, 1)],
+      [3, 3, mon(KIND_MYSTIC, 1)],
+    ]);
+    const custom = weights({
+      manaToNearestPool: 800,
+      manaToOwnerPool: 170,
+      manaPointsAttraction: 350,
+      carrierCloseToPool: 1600,
+      drainerCloseToMana: 330,
+      drainerThreatWalk: 240,
+      carrierThreatFactor: 2,
+    });
+
+    expect(evaluateWithTables(position, createEvalTables(custom))).toBe(
+      evaluatePosition(position, custom),
+    );
+  });
+
+  it("rejects weights outside the validated range", () => {
+    const position = makePosition([[10, 1, makeManaCell(MANA_BLACK)]]);
+
+    expect(() =>
+      evaluatePosition(position, weights({ manaToNearestPool: 3_000_000_000 })),
+    ).toThrow(RangeError);
   });
 });

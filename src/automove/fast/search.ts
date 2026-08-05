@@ -23,10 +23,13 @@ import {
   u8,
 } from "./board.js";
 import {
+  DEFAULT_EVAL_TABLES,
   DEFAULT_WEIGHTS,
   WIN_VALUE,
-  evaluatePosition,
+  createEvalTables,
+  evaluateWithTables,
   normalizeEvalWeights,
+  type EvalTables,
   type EvalWeights,
 } from "./evaluate.js";
 import { MAX_MOVES, generateMoves } from "./moves.js";
@@ -293,7 +296,7 @@ export class FastSearcher {
   readonly #table: TranspositionTable;
   readonly #killers = new Int32Array(MAX_PLY * 2);
   readonly #history = new Int32Array(COLOR_COUNT * BOARD_CELLS * BOARD_CELLS);
-  #weights: EvalWeights = DEFAULT_WEIGHTS;
+  #tables: EvalTables = DEFAULT_EVAL_TABLES;
   #tuning: SearchTuning = DEFAULT_TUNING;
   #nodes = 0;
   #nodeLimit = 0;
@@ -338,7 +341,7 @@ export class FastSearcher {
       };
     }
 
-    this.#weights = normalizedWeights;
+    this.#tables = createEvalTables(normalizedWeights);
     this.#tuning = normalizedLimits.tuning;
     this.#nodes = 0;
     this.#nodeLimit = normalizedLimits.maxNodes;
@@ -386,7 +389,7 @@ export class FastSearcher {
       };
     } finally {
       this.#table.deactivate();
-      this.#weights = DEFAULT_WEIGHTS;
+      this.#tables = DEFAULT_EVAL_TABLES;
       this.#tuning = DEFAULT_TUNING;
       this.#checkTimeout = NO_TIMEOUT;
     }
@@ -544,10 +547,11 @@ export class FastSearcher {
       const allowed = tuning.moveCountBase + tuning.moveCountFactor * depth;
       if (allowed < moveLimit) moveLimit = allowed;
     }
-    const futile =
-      depth <= 2 &&
-      this.#staticScore(position) + tuning.futilityMargin * depth <= alpha;
+    const futilityEnabled = depth <= 2;
+    if (futilityEnabled && !this.#beginWorkUnit()) return 0;
     if (this.#isStopped()) return 0;
+    let futilityKnown = false;
+    let futile = false;
 
     let bestScore = -INFINITY_SCORE;
     let bestMove = 0;
@@ -557,10 +561,22 @@ export class FastSearcher {
       this.#selectBest(buffer, keys, index, count);
       const move = i32(buffer, index);
       const tactical = i32(keys, index) >= TACTICAL_THRESHOLD;
-      if (!tactical && bestMove !== 0 && (index >= moveLimit || futile)) {
-        selectivelyPruned = true;
-        this.#selectiveEpoch += 1;
-        break;
+      if (!tactical && bestMove !== 0) {
+        let pruned = index >= moveLimit;
+        if (!pruned && futilityEnabled) {
+          if (!futilityKnown) {
+            futile =
+              this.#evaluateStatic(position) + tuning.futilityMargin * depth <=
+              alphaInput;
+            futilityKnown = true;
+          }
+          pruned = futile;
+        }
+        if (pruned) {
+          selectivelyPruned = true;
+          this.#selectiveEpoch += 1;
+          break;
+        }
       }
 
       let score: number;
@@ -654,13 +670,17 @@ export class FastSearcher {
     return true;
   }
 
-  #staticScore(position: FastPosition): number {
-    if (!this.#beginWorkUnit()) return 0;
-    const value = evaluatePosition(position, this.#weights);
+  #evaluateStatic(position: FastPosition): number {
+    const value = evaluateWithTables(position, this.#tables);
     const score = position.active === 0 ? value : -value;
     if (score > MAX_NONTERMINAL_SCORE) return MAX_NONTERMINAL_SCORE;
     if (score < -MAX_NONTERMINAL_SCORE) return -MAX_NONTERMINAL_SCORE;
     return score;
+  }
+
+  #staticScore(position: FastPosition): number {
+    if (!this.#beginWorkUnit()) return 0;
+    return this.#evaluateStatic(position);
   }
 
   #recordCutoff(

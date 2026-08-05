@@ -44,7 +44,7 @@ function archivedPlayResultKind(result: PlayResult): number {
 }
 
 const corpusDirectory = fileURLToPath(
-  new URL("../../test-data/automove-decisions/v4/", import.meta.url),
+  new URL("../../test-data/automove-decisions/v5/", import.meta.url),
 );
 const manifest = JSON.parse(
   readFileSync(join(corpusDirectory, "manifest.json"), "utf8"),

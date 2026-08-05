@@ -1,4 +1,4 @@
-import { BOARD_CELLS } from "../../engine/geometry.js";
+import { BOARD_CELLS, BOARD_SIZE } from "../../engine/geometry.js";
 import { MONS_MOVES_PER_TURN, TARGET_SCORE } from "../../engine/config.js";
 import {
   CENTER_ROW_DISTANCE,
@@ -69,6 +69,7 @@ const EVAL_WEIGHT_KEYS = [
   "drainerThreatImmediate",
   "drainerThreatWalk",
   "carrierThreatFactor",
+  "manaToNearestPool",
 ] as const;
 
 export type EvalWeights = Readonly<
@@ -117,11 +118,11 @@ export const DEFAULT_WEIGHTS: EvalWeights = Object.freeze({
   drainerCloseToMana: 330,
   drainerCloseToOwnPool: 280,
   drainerCloseToSupermana: 180,
-  carrierCloseToPool: 820,
+  carrierCloseToPool: 1600,
   carrierPointBonus: 420,
   carrierScoresThisTurn: 900,
   carrierScoresNextTurn: 700,
-  winningCarrier: 4000,
+  winningCarrier: 8000,
   drainerPickupScoresThisTurn: 420,
   manaToOwnerPool: 170,
   manaPointsAttraction: 350,
@@ -136,7 +137,90 @@ export const DEFAULT_WEIGHTS: EvalWeights = Object.freeze({
   drainerThreatImmediate: 700,
   drainerThreatWalk: 240,
   carrierThreatFactor: 2,
+  manaToNearestPool: 800,
 });
+
+// Marks an unreachable distance. Distance tables are sized to cover it and every real
+// board distance, because table reads fall back to zero instead of throwing.
+const UNREACHABLE_DISTANCE = 99;
+const DISTANCE_TABLE_SIZE = Math.max(UNREACHABLE_DISTANCE + 1, BOARD_SIZE);
+const MANA_POINT_SLOTS = 3;
+const THREAT_WALK_TABLE_SIZE = MONS_MOVES_PER_TURN + 1;
+
+export type EvalTables = {
+  readonly weights: EvalWeights;
+  readonly manaPointsAttraction: Int32Array;
+  readonly manaToOwnerPool: Int32Array;
+  readonly manaToNearestPool: Int32Array;
+  readonly carrierCloseToPool: Int32Array;
+  readonly drainerCloseToMana: Int32Array;
+  readonly drainerCloseToOwnPool: Int32Array;
+  readonly drainerCloseToSupermana: Int32Array;
+  readonly angelCloseToDrainer: Int32Array;
+  readonly spiritCloseToEnemy: Int32Array;
+  readonly monCloseToCenter: Int32Array;
+  readonly attackerCloseToEnemyDrainer: Int32Array;
+  readonly threatWalkPlain: Float64Array;
+  readonly threatWalkCarrier: Float64Array;
+};
+
+function distanceTable(numerator: number): Int32Array {
+  const table = new Int32Array(DISTANCE_TABLE_SIZE);
+  for (let distance = 0; distance < DISTANCE_TABLE_SIZE; distance += 1) {
+    table[distance] = Math.trunc(numerator / (distance + 1));
+  }
+  return table;
+}
+
+function manaPointsAttractionTable(weight: number): Int32Array {
+  const table = new Int32Array(MANA_POINT_SLOTS * DISTANCE_TABLE_SIZE);
+  for (let points = 0; points < MANA_POINT_SLOTS; points += 1) {
+    const base = points * DISTANCE_TABLE_SIZE;
+    for (let distance = 0; distance < DISTANCE_TABLE_SIZE; distance += 1) {
+      table[base + distance] = Math.trunc((points * weight) / (distance + 1));
+    }
+  }
+  return table;
+}
+
+function threatWalkTable(weight: number, factor: number): Float64Array {
+  const table = new Float64Array(THREAT_WALK_TABLE_SIZE);
+  for (let steps = 0; steps < THREAT_WALK_TABLE_SIZE; steps += 1) {
+    table[steps] = Math.trunc(
+      (weight * factor * (MONS_MOVES_PER_TURN + 1 - steps)) /
+        MONS_MOVES_PER_TURN,
+    );
+  }
+  return table;
+}
+
+export function createEvalTables(weights: EvalWeights): EvalTables {
+  return {
+    weights,
+    manaPointsAttraction: manaPointsAttractionTable(
+      weights.manaPointsAttraction,
+    ),
+    manaToOwnerPool: distanceTable(weights.manaToOwnerPool),
+    manaToNearestPool: distanceTable(weights.manaToNearestPool),
+    carrierCloseToPool: distanceTable(weights.carrierCloseToPool),
+    drainerCloseToMana: distanceTable(weights.drainerCloseToMana),
+    drainerCloseToOwnPool: distanceTable(weights.drainerCloseToOwnPool),
+    drainerCloseToSupermana: distanceTable(weights.drainerCloseToSupermana),
+    angelCloseToDrainer: distanceTable(weights.angelCloseToDrainer),
+    spiritCloseToEnemy: distanceTable(weights.spiritCloseToEnemy),
+    monCloseToCenter: distanceTable(weights.monCloseToCenter),
+    attackerCloseToEnemyDrainer: distanceTable(
+      weights.attackerCloseToEnemyDrainer,
+    ),
+    threatWalkPlain: threatWalkTable(weights.drainerThreatWalk, 1),
+    threatWalkCarrier: threatWalkTable(
+      weights.drainerThreatWalk,
+      weights.carrierThreatFactor,
+    ),
+  };
+}
+
+export const DEFAULT_EVAL_TABLES = createEvalTables(DEFAULT_WEIGHTS);
 
 function ownPoolDistance(index: number, color: number): number {
   return u8(OWN_POOL_DISTANCE, color * BOARD_CELLS + index);
@@ -152,9 +236,11 @@ function estimatedAttackSteps(
   ownerColor: number,
   guarded: boolean,
 ): number {
-  if (!damagingAttackCanComplete(u16(position.cells, at))) return 99;
+  if (!damagingAttackCanComplete(u16(position.cells, at))) {
+    return UNREACHABLE_DISTANCE;
+  }
   const enemy = ownerColor ^ 1;
-  let best = 99;
+  let best = UNREACHABLE_DISTANCE;
 
   for (let kind = 0; kind < MON_KIND_COUNT; kind += 1) {
     const index = i32(position.monLocations, monId(kind, enemy));
@@ -207,6 +293,17 @@ export function evaluatePosition(
   position: FastPosition,
   weights: EvalWeights,
 ): number {
+  return evaluateWithTables(
+    position,
+    createEvalTables(normalizeEvalWeights(weights)),
+  );
+}
+
+export function evaluateWithTables(
+  position: FastPosition,
+  tables: EvalTables,
+): number {
+  const weights = tables.weights;
   let value =
     (position.whiteScore - position.blackScore) * weights.scoreUnit +
     (i32(position.potions, 0) - i32(position.potions, 1)) * weights.potion;
@@ -217,10 +314,10 @@ export function evaluatePosition(
     drainerWhite >= 0 && cellCooldown(u16(position.cells, drainerWhite)) === 0;
   const drainerReadyBlack =
     drainerBlack >= 0 && cellCooldown(u16(position.cells, drainerBlack)) === 0;
-  let nearestManaWhite = 99;
-  let nearestManaBlack = 99;
-  let shortestPickupScoreWhite = 99;
-  let shortestPickupScoreBlack = 99;
+  let nearestManaWhite = UNREACHABLE_DISTANCE;
+  let nearestManaBlack = UNREACHABLE_DISTANCE;
+  let shortestPickupScoreWhite = UNREACHABLE_DISTANCE;
+  let shortestPickupScoreBlack = UNREACHABLE_DISTANCE;
   const remaining = MONS_MOVES_PER_TURN - position.monsMoves;
 
   for (let slot = 0; slot < position.manaCount; slot += 1) {
@@ -230,10 +327,10 @@ export function evaluatePosition(
     const mana = cellMana(cell);
     const distanceWhite = drainerReadyWhite
       ? chebyshev(drainerWhite, index)
-      : 99;
+      : UNREACHABLE_DISTANCE;
     const distanceBlack = drainerReadyBlack
       ? chebyshev(drainerBlack, index)
-      : 99;
+      : UNREACHABLE_DISTANCE;
     if (distanceWhite < nearestManaWhite) nearestManaWhite = distanceWhite;
     if (distanceBlack < nearestManaBlack) nearestManaBlack = distanceBlack;
     const scoreDistance = u8(POOL_DISTANCE, index);
@@ -253,16 +350,17 @@ export function evaluatePosition(
     if (control > 4) control = 4;
     if (control < -4) control = -4;
     if (weights.manaPointsAttraction !== 0) {
+      const attraction = tables.manaPointsAttraction;
       if (drainerReadyWhite) {
-        value += Math.trunc(
-          (manaScoreValue(mana, 0) * weights.manaPointsAttraction) /
-            (distanceWhite + 1),
+        value += i32(
+          attraction,
+          manaScoreValue(mana, 0) * DISTANCE_TABLE_SIZE + distanceWhite,
         );
       }
       if (drainerReadyBlack) {
-        value -= Math.trunc(
-          (manaScoreValue(mana, 1) * weights.manaPointsAttraction) /
-            (distanceBlack + 1),
+        value -= i32(
+          attraction,
+          manaScoreValue(mana, 1) * DISTANCE_TABLE_SIZE + distanceBlack,
         );
       }
     }
@@ -273,9 +371,8 @@ export function evaluatePosition(
       const ownerSign = ownerColor === 0 ? 1 : -1;
       value +=
         ownerSign *
-        Math.trunc(
-          weights.manaToOwnerPool / (ownPoolDistance(index, ownerColor) + 1),
-        );
+        i32(tables.manaToOwnerPool, ownPoolDistance(index, ownerColor));
+      value += ownerSign * i32(tables.manaToNearestPool, scoreDistance);
       value += weights.manaDrainerControl * control;
     }
   }
@@ -306,7 +403,7 @@ export function evaluatePosition(
         const poolDistance = u8(POOL_DISTANCE, index);
         value +=
           sign *
-          (Math.trunc(weights.carrierCloseToPool / (poolDistance + 1)) +
+          (i32(tables.carrierCloseToPool, poolDistance) +
             points * weights.carrierPointBonus);
         if (color === position.active && poolDistance <= remaining) {
           value += sign * weights.carrierScoresThisTurn * points;
@@ -331,17 +428,15 @@ export function evaluatePosition(
         const minMana = color === 0 ? nearestManaWhite : nearestManaBlack;
         const pickupScoreDistance =
           color === 0 ? shortestPickupScoreWhite : shortestPickupScoreBlack;
-        value += sign * Math.trunc(weights.drainerCloseToMana / (minMana + 1));
+        value += sign * i32(tables.drainerCloseToMana, minMana);
         value +=
           sign *
-          Math.trunc(
-            weights.drainerCloseToOwnPool / (ownPoolDistance(index, color) + 1),
-          );
+          i32(tables.drainerCloseToOwnPool, ownPoolDistance(index, color));
         value +=
           sign *
-          Math.trunc(
-            weights.drainerCloseToSupermana /
-              (chebyshev(index, SUPERMANA_BASE_INDEX) + 1),
+          i32(
+            tables.drainerCloseToSupermana,
+            chebyshev(index, SUPERMANA_BASE_INDEX),
           );
         if (
           carriedMana === 0 &&
@@ -358,18 +453,15 @@ export function evaluatePosition(
           color,
           guarded,
         );
-        const factor = carriedMana === 0 ? 1 : weights.carrierThreatFactor;
+        const carrying = carriedMana !== 0;
         if (threatSteps === 0) {
+          const factor = carrying ? weights.carrierThreatFactor : 1;
           value -= sign * weights.drainerThreatImmediate * factor;
         } else if (threatSteps <= MONS_MOVES_PER_TURN) {
-          value -=
-            sign *
-            Math.trunc(
-              (weights.drainerThreatWalk *
-                factor *
-                (MONS_MOVES_PER_TURN + 1 - threatSteps)) /
-                MONS_MOVES_PER_TURN,
-            );
+          const walk = carrying
+            ? tables.threatWalkCarrier
+            : tables.threatWalkPlain;
+          value -= sign * (walk[threatSteps] ?? 0);
         }
         if (guarded) {
           value += sign * weights.angelGuardingDrainer;
@@ -378,13 +470,10 @@ export function evaluatePosition(
         const own = color === 0 ? drainerWhite : drainerBlack;
         if (own >= 0) {
           value +=
-            sign *
-            Math.trunc(
-              weights.angelCloseToDrainer / (chebyshev(index, own) + 1),
-            );
+            sign * i32(tables.angelCloseToDrainer, chebyshev(index, own));
         }
       } else if (kind === KIND_SPIRIT) {
-        let nearestEnemy = 99;
+        let nearestEnemy = UNREACHABLE_DISTANCE;
         for (let other = 0; other < MON_KIND_COUNT; other += 1) {
           const enemyIndex = i32(position.monLocations, monId(other, enemy));
           if (enemyIndex < 0) continue;
@@ -393,22 +482,19 @@ export function evaluatePosition(
           const distance = chebyshev(index, enemyIndex);
           if (distance < nearestEnemy) nearestEnemy = distance;
         }
-        value +=
-          sign * Math.trunc(weights.spiritCloseToEnemy / (nearestEnemy + 1));
+        value += sign * i32(tables.spiritCloseToEnemy, nearestEnemy);
         if (square >= SQ_MON_BASE) value -= sign * weights.spiritOnOwnBase;
       } else {
-        value +=
-          sign *
-          Math.trunc(weights.monCloseToCenter / (centerDistance(index) + 1));
+        value += sign * i32(tables.monCloseToCenter, centerDistance(index));
         const enemyDrainer = enemy === 0 ? drainerWhite : drainerBlack;
         const enemyDrainerReady =
           enemy === 0 ? drainerReadyWhite : drainerReadyBlack;
         if (enemyDrainer >= 0 && enemyDrainerReady) {
           value +=
             sign *
-            Math.trunc(
-              weights.attackerCloseToEnemyDrainer /
-                (chebyshev(index, enemyDrainer) + 1),
+            i32(
+              tables.attackerCloseToEnemyDrainer,
+              chebyshev(index, enemyDrainer),
             );
         }
       }
