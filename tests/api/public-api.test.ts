@@ -2,27 +2,26 @@ import { describe, expect, expectTypeOf, it } from "vitest";
 
 import * as api from "../../src/entrypoints/mons-rules.js";
 import {
-  AutomovePreference,
   Color,
   Consumable,
   Game,
   GameVariant,
   Modifier,
   MonKind,
-  type GameOptions,
+  type AvailableMoveCounts,
+  type BoardItem,
   type GameEvent,
   type Input,
-  type InputOption,
   type InputResolution,
-  type MatchResolution,
-  type MoveSuggestion,
+  type Mana,
+  type Mon,
   type Position,
+  type Square,
 } from "../../src/entrypoints/mons-rules.js";
 
 describe("public API", () => {
   it("exports only the TypeScript-native runtime surface", () => {
     expect(Object.keys(api).sort()).toEqual([
-      "AutomovePreference",
       "Color",
       "Consumable",
       "Game",
@@ -49,25 +48,16 @@ describe("public API", () => {
       SelectPotion: "select-potion",
       SelectBomb: "select-bomb",
     });
-    expect(AutomovePreference).toEqual({
-      Random: "random",
-      Fast: "fast",
-      Normal: "normal",
-      Pro: "pro",
-    });
     expect(GameVariant.Classic).toBe("Classic");
-    for (const values of [
-      AutomovePreference,
-      Color,
-      Consumable,
-      GameVariant,
-      Modifier,
-      MonKind,
-    ]) {
+    for (const values of [Color, Consumable, GameVariant, Modifier, MonKind]) {
       expect(Object.isFrozen(values)).toBe(true);
     }
     expect(Game).not.toHaveProperty("new");
-    expect(new Game()).not.toHaveProperty("free");
+    const game = new Game();
+    expect(game).not.toHaveProperty("free");
+    expect(game).not.toHaveProperty("moveUsage");
+    expect(game).not.toHaveProperty("previewFen");
+    expect(game).not.toHaveProperty("clearTracking");
 
     for (const removedExport of [
       "MonsGameModel",
@@ -87,13 +77,13 @@ describe("public API", () => {
     expect(
       new Game({
         variant: undefined,
-      } as unknown as GameOptions).variant,
+      } as unknown as ConstructorParameters<typeof Game>[0]).variant,
     ).toBe(GameVariant.Classic);
     expect(
       () =>
         new Game({
           variant: null,
-        } as unknown as GameOptions),
+        } as unknown as ConstructorParameters<typeof Game>[0]),
     ).toThrow(new TypeError("unsupported game variant: null"));
   });
 
@@ -136,7 +126,7 @@ describe("public API", () => {
     expect(game.toFen()).not.toBe(initialFen);
     expect(game.activeColor).toBe(Color.White);
     expect(game.turnNumber).toBe(1);
-    expect(game.moveUsage.monMoves).toBe(1);
+    expect(game.availableMoveCounts().monMoves).toBe(4);
   });
 
   it("leaves all state untouched when a complete prefix has an invalid suffix", () => {
@@ -212,7 +202,7 @@ describe("public API", () => {
       "l10,3;mc",
       "l10,3;💣",
     ]) {
-      expect(game.previewFen(malformed), malformed).toEqual({
+      expect(game.playFen(malformed), malformed).toEqual({
         kind: "invalid",
         inputFen: malformed,
       });
@@ -256,7 +246,7 @@ describe("public API", () => {
       takebackFens: game.takebackFens,
       trackingEntries: game.trackingEntries,
     };
-    const suggestion = game.suggestMove(AutomovePreference.Random);
+    const suggestion = game.suggestMove("fast");
 
     expect(suggestion).toBeDefined();
     if (suggestion === undefined) return;
@@ -272,6 +262,10 @@ describe("public API", () => {
       events: suggestion.events,
     });
     expect(game.toFen()).toBe(before.fen);
+
+    expect(() =>
+      game.suggestMove("random" as Parameters<Game["suggestMove"]>[0]),
+    ).toThrow(new TypeError("unsupported automove preference: random"));
   });
 
   it("provides discriminated result and event types", () => {
@@ -288,22 +282,9 @@ describe("public API", () => {
       }
     };
     const consumeEvent = (event: GameEvent): string => event.kind;
-    const consumeOption = (option: InputOption): Position | Modifier => {
-      switch (option.action) {
-        case "select-consumable":
-          return option.input.modifier;
-        case "mon-move":
-        case "mana-move":
-        case "mystic-action":
-        case "demon-action":
-        case "demon-additional-step":
-        case "spirit-target-capture":
-        case "spirit-target-move":
-        case "bomb-attack":
-          return option.input.position;
-      }
-    };
-    const consumeMatch = (resolution: MatchResolution): string => {
+    const consumeMatch = (
+      resolution: ReturnType<typeof api.resolveMatch>,
+    ): string => {
       switch (resolution.kind) {
         case "ongoing":
         case "invalid":
@@ -319,7 +300,20 @@ describe("public API", () => {
       | { readonly kind: "position"; readonly position: Position }
       | { readonly kind: "modifier"; readonly modifier: Modifier }
     >();
-    expectTypeOf<MoveSuggestion["inputs"]>().toEqualTypeOf<readonly Input[]>();
+    expectTypeOf<
+      NonNullable<ReturnType<Game["suggestMove"]>>["inputs"]
+    >().toEqualTypeOf<readonly Input[]>();
+    expectTypeOf(
+      new Game().availableMoveCounts(),
+    ).toEqualTypeOf<AvailableMoveCounts>();
+    expectTypeOf(new Game().itemAt(position)).toEqualTypeOf<
+      BoardItem | undefined
+    >();
+    expectTypeOf(new Game().squareAt(position)).toEqualTypeOf<Square>();
+    expectTypeOf<Mana>().toExtend<
+      { readonly kind: "supermana" } | { readonly kind: "regular" }
+    >();
+    expectTypeOf<Mon>().toHaveProperty("kind");
     expectTypeOf<readonly [number, number]>().not.toExtend<Position>();
 
     expect(consumeResolution(new Game().preview([]))).toBe("5");
@@ -327,12 +321,6 @@ describe("public API", () => {
       Color.White,
     );
     expect(position).toEqual({ row: 10, column: 3 });
-    expect(
-      consumeOption({
-        action: "mon-move",
-        input: { kind: "position", position },
-      }),
-    ).toEqual(position);
     expect(
       consumeEvent({
         kind: "next-turn",

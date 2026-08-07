@@ -1,4 +1,3 @@
-import type { AutomovePreference } from "../api/types.js";
 import {
   MonKind,
   isMonFainted,
@@ -9,7 +8,7 @@ import {
 import type { MonsGame } from "../engine/game.js";
 import type { ScoringWeights } from "./scoring.js";
 
-export type SmartAutomovePreference = Exclude<AutomovePreference, "random">;
+export type SmartAutomovePreference = "fast" | "normal" | "pro";
 
 /** Value-shaped modes keep selector configuration independent of the engine. */
 export const AUTOMOVE_TURN_ENGINE_MODE = Object.freeze({

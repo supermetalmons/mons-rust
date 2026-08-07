@@ -163,11 +163,6 @@ export function gameVariantFromId(id: number): GameVariant | undefined {
   return Number.isSafeInteger(id) ? GAME_VARIANTS_BY_ID.get(id) : undefined;
 }
 
-export function parseGameVariant(value: string): GameVariant | undefined {
-  if (!/^(?:0|[1-9]\d*)$/u.test(value)) return undefined;
-  return gameVariantFromId(Number(value));
-}
-
 export function manaBaseLocations(
   variant: GameVariant,
   color: Color,

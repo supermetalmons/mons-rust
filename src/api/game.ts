@@ -19,29 +19,28 @@ import {
 } from "./conversions.js";
 import { replayInterleavedMoves } from "./replay.js";
 import {
-  AutomovePreference,
   Color,
   GameVariant,
   type AvailableMoveCounts,
-  type AutomovePreference as AutomovePreferenceValue,
   type BoardItem,
   type Color as ColorValue,
   type GameVariant as GameVariantValue,
   type Input,
   type InputResolution,
   type MoveSuggestion,
-  type MoveUsage,
   type PlayResult,
   type Position,
   type Square,
   type TrackingEntry,
 } from "./types.js";
 
-export type GameOptions = {
+type StrategicPreference = "fast" | "normal" | "pro";
+
+type GameOptions = {
   readonly variant?: GameVariantValue;
 };
 
-export type MoveHistory = {
+type MoveHistory = {
   readonly white: readonly string[];
   readonly black: readonly string[];
 };
@@ -98,14 +97,6 @@ export class Game {
     };
   }
 
-  public get moveUsage(): MoveUsage {
-    return {
-      monMoves: this.#engine.monsMovesCount,
-      manaMoves: this.#engine.manaMovesCount,
-      actions: this.#engine.actionsUsedCount,
-    };
-  }
-
   public get winner(): ColorValue | undefined {
     return this.#engine.winnerColor();
   }
@@ -133,12 +124,6 @@ export class Game {
 
   public preview(inputs: readonly Input[]): InputResolution {
     const engineInputs = inputs.map(toEngineInput);
-    return this.#previewEngineInputs(engineInputs, inputArrayFen(engineInputs));
-  }
-
-  public previewFen(inputFen: string): InputResolution {
-    const engineInputs = parseInputArrayFen(inputFen);
-    if (engineInputs === undefined) return { kind: "invalid", inputFen };
     return this.#previewEngineInputs(engineInputs, inputArrayFen(engineInputs));
   }
 
@@ -290,7 +275,7 @@ export class Game {
   }
 
   public suggestMove(
-    preference: AutomovePreferenceValue,
+    preference: StrategicPreference,
   ): MoveSuggestion | undefined {
     if (!isAutomovePreference(preference)) {
       throw new TypeError(
@@ -313,10 +298,6 @@ export class Game {
       events: suggestion.output.events.map(fromEngineEvent),
     };
   }
-
-  public clearTracking(): void {
-    this.#engine.clearTracking();
-  }
 }
 
 function isColor(value: unknown): value is ColorValue {
@@ -327,12 +308,8 @@ function isGameVariant(value: unknown): value is GameVariantValue {
   return (Object.values(GameVariant) as readonly unknown[]).includes(value);
 }
 
-function isAutomovePreference(
-  value: unknown,
-): value is AutomovePreferenceValue {
-  return (Object.values(AutomovePreference) as readonly unknown[]).includes(
-    value,
-  );
+function isAutomovePreference(value: unknown): value is StrategicPreference {
+  return value === "fast" || value === "normal" || value === "pro";
 }
 
 function positionKey(row: number, column: number): string {

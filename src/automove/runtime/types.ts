@@ -1,4 +1,3 @@
-export type { AutomovePreference } from "../../api/types.js";
 import type { Input, Output } from "../../engine/domain.js";
 
 export type AutomoveSuggestion = {

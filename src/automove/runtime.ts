@@ -9,21 +9,13 @@ import {
   selectProductionInputsWithDeadline,
   selectStrategicSearchInputsWithDeadline,
 } from "./runtime/deadline-selection.js";
-import {
-  deterministicLegalFallbackInputs,
-  randomAutomove,
-} from "./runtime/input-selection.js";
-import type {
-  AutomovePreference,
-  AutomoveSuggestion,
-} from "./runtime/types.js";
+import { deterministicLegalFallbackInputs } from "./runtime/input-selection.js";
+import type { AutomoveSuggestion } from "./runtime/types.js";
 
-export type {
-  AutomovePreference,
-  AutomoveSuggestion,
-} from "./runtime/types.js";
+export type { AutomoveSuggestion } from "./runtime/types.js";
 
-function suggestStrategicMove(
+/** Choose and preview one legal move without mutating the source game. */
+export function suggestMove(
   execution: AutomoveExecutionContext,
   game: MonsGame,
   preference: SmartAutomovePreference,
@@ -54,20 +46,4 @@ function suggestStrategicMove(
         output: { kind: "events", events: applied.events },
         inputFen: inputArrayFen(appliedInputs),
       };
-}
-
-/**
- * Choose and preview one legal move without mutating the source game.
- *
- * Random selection runs against a simulation fork; strategic selection already
- * verifies source-state purity before returning.
- */
-export function suggestMove(
-  execution: AutomoveExecutionContext,
-  game: MonsGame,
-  preference: AutomovePreference,
-): AutomoveSuggestion {
-  return preference === "random"
-    ? randomAutomove(execution, game.fork())
-    : suggestStrategicMove(execution, game, preference);
 }

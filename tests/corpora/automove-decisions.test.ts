@@ -4,11 +4,7 @@ import { fileURLToPath } from "node:url";
 
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 
-import {
-  Game,
-  type MoveSuggestion,
-  type PlayResult,
-} from "../../src/entrypoints/mons-rules.js";
+import { Game } from "../../src/entrypoints/mons-rules.js";
 
 const PREFERENCES = ["fast", "normal", "pro"] as const;
 type Preference = (typeof PREFERENCES)[number];
@@ -34,12 +30,12 @@ type CorpusManifest = {
 };
 
 function archivedSuggestionKind(
-  suggestion: MoveSuggestion | undefined,
+  suggestion: ReturnType<Game["suggestMove"]>,
 ): number {
   return suggestion === undefined ? 0 : 3;
 }
 
-function archivedPlayResultKind(result: PlayResult): number {
+function archivedPlayResultKind(result: ReturnType<Game["playFen"]>): number {
   return result.kind === "invalid" ? 0 : 3;
 }
 

@@ -3,24 +3,28 @@ import { describe, expect, it } from "vitest";
 import { AutomoveEngine } from "../../src/automove/automove-engine.js";
 import {
   suggestMove,
-  type AutomovePreference,
   type AutomoveSuggestion,
 } from "../../src/automove/runtime.js";
 import {
   deterministicLegalFallbackInputs,
+  randomAutomove,
   randomIndex,
 } from "../../src/automove/runtime/input-selection.js";
 import {
   PRODUCTION_FALLBACK_GUARDS,
   PRODUCTION_PRESELECTION_GUARDS,
 } from "../../src/automove/runtime/production-policy.js";
+import { selectSearchInputs } from "../../src/automove/runtime/search-selection.js";
+import { automoveConfigForGame } from "../../src/automove/selector-config.js";
 import { GameVariant } from "../../src/engine/config.js";
 import { MAX_INPUTS_PER_MOVE } from "../../src/engine/domain.js";
 import { inputArrayFen, parseInputArrayFen } from "../../src/engine/fen.js";
 import { MonsGame } from "../../src/engine/game.js";
 
+type StrategicPreference = Parameters<typeof suggestMove>[2];
+
 function expectSourcePureSuggestion(
-  preference: AutomovePreference,
+  preference: StrategicPreference,
   engine = new AutomoveEngine(),
 ): AutomoveSuggestion {
   const game = new MonsGame(true, GameVariant.Classic);
@@ -46,13 +50,28 @@ function expectSourcePureSuggestion(
   return suggestion;
 }
 
-describe("production automove runtime characterization", () => {
-  it("keeps smart and random suggestions source-pure", () => {
-    const smart = expectSourcePureSuggestion("fast");
-    const random = expectSourcePureSuggestion("random");
+function expectSourcePureRandomFallback(engine = new AutomoveEngine()) {
+  const game = new MonsGame(true, GameVariant.Classic);
+  const sourceFen = game.fen();
+  const config = automoveConfigForGame(game, "fast");
+  const inputs = engine.run((execution) =>
+    selectSearchInputs(execution, game, {
+      ...config,
+      search: { ...config.search, rootBranchLimit: 0 },
+    }),
+  );
+  expect(game.fen()).toBe(sourceFen);
+  expect(game.copy().processInput(inputs, false, false).kind).toBe("events");
+  return inputs;
+}
 
-    expect(smart.inputFen).not.toBe("");
-    expect(random.inputFen).not.toBe("");
+describe("production automove runtime", () => {
+  it("keeps strategic suggestions and the internal fallback source-pure", () => {
+    const strategic = expectSourcePureSuggestion("fast");
+    const random = expectSourcePureRandomFallback();
+
+    expect(strategic.inputFen).not.toBe("");
+    expect(random).not.toEqual([]);
   });
 
   it("draws random suggestions from the engine-owned uint32 source", () => {
@@ -66,10 +85,10 @@ describe("production automove runtime characterization", () => {
       },
     });
 
-    const suggestion = expectSourcePureSuggestion("random", engine);
+    const inputs = expectSourcePureRandomFallback(engine);
 
     expect(draws).toBeGreaterThan(0);
-    expect(suggestion.output.kind).toBe("events");
+    expect(inputs).not.toEqual([]);
   });
 
   it("rejects the incomplete uint32 tail before mapping an index", () => {
@@ -96,7 +115,7 @@ describe("production automove runtime characterization", () => {
       const game = new MonsGame(false, GameVariant.Classic);
 
       expect(() =>
-        engine.run((execution) => suggestMove(execution, game, "random")),
+        engine.run((execution) => randomAutomove(execution, game.fork())),
       ).toThrow("automove random source must return a uint32");
     }
   });
@@ -159,7 +178,10 @@ describe("production automove runtime characterization", () => {
   });
 
   it("keeps every generated input chain within the engine codec limit", () => {
-    for (const preference of ["random", "fast", "normal", "pro"] as const) {
+    expect(expectSourcePureRandomFallback().length).toBeLessThanOrEqual(
+      MAX_INPUTS_PER_MOVE,
+    );
+    for (const preference of ["fast", "normal", "pro"] as const) {
       const suggestion = expectSourcePureSuggestion(preference);
       const inputs = parseInputArrayFen(suggestion.inputFen);
       expect(inputs).toBeDefined();

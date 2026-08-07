@@ -19,17 +19,6 @@ export function colorFen(color: Color): string {
   return color === Color.White ? "w" : "b";
 }
 
-export function parseColorFen(fen: string): Color | undefined {
-  switch (fen) {
-    case "w":
-      return Color.White;
-    case "b":
-      return Color.Black;
-    default:
-      return undefined;
-  }
-}
-
 export function monFen(mon: Mon): string {
   if (!Number.isInteger(mon.cooldown) || mon.cooldown < 0 || mon.cooldown > 2) {
     throw new RangeError("mon cooldown must be an integer from 0 through 2");

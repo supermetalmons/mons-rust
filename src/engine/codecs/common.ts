@@ -1,6 +1,6 @@
 import { isValidLocation, type Location } from "../geometry.js";
 
-export function parseNonnegativeInteger(text: string): number | undefined {
+function parseNonnegativeInteger(text: string): number | undefined {
   if (!/^(?:0|[1-9]\d*)$/u.test(text)) return undefined;
   const parsed = Number(text);
   return Number.isSafeInteger(parsed) ? parsed : undefined;
@@ -11,20 +11,6 @@ export function isAscii(value: string): boolean {
     if (value.charCodeAt(index) > 0x7f) return false;
   }
   return true;
-}
-
-export function splitGameFenFields(value: string): string[] | undefined {
-  if (
-    !isAscii(value) ||
-    value.length === 0 ||
-    value.startsWith(" ") ||
-    value.endsWith(" ") ||
-    value.includes("  ")
-  ) {
-    return undefined;
-  }
-  const fields = value.split(" ");
-  return fields.some((field) => field.length === 0) ? undefined : fields;
 }
 
 export function locationFen(location: Location): string {

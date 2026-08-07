@@ -1,8 +1,7 @@
 # Mons rules engine
 
-`mons-rules` is the dependency-free TypeScript rules engine for Super Metal
-Mons. It is an ESM-only package for browsers, Web Workers, Node.js, and Firebase
-Cloud Functions.
+Dependency-free TypeScript rules for Super Metal Mons. The ESM-only package
+runs in browsers, Web Workers, Node.js, and Firebase Cloud Functions.
 
 ## Install
 
@@ -13,7 +12,7 @@ npm install mons-rules
 ## Use
 
 ```ts
-import { AutomovePreference, Game, GameVariant, type Input } from "mons-rules";
+import { Game, GameVariant, type Input } from "mons-rules";
 
 const game = new Game({ variant: GameVariant.Classic });
 const inputs: Input[] = [
@@ -21,12 +20,12 @@ const inputs: Input[] = [
   { kind: "position", position: { row: 9, column: 4 } },
 ];
 const result = game.play(inputs);
-const suggestion = game.suggestMove(AutomovePreference.Pro);
+const suggestion = game.suggestMove("pro");
 ```
 
-Use `preview` or `previewFen` to inspect inputs without mutating the game. Use
-`play` or `playFen` to apply a complete legal move. Serialize games with
-`toFen` and restore them with `Game.fromFen`.
+Use `preview` to inspect typed inputs without mutation. Use `play` or `playFen`
+to apply a complete legal move. Serialize with `toFen` and restore with
+`Game.fromFen`.
 
 Published JavaScript targets ES2020 and uses Web-standard `performance` and
 `crypto` globals. Node.js 22.13 through 22.x, or Node.js 24 or newer, is

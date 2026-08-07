@@ -4,6 +4,7 @@ import { describe, expect, it, vi } from "vitest";
 
 import { AutomoveEngine } from "../../src/automove/automove-engine.js";
 import { suggestMove } from "../../src/automove/runtime.js";
+import { randomAutomove } from "../../src/automove/runtime/input-selection.js";
 import { enumerateLegalTransitions } from "../../src/automove/transitions.js";
 import {
   moveToInputs,
@@ -195,7 +196,7 @@ describe("packed-state automove search", () => {
         checkedPositions += 1;
 
         const inputFen = engine.run((execution) => {
-          const suggestion = suggestMove(execution, game, "random");
+          const suggestion = randomAutomove(execution, game.fork());
           return suggestion.output.kind === "events"
             ? suggestion.inputFen
             : undefined;

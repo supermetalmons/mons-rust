@@ -299,11 +299,6 @@ export class MonsGame {
     this.#history.setVerboseTracking(enabled);
   }
 
-  public clearTracking(): void {
-    this.#history.clearTracking();
-    this.invalidateProcessInputCache();
-  }
-
   #updateWith(otherGame: MonsGame): void {
     const board = otherGame.board.fork();
     this.#state.board = board;

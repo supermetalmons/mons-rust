@@ -4,6 +4,7 @@ import { fileURLToPath } from "node:url";
 import { describe, expect, expectTypeOf, it } from "vitest";
 
 import { replayInterleavedMoves } from "../../src/api/replay.js";
+import type { InputAction } from "../../src/api/types.js";
 import {
   GameVariant as EngineGameVariant,
   type GameVariant as EngineGameVariantValue,
@@ -34,7 +35,6 @@ import {
   type Color as ColorValue,
   type Consumable as ConsumableValue,
   type GameVariant as GameVariantValue,
-  type InputAction,
   type Mana,
   type Modifier as ModifierValue,
   type Mon,
@@ -238,7 +238,6 @@ describe("Game history", () => {
     expect(previous?.canTakeback(previous.activeColor)).toBe(true);
     expect(previous?.takeback().kind).toBe("complete");
     expect(previous?.toFen()).not.toBe(firstFen);
-    previous?.clearTracking();
     expect(game.trackingEntries.length).toBeGreaterThan(0);
 
     expect(game.previousTurn(["not-a-fen", game.toFen()])).toBeUndefined();

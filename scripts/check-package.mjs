@@ -9,6 +9,7 @@ import { parseArgs } from "node:util";
 import { runInNewContext } from "node:vm";
 
 import { build } from "esbuild";
+import ts from "typescript";
 
 const toolingRoot = path.resolve(import.meta.dirname, "..");
 const { positionals } = parseArgs({
@@ -34,7 +35,6 @@ const publishedDistFiles = [
   "mons-rules.js",
 ].sort();
 const expectedRuntimeExports = [
-  "AutomovePreference",
   "Color",
   "Consumable",
   "Game",
@@ -42,6 +42,17 @@ const expectedRuntimeExports = [
   "Modifier",
   "MonKind",
   "resolveMatch",
+].sort();
+const expectedTypeExports = [
+  "AvailableMoveCounts",
+  "BoardItem",
+  "GameEvent",
+  "Input",
+  "InputResolution",
+  "Mana",
+  "Mon",
+  "Position",
+  "Square",
 ].sort();
 
 function readJson(filePath) {
@@ -136,11 +147,47 @@ const declarationText = publishedDistFiles
   .filter((filePath) => filePath.endsWith(".d.ts"))
   .map((filePath) => fs.readFileSync(path.join(distRoot, filePath), "utf8"))
   .join("\n");
+const entryDeclarationText = fs.readFileSync(
+  path.join(distRoot, "entrypoints/mons-rules.d.ts"),
+  "utf8",
+);
+const entryDeclaration = ts.createSourceFile(
+  "mons-rules.d.ts",
+  entryDeclarationText,
+  ts.ScriptTarget.Latest,
+  true,
+  ts.ScriptKind.TS,
+);
+const actualTypeExports = entryDeclaration.statements
+  .flatMap((statement) => {
+    assert(
+      ts.isExportDeclaration(statement),
+      "package entry declaration must contain only re-exports",
+    );
+    assert(
+      statement.exportClause !== undefined &&
+        ts.isNamedExports(statement.exportClause),
+      "package entry declaration must use named exports",
+    );
+    return statement.exportClause.elements
+      .filter((element) => statement.isTypeOnly || element.isTypeOnly)
+      .map((element) => element.name.text);
+  })
+  .sort();
+assert.deepEqual(
+  actualTypeExports,
+  expectedTypeExports,
+  "package type exports changed",
+);
 for (const [label, pattern] of [
   ["model façade", /\bMonsGameModel\b/u],
   ["numeric model kind", /\b[A-Za-z]+ModelKind\b/u],
   ["manual lifecycle method", /\bfree\s*\(/u],
   ["Rust-style constructor", /\bstatic\s+new\s*\(/u],
+  ["removed automove preference", /\bAutomovePreference\b/u],
+  ["removed move usage", /\bmoveUsage\b/u],
+  ["removed FEN preview", /\bpreviewFen\b/u],
+  ["removed tracking reset", /\bclearTracking\b/u],
   [
     "snake_case API",
     /\b(?:from_fen|process_input|active_color|turn_number|winner_color|can_takeback|verify_moves|smart_automove)\b/u,
@@ -206,7 +253,6 @@ try {
   const runtimeSource = `
     import assert from "node:assert/strict";
     import {
-      AutomovePreference,
       Color,
       Game,
       GameVariant,
@@ -237,10 +283,14 @@ try {
 
     const proGame = new Game({ variant: GameVariant.Classic });
     const proSourceFen = proGame.toFen();
-    const proSuggestion = proGame.suggestMove(AutomovePreference.Pro);
+    const proSuggestion = proGame.suggestMove("pro");
     assert(proSuggestion !== undefined, "Pro produced no opening move");
     assert.equal(proGame.preview(proSuggestion.inputs).kind, "complete");
     assert.equal(proGame.toFen(), proSourceFen, "Pro mutated the source game");
+    assert.throws(
+      () => proGame.suggestMove("random"),
+      /unsupported automove preference: random/,
+    );
   `;
   fs.writeFileSync(path.join(consumerDirectory, "runtime.mjs"), runtimeSource);
   run(process.execPath, ["runtime.mjs"], { cwd: consumerDirectory });
@@ -249,16 +299,20 @@ try {
     path.join(consumerDirectory, "consumer.ts"),
     `
       import {
-        AutomovePreference,
         Color,
         Game,
         GameVariant,
         resolveMatch,
+        type AvailableMoveCounts,
+        type BoardItem,
         type Color as PlayerColor,
+        type GameEvent,
         type Input,
-        type MatchSubmission,
-        type PlayResult,
+        type InputResolution,
+        type Mana,
+        type Mon,
         type Position,
+        type Square,
       } from ${JSON.stringify(packageName)};
 
       const game: Game = new Game({ variant: GameVariant.Classic });
@@ -268,16 +322,35 @@ try {
         { kind: "position", position },
         { kind: "position", position: { row: 9, column: 4 } },
       ];
-      const result: PlayResult = game.play(inputs);
-      const submission: MatchSubmission = {
+      const result = game.play(inputs);
+      const resolution: InputResolution = game.preview([]);
+      const counts: AvailableMoveCounts = game.availableMoveCounts();
+      const item: BoardItem | undefined = game.itemAt(position);
+      const square: Square = game.squareAt(position);
+      const mana: Mana = { kind: "supermana" };
+      const mon: Mon = {
+        kind: "demon",
+        color: Color.White,
+        cooldown: 0,
+      };
+      const event: GameEvent | undefined =
+        result.kind === "complete" ? result.events[0] : undefined;
+      const submission = {
         white: { fen: game.toFen(), moves: [] },
         black: { fen: game.toFen(), moves: [] },
       };
       resolveMatch(submission);
-      game.suggestMove(AutomovePreference.Pro);
+      game.suggestMove("pro");
       game.canTakeback(Color.White);
       void color;
       void result;
+      void resolution;
+      void counts;
+      void item;
+      void square;
+      void mana;
+      void mon;
+      void event;
     `,
   );
   fs.writeFileSync(
@@ -331,13 +404,12 @@ try {
     path.join(consumerDirectory, "browser.ts"),
     `
       import {
-        AutomovePreference,
         Game,
         GameVariant,
       } from ${JSON.stringify(packageName)};
       const game = new Game({ variant: GameVariant.Classic });
       const openingFen = game.toFen();
-      const suggestion = game.suggestMove(AutomovePreference.Pro);
+      const suggestion = game.suggestMove("pro");
       document.body.dataset["openingFen"] = openingFen;
       document.body.dataset["suggestion"] =
         suggestion?.inputFen ?? "";
@@ -350,14 +422,13 @@ try {
     path.join(consumerDirectory, "worker.ts"),
     `
       import {
-        AutomovePreference,
         Game,
         GameVariant,
       } from ${JSON.stringify(packageName)};
       self.onmessage = () => {
         const game = new Game({ variant: GameVariant.Classic });
         const openingFen = game.toFen();
-        const suggestion = game.suggestMove(AutomovePreference.Pro);
+        const suggestion = game.suggestMove("pro");
         postMessage({
           openingFen,
           previewKind:
@@ -407,7 +478,7 @@ try {
   assert.equal(
     browserDataset.suggestion,
     "l10,5;l9,4",
-    "browser Pro suggestion diverged from the v4 opening decision",
+    "browser Pro suggestion diverged from the current opening decision",
   );
   assert.equal(
     browserDataset.previewKind,
@@ -444,7 +515,7 @@ try {
   assert.equal(
     workerMessage?.suggestion,
     "l10,5;l9,4",
-    "worker Pro suggestion diverged from the v4 opening decision",
+    "worker Pro suggestion diverged from the current opening decision",
   );
   assert.equal(
     workerMessage?.previewKind,

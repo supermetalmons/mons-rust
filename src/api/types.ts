@@ -42,16 +42,6 @@ export const Modifier = Object.freeze({
 } as const);
 export type Modifier = (typeof Modifier)[keyof typeof Modifier];
 
-export const AutomovePreference = Object.freeze({
-  Random: "random",
-  Fast: "fast",
-  Normal: "normal",
-  Pro: "pro",
-} as const);
-
-export type AutomovePreference =
-  (typeof AutomovePreference)[keyof typeof AutomovePreference];
-
 export type Position = {
   readonly row: number;
   readonly column: number;
@@ -67,7 +57,7 @@ export type Mana =
   | { readonly kind: "regular"; readonly color: Color }
   | { readonly kind: "supermana" };
 
-export type Carryable =
+type Carryable =
   | { readonly kind: "mana"; readonly mana: Mana }
   | { readonly kind: "consumable"; readonly consumable: Consumable };
 
@@ -225,12 +215,12 @@ export type GameEvent =
   | { readonly kind: "game-over"; readonly winner: Color }
   | { readonly kind: "takeback" };
 
-export type InvalidInputResolution = {
+type InvalidInputResolution = {
   readonly kind: "invalid";
   readonly inputFen: string;
 };
 
-export type CompleteInputResolution = {
+type CompleteInputResolution = {
   readonly kind: "complete";
   readonly inputFen: string;
   readonly events: readonly GameEvent[];
@@ -252,13 +242,10 @@ export type InputResolution =
 
 export type PlayResult = InvalidInputResolution | CompleteInputResolution;
 
-export type MoveUsage = {
+export type AvailableMoveCounts = {
   readonly monMoves: number;
   readonly manaMoves: number;
   readonly actions: number;
-};
-
-export type AvailableMoveCounts = MoveUsage & {
   readonly potions: number;
 };
 
@@ -275,7 +262,7 @@ export type MoveSuggestion = {
   readonly events: readonly GameEvent[];
 };
 
-export type PlayerSubmission = {
+type PlayerSubmission = {
   readonly fen: string;
   readonly moves: readonly string[];
 };

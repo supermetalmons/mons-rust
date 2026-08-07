@@ -72,7 +72,10 @@ describe("archived public API edge-case corpus", () => {
     });
 
     const before = game.toFen();
-    const preview = game.previewFen("l10,3;l9,2");
+    const preview = game.preview([
+      { kind: "position", position: { row: 10, column: 3 } },
+      { kind: "position", position: { row: 9, column: 2 } },
+    ]);
     expect(preview.kind).toBe("complete");
     expect(game.toFen()).toBe(before);
     expect(game.playFen("l10,3;l9,2").kind).toBe("complete");
@@ -121,9 +124,6 @@ describe("archived public API edge-case corpus", () => {
   });
 
   it("rejects malformed input text without normalization or mutation", () => {
-    const game = new Game();
-    const before = game.toFen();
-
     for (const id of [
       "normalization-bom",
       "normalization-valid-pair",
@@ -135,7 +135,9 @@ describe("archived public API edge-case corpus", () => {
         throw new Error(`${id} is missing archived input code units`);
       }
       const input = String.fromCharCode(...codeUnits);
-      expect(game.previewFen(input), id).toEqual({
+      const game = new Game();
+      const before = game.toFen();
+      expect(game.playFen(input), id).toEqual({
         kind: "invalid",
         inputFen: input,
       });
@@ -143,7 +145,9 @@ describe("archived public API edge-case corpus", () => {
     }
 
     for (const input of ["zjunk", "l10,3;garbage;l9,2", "l010,3;l9,2"]) {
-      expect(game.previewFen(input), input).toEqual({
+      const game = new Game();
+      const before = game.toFen();
+      expect(game.playFen(input), input).toEqual({
         kind: "invalid",
         inputFen: input,
       });

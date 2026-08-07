@@ -124,11 +124,6 @@ export class GameHistory {
     if (!enabled) this.#trackingEntries = [];
   }
 
-  public clearTracking(): void {
-    this.#takebackFens = [];
-    this.#trackingEntries = [];
-  }
-
   public canTakeback(activeColor: Color, requestedColor: Color): boolean {
     return (
       this.#takebackTrackingEnabled &&
