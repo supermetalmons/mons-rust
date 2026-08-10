@@ -1,6 +1,8 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 
 import { AutomoveEngine } from "../../src/automove/automove-engine.js";
+import { selectPackedFastSelection } from "../../src/automove/fast/index.js";
+import { FastSearcher } from "../../src/automove/fast/search.js";
 import {
   suggestMove,
   type AutomoveSuggestion,
@@ -22,6 +24,9 @@ import { inputArrayFen, parseInputArrayFen } from "../../src/engine/fen.js";
 import { MonsGame } from "../../src/engine/game.js";
 
 type StrategicPreference = Parameters<typeof suggestMove>[2];
+
+const LATE_UNSUPPORTED_FEN =
+  "0 0 b 0 1 5 0 0 2 y0xn10/n11/n02S0xn08/n11/n11/n02A0xE0xn01d0Bn05/n11/n11/n11/n11/n11";
 
 function expectSourcePureSuggestion(
   preference: StrategicPreference,
@@ -72,6 +77,105 @@ describe("production automove runtime", () => {
 
     expect(strategic.inputFen).not.toBe("");
     expect(random).not.toEqual([]);
+  });
+
+  it("routes public Fast and Normal through their packed node ceilings", () => {
+    const engine = new AutomoveEngine({ clock: () => 0 });
+    const search = vi.spyOn(FastSearcher.prototype, "search");
+    try {
+      expect(expectSourcePureSuggestion("fast", engine).output.kind).toBe(
+        "events",
+      );
+      expect(expectSourcePureSuggestion("normal", engine).output.kind).toBe(
+        "events",
+      );
+      expect(search.mock.calls.map(([limits]) => limits.maxNodes)).toEqual([
+        30_000, 150_000,
+      ]);
+      expect(
+        search.mock.results.map((result) =>
+          result.type === "return" ? result.value.nodes : undefined,
+        ),
+      ).toEqual([30_000, 150_000]);
+    } finally {
+      search.mockRestore();
+    }
+  });
+
+  it("falls back to the canonical selector for unsupported packed states", () => {
+    for (const preference of ["fast", "normal"] as const) {
+      const game = MonsGame.fromFen(LATE_UNSUPPORTED_FEN, true);
+      expect(game, preference).toBeDefined();
+      if (game === undefined) continue;
+      const sourceFen = game.fen();
+      const engineOptions = {
+        clock: () => 0,
+        randomSource: { nextUint32: () => 0 },
+      };
+      const packed = new AutomoveEngine(engineOptions).run((execution) =>
+        selectPackedFastSelection(execution, game, preference),
+      );
+      expect(packed.kind, preference).toBe("unsupported");
+      if (packed.kind === "unsupported") {
+        expect(
+          game.fork().processInput(packed.fallbackInputs, false, false).kind,
+          preference,
+        ).toBe("events");
+      }
+
+      const config = automoveConfigForGame(game, preference);
+      const canonical = new AutomoveEngine(engineOptions).run((execution) =>
+        selectSearchInputs(execution, game, config),
+      );
+      expect(canonical.length, preference).toBeGreaterThan(0);
+      const suggestion = new AutomoveEngine(engineOptions).run((execution) =>
+        suggestMove(execution, game, preference),
+      );
+
+      expect(suggestion.output.kind, preference).toBe("events");
+      expect(suggestion.inputFen, preference).toBe(inputArrayFen(canonical));
+      expect(game.fen(), preference).toBe(sourceFen);
+    }
+  });
+
+  it("uses the canonical Fast and Normal selectors without WeakRef", () => {
+    vi.stubGlobal("WeakRef", undefined);
+    const search = vi.spyOn(FastSearcher.prototype, "search");
+    try {
+      for (const preference of ["fast", "normal"] as const) {
+        const game = new MonsGame(true, GameVariant.Classic);
+        const sourceFen = game.fen();
+        const sourceHistory = [...game.takebackFens];
+        const sourceTracking = [...game.verboseTrackingEntities];
+        const engineOptions = {
+          clock: () => 0,
+          randomSource: { nextUint32: () => 0 },
+        };
+        const config = automoveConfigForGame(game, preference);
+        const canonical = new AutomoveEngine(engineOptions).run((execution) =>
+          selectSearchInputs(execution, game, config),
+        );
+        const suggestion = new AutomoveEngine(engineOptions).run((execution) =>
+          suggestMove(execution, game, preference),
+        );
+
+        expect(suggestion.inputFen, preference).toBe(inputArrayFen(canonical));
+        expect(suggestion.output.kind, preference).toBe("events");
+        expect(
+          game.fork().processInput(canonical, false, false),
+          preference,
+        ).toEqual(suggestion.output);
+        expect(game.fen(), preference).toBe(sourceFen);
+        expect(game.takebackFens, preference).toEqual(sourceHistory);
+        expect(game.verboseTrackingEntities, preference).toEqual(
+          sourceTracking,
+        );
+      }
+      expect(search).not.toHaveBeenCalled();
+    } finally {
+      search.mockRestore();
+      vi.unstubAllGlobals();
+    }
   });
 
   it("draws random suggestions from the engine-owned uint32 source", () => {

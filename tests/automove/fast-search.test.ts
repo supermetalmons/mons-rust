@@ -3,6 +3,8 @@ import { readFileSync } from "node:fs";
 import { describe, expect, it, vi } from "vitest";
 
 import { AutomoveEngine } from "../../src/automove/automove-engine.js";
+import { AUTOMOVE_SELECTOR_BUDGET_MS } from "../../src/automove/deadline.js";
+import { PRODUCTION_SELECTOR_BUDGET_MS } from "../../src/automove/runtime/deadline-selection.js";
 import { suggestMove } from "../../src/automove/runtime.js";
 import { randomAutomove } from "../../src/automove/runtime/input-selection.js";
 import { enumerateLegalTransitions } from "../../src/automove/transitions.js";
@@ -16,7 +18,11 @@ import {
   FastPosition,
   applyFastMove,
 } from "../../src/automove/fast/position.js";
-import { selectProFastSelection } from "../../src/automove/fast/index.js";
+import {
+  PACKED_SELECTION_PROFILES,
+  selectPackedFastSelection,
+  selectProFastSelection,
+} from "../../src/automove/fast/index.js";
 import {
   DEFAULT_WEIGHTS,
   normalizeEvalWeights,
@@ -170,6 +176,279 @@ function compareCanonicalPosition(
 }
 
 describe("packed-state automove search", () => {
+  it("uses the audited mode budgets and fixed-clock node ceilings", () => {
+    expect(PACKED_SELECTION_PROFILES).toEqual({
+      fast: { budgetMs: 16, limits: { maxDepth: 40, maxNodes: 30_000 } },
+      normal: { budgetMs: 75, limits: { maxDepth: 40, maxNodes: 150_000 } },
+      pro: {
+        budgetMs: 460,
+        limits: {
+          maxDepth: 40,
+          maxNodes: 2_000_000,
+        },
+      },
+    });
+    expect(Object.isFrozen(PACKED_SELECTION_PROFILES)).toBe(true);
+    expect(
+      Object.values(PACKED_SELECTION_PROFILES).every(
+        (profile) =>
+          Object.isFrozen(profile) && Object.isFrozen(profile.limits),
+      ),
+    ).toBe(true);
+    let clockReads = 0;
+    const engine = new AutomoveEngine({
+      clock: () => {
+        clockReads += 1;
+        return 0;
+      },
+    });
+    const search = vi.spyOn(FastSearcher.prototype, "search");
+    try {
+      for (const mode of ["fast", "normal", "pro"] as const) {
+        const game = new MonsGame(true, GameVariant.Classic);
+        const selection = engine.run((execution) =>
+          selectPackedFastSelection(execution, game, mode),
+        );
+        expect(selection.kind, mode).toBe("supported");
+        if (selection.kind !== "supported") continue;
+        expect(selection.inputs.length, mode).toBeGreaterThan(0);
+        expect(
+          game.fork().processInput(selection.inputs, false, false).kind,
+          mode,
+        ).toBe("events");
+      }
+      expect(search.mock.calls.map(([limits]) => limits.maxNodes)).toEqual([
+        30_000, 150_000, 2_000_000,
+      ]);
+      expect(search.mock.calls.map(([limits]) => limits)).toEqual([
+        { maxDepth: 40, maxNodes: 30_000 },
+        { maxDepth: 40, maxNodes: 150_000 },
+        {
+          maxDepth: 40,
+          maxNodes: 2_000_000,
+        },
+      ]);
+      expect(search.mock.calls[0]?.[0]).toBe(
+        PACKED_SELECTION_PROFILES.fast.limits,
+      );
+      expect(search.mock.calls[1]?.[0]).toBe(
+        PACKED_SELECTION_PROFILES.normal.limits,
+      );
+      expect(search.mock.calls[2]?.[0]).toBe(
+        PACKED_SELECTION_PROFILES.pro.limits,
+      );
+      expect(
+        search.mock.results.map((result) =>
+          result.type === "return" ? result.value.nodes : undefined,
+        ),
+      ).toEqual([30_000, 150_000, 2_000_000]);
+    } finally {
+      search.mockRestore();
+    }
+    expect(clockReads).toBeGreaterThan(0);
+    expect(clockReads).toBeLessThanOrEqual(10_000);
+  }, 60_000);
+
+  it("declines Fast and Normal without WeakRef while preserving Pro", () => {
+    vi.stubGlobal("WeakRef", undefined);
+    const search = vi.spyOn(FastSearcher.prototype, "search");
+    try {
+      const engine = new AutomoveEngine({ clock: () => 0 });
+      for (const mode of ["fast", "normal"] as const) {
+        const game = new MonsGame(true, GameVariant.Classic);
+        expect(
+          engine.run((execution) =>
+            selectPackedFastSelection(execution, game, mode),
+          ),
+          mode,
+        ).toEqual({ kind: "unsupported", fallbackInputs: [] });
+      }
+
+      const game = new MonsGame(true, GameVariant.Classic);
+      const pro = engine.run((execution) =>
+        selectPackedFastSelection(execution, game, "pro"),
+      );
+      expect(pro.kind).toBe("supported");
+      if (pro.kind === "supported") {
+        expect(pro.inputs.length).toBeGreaterThan(0);
+        expect(game.fork().processInput(pro.inputs, false, false).kind).toBe(
+          "events",
+        );
+      }
+      expect(search.mock.calls.map(([limits]) => limits.maxNodes)).toEqual([
+        2_000_000,
+      ]);
+    } finally {
+      search.mockRestore();
+      vi.unstubAllGlobals();
+    }
+  }, 60_000);
+
+  it("does not start search after a nested profile deadline expires", () => {
+    const budgetMs = PACKED_SELECTION_PROFILES.fast.budgetMs;
+    let clockReads = 0;
+    const engine = new AutomoveEngine({
+      clock: () => {
+        clockReads += 1;
+        return clockReads <= 3 ? 0 : budgetMs;
+      },
+    });
+    const game = new MonsGame(true, GameVariant.Classic);
+    const sourceFen = game.fen();
+    const search = vi.spyOn(FastSearcher.prototype, "search");
+    try {
+      const result = engine.run((execution) => {
+        const selection = execution.session.withDeadlineIfAbsent(
+          AUTOMOVE_SELECTOR_BUDGET_MS,
+          () => selectPackedFastSelection(execution, game, "fast"),
+        );
+        return {
+          selection,
+          recordedTimeout: execution.session.takePreviousTimeout(),
+        };
+      });
+
+      expect(result).toEqual({
+        selection: { kind: "supported", inputs: [] },
+        recordedTimeout: false,
+      });
+      expect(search).not.toHaveBeenCalled();
+      expect(game.fen()).toBe(sourceFen);
+    } finally {
+      search.mockRestore();
+    }
+    expect(clockReads).toBeGreaterThan(3);
+  });
+
+  it("records an outer timeout crossed while checking a profile", () => {
+    const profileBudgetMs = PACKED_SELECTION_PROFILES.fast.budgetMs;
+    let clockReads = 0;
+    const engine = new AutomoveEngine({
+      clock: () => {
+        clockReads += 1;
+        if (clockReads <= 3) return 0;
+        return clockReads === 4 ? profileBudgetMs : AUTOMOVE_SELECTOR_BUDGET_MS;
+      },
+    });
+    const game = new MonsGame(true, GameVariant.Classic);
+    const search = vi.spyOn(FastSearcher.prototype, "search");
+    try {
+      const result = engine.run((execution) => {
+        const selection = execution.session.withDeadlineIfAbsent(
+          AUTOMOVE_SELECTOR_BUDGET_MS,
+          () => selectPackedFastSelection(execution, game, "fast"),
+        );
+        return {
+          selection,
+          recordedTimeout: execution.session.takePreviousTimeout(),
+        };
+      });
+
+      expect(result).toEqual({
+        selection: { kind: "supported", inputs: [] },
+        recordedTimeout: true,
+      });
+      expect(search).not.toHaveBeenCalled();
+    } finally {
+      search.mockRestore();
+    }
+  });
+
+  it("preserves Pro setup behavior until the outer deadline", () => {
+    const profileBudgetMs = PACKED_SELECTION_PROFILES.pro.budgetMs;
+    let clockReads = 0;
+    const engine = new AutomoveEngine({
+      clock: () => {
+        clockReads += 1;
+        return clockReads <= 3 ? 0 : profileBudgetMs;
+      },
+    });
+    const game = new MonsGame(true, GameVariant.Classic);
+    const search = vi.spyOn(FastSearcher.prototype, "search").mockReturnValue({
+      move: 0,
+      score: 0,
+      depth: 0,
+      nodes: 0,
+      supported: true,
+    });
+    try {
+      const result = engine.run((execution) => {
+        const selection = execution.session.withDeadlineIfAbsent(
+          PRODUCTION_SELECTOR_BUDGET_MS,
+          () => selectPackedFastSelection(execution, game, "pro"),
+        );
+        return {
+          selection,
+          recordedTimeout: execution.session.takePreviousTimeout(),
+        };
+      });
+
+      expect(result).toEqual({
+        selection: { kind: "supported", inputs: [] },
+        recordedTimeout: false,
+      });
+      expect(search).toHaveBeenCalledOnce();
+    } finally {
+      search.mockRestore();
+    }
+    expect(clockReads).toBeGreaterThan(3);
+  });
+
+  it("falls back only for evaluation workspace allocation failures", () => {
+    const FailingFloat64Array = function (): Float64Array {
+      throw new RangeError("synthetic evaluation allocation");
+    } as unknown as Float64ArrayConstructor;
+    vi.stubGlobal("Float64Array", FailingFloat64Array);
+    try {
+      for (const mode of ["fast", "normal", "pro"] as const) {
+        const game = new MonsGame(true, GameVariant.Classic);
+        const selection = new AutomoveEngine({ clock: () => 0 }).run(
+          (execution) => selectPackedFastSelection(execution, game, mode),
+        );
+        expect(selection, mode).toEqual({
+          kind: "unsupported",
+          fallbackInputs: [],
+        });
+      }
+      for (const mode of ["fast", "normal"] as const) {
+        const game = new MonsGame(true, GameVariant.Classic);
+        const sourceFen = game.fen();
+        const suggestion = new AutomoveEngine({ clock: () => 0 }).run(
+          (execution) => suggestMove(execution, game, mode),
+        );
+        expect(suggestion.output.kind, mode).toBe("events");
+        const inputs = parseInputArrayFen(suggestion.inputFen);
+        expect(inputs, mode).toBeDefined();
+        if (inputs !== undefined) {
+          expect(
+            game.fork().processInput(inputs, false, false).kind,
+            mode,
+          ).toBe("events");
+        }
+        expect(game.fen(), mode).toBe(sourceFen);
+      }
+    } finally {
+      vi.unstubAllGlobals();
+    }
+
+    const failure = new RangeError("synthetic search invariant");
+    const search = vi
+      .spyOn(FastSearcher.prototype, "search")
+      .mockImplementation(() => {
+        throw failure;
+      });
+    try {
+      const game = new MonsGame(true, GameVariant.Classic);
+      expect(() =>
+        new AutomoveEngine({ clock: () => 0 }).run((execution) =>
+          selectPackedFastSelection(execution, game, "fast"),
+        ),
+      ).toThrow(failure);
+    } finally {
+      search.mockRestore();
+    }
+  });
+
   it("matches engine move generation and transitions on every variant", () => {
     const buffer = new Int32Array(MAX_MOVES);
     const packed = new FastPosition();

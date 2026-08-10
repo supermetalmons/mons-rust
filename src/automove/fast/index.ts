@@ -18,6 +18,10 @@ type WeakRefGlobal = {
   readonly WeakRef?: new (target: FastSearcher) => WeakFastSearcher;
 };
 
+function systemWeakRefConstructor(): WeakRefGlobal["WeakRef"] {
+  return (globalThis as unknown as WeakRefGlobal).WeakRef;
+}
+
 function tryCreateDefaultFastPosition():
   FastPosition | typeof FAST_WORKSPACE_ALLOCATION_FAILED {
   try {
@@ -31,7 +35,7 @@ function tryCreateDefaultFastPosition():
 function systemWeakFastSearcher(
   searcher: FastSearcher,
 ): WeakFastSearcher | undefined {
-  const WeakRef = (globalThis as unknown as WeakRefGlobal).WeakRef;
+  const WeakRef = systemWeakRefConstructor();
   return WeakRef === undefined ? undefined : new WeakRef(searcher);
 }
 
@@ -55,6 +59,11 @@ class FastSearcherPool {
     this.#idleFastSearcher = undefined;
     try {
       return operation(searcher);
+    } catch (error) {
+      if (isFastWorkspaceAllocationFailure(error)) {
+        return FAST_WORKSPACE_ALLOCATION_FAILED;
+      }
+      throw error;
     } finally {
       this.#release(searcher);
     }
@@ -67,11 +76,31 @@ class FastSearcherPool {
 
 const DEFAULT_FAST_SEARCHER_POOL = new FastSearcherPool();
 
-const PRO_FAST_BUDGET_MS = 460;
-const PRO_FAST_LIMITS: SearchLimits = Object.freeze({
-  maxDepth: 40,
-  maxNodes: 2_000_000,
+export const PACKED_SELECTION_PROFILES = Object.freeze({
+  fast: Object.freeze({
+    budgetMs: 16,
+    limits: Object.freeze({
+      maxDepth: 40,
+      maxNodes: 30_000,
+    }) satisfies SearchLimits,
+  }),
+  normal: Object.freeze({
+    budgetMs: 75,
+    limits: Object.freeze({
+      maxDepth: 40,
+      maxNodes: 150_000,
+    }) satisfies SearchLimits,
+  }),
+  pro: Object.freeze({
+    budgetMs: 460,
+    limits: Object.freeze({
+      maxDepth: 40,
+      maxNodes: 2_000_000,
+    }) satisfies SearchLimits,
+  }),
 });
+
+export type PackedSelectionMode = keyof typeof PACKED_SELECTION_PROFILES;
 
 type FastSelectionResult =
   | {
@@ -83,12 +112,17 @@ type FastSelectionResult =
       readonly fallbackInputs: Input[];
     };
 
-export function selectProFastSelection(
+export function selectPackedFastSelection(
   execution: AutomoveExecutionContext,
   game: MonsGame,
+  mode: PackedSelectionMode,
 ): FastSelectionResult {
+  const profile = PACKED_SELECTION_PROFILES[mode];
+  if (mode !== "pro" && systemWeakRefConstructor() === undefined) {
+    return { kind: "unsupported", fallbackInputs: [] };
+  }
   return execution.session.withUnrecordedDeadlineIfAbsent(
-    PRO_FAST_BUDGET_MS,
+    profile.budgetMs,
     (): FastSelectionResult => {
       if (execution.session.checkpoint()) {
         return { kind: "supported", inputs: [] };
@@ -97,26 +131,39 @@ export function selectProFastSelection(
         return { kind: "supported", inputs: [] };
       }
 
-      const endMs = execution.session.now() + PRO_FAST_BUDGET_MS;
+      const endMs = execution.session.now() + profile.budgetMs;
+      const deadlineReached = (): boolean => {
+        if (execution.session.checkpoint()) return true;
+        if (execution.session.now() < endMs) return false;
+        execution.session.checkpoint();
+        return true;
+      };
 
       const position = tryCreateDefaultFastPosition();
       if (isFastWorkspaceAllocationFailure(position)) {
         return { kind: "unsupported", fallbackInputs: [] };
       }
-      if (!tryLoadPosition(position, game, PRO_FAST_LIMITS.maxDepth)) {
+      if (mode !== "pro" && deadlineReached()) {
+        return { kind: "supported", inputs: [] };
+      }
+      if (!tryLoadPosition(position, game, profile.limits.maxDepth)) {
         return { kind: "unsupported", fallbackInputs: [] };
       }
-      if (execution.session.checkpoint()) {
+      if (mode === "pro" ? execution.session.checkpoint() : deadlineReached()) {
         return { kind: "supported", inputs: [] };
       }
 
       const outcome = DEFAULT_FAST_SEARCHER_POOL.run((searcher) => {
+        if (mode !== "pro" && deadlineReached()) return undefined;
         searcher.root.copyFrom(position);
-        if (execution.session.checkpoint()) return undefined;
+        if (
+          mode === "pro" ? execution.session.checkpoint() : deadlineReached()
+        ) {
+          return undefined;
+        }
         return searcher.search(
-          PRO_FAST_LIMITS,
-          () =>
-            execution.session.checkpoint() || execution.session.now() >= endMs,
+          profile.limits,
+          deadlineReached,
           DEFAULT_WEIGHTS,
         );
       });
@@ -142,4 +189,11 @@ export function selectProFastSelection(
       };
     },
   );
+}
+
+export function selectProFastSelection(
+  execution: AutomoveExecutionContext,
+  game: MonsGame,
+): FastSelectionResult {
+  return selectPackedFastSelection(execution, game, "pro");
 }

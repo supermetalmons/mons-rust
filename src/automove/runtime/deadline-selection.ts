@@ -2,7 +2,10 @@ import type { Input } from "../../engine/domain.js";
 import type { MonsGame } from "../../engine/game.js";
 import { AUTOMOVE_SELECTOR_BUDGET_MS } from "../deadline.js";
 import type { AutomoveExecutionContext } from "../execution-context.js";
-import { selectProFastSelection } from "../fast/index.js";
+import {
+  selectPackedFastSelection,
+  selectProFastSelection,
+} from "../fast/index.js";
 import { smartSearchBestInputs } from "../production-selector.js";
 import {
   automoveConfigForGame,
@@ -30,12 +33,49 @@ export function selectStrategicSearchInputsWithDeadline(
     () => {
       const fallback = deterministicLegalFallbackInputs(game);
       if (execution.session.checkpoint()) return fallback;
-      const selected = selectSearchInputs(execution, game, config);
-      return selected.length === 0 || execution.session.checkpoint()
-        ? fallback
-        : selected;
+      const preference = config.budget.preference;
+      if (preference !== "fast" && preference !== "normal") {
+        return selectCanonicalStrategicInputs(
+          execution,
+          game,
+          config,
+          fallback,
+        );
+      }
+      const packedSelection = selectPackedFastSelection(
+        execution,
+        game,
+        preference,
+      );
+      if (packedSelection.kind === "supported") {
+        return packedSelection.inputs.length === 0 ||
+          execution.session.checkpoint()
+          ? fallback
+          : packedSelection.inputs;
+      }
+      return selectCanonicalStrategicInputs(
+        execution,
+        game,
+        config,
+        packedSelection.fallbackInputs.length > 0
+          ? packedSelection.fallbackInputs
+          : fallback,
+      );
     },
   );
+}
+
+function selectCanonicalStrategicInputs(
+  execution: AutomoveExecutionContext,
+  game: MonsGame,
+  config: AutomoveConfig,
+  timeoutInputs: Input[],
+): Input[] {
+  if (execution.session.checkpoint()) return timeoutInputs;
+  const selected = selectSearchInputs(execution, game, config);
+  return selected.length === 0 || execution.session.checkpoint()
+    ? timeoutInputs
+    : selected;
 }
 
 function selectFastPreferenceBankInputs(

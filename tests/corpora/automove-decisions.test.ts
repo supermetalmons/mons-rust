@@ -1,10 +1,12 @@
+import { createHash } from "node:crypto";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
+import { isDeepStrictEqual } from "node:util";
 
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 
-import { Game } from "../../src/entrypoints/mons-rules.js";
+import { Game, GameVariant } from "../../src/entrypoints/mons-rules.js";
 
 const PREFERENCES = ["fast", "normal", "pro"] as const;
 type Preference = (typeof PREFERENCES)[number];
@@ -18,16 +20,55 @@ type DecisionObservation = {
 };
 
 type CorpusState = {
+  readonly schemaVersion: number;
   readonly id: string;
+  readonly variant: string;
+  readonly source:
+    | { readonly kind: "initial-variant"; readonly variant: string }
+    | { readonly kind: "retained-fixture"; readonly label: string };
   readonly fen: string;
   readonly decisions: Readonly<Record<Preference, DecisionObservation>>;
 };
 
 type CorpusManifest = {
+  readonly schemaVersion: number;
+  readonly corpusVersion: string;
+  readonly description: string;
   readonly fixedClockNowMs: number;
   readonly corpusFile: string;
+  readonly corpusSha256: string;
+  readonly corpusBytes: number;
+  readonly orderedIdsSha256: string;
+  readonly stateCount: number;
   readonly decisionCount: number;
+  readonly preferenceOrder: readonly string[];
+  readonly variantOrder: readonly string[];
+  readonly selection: {
+    readonly initialVariantStates: number;
+    readonly retainedRegressionStates: number;
+  };
+  readonly changesFromV5: {
+    readonly fastObservations: number;
+    readonly normalObservations: number;
+    readonly proObservations: number;
+  };
 };
+
+const EXPECTED_CHANGED_IDS = Object.freeze({
+  fast: [
+    "initial-SwappedManaRows",
+    "initial-OffsetArcManaRows",
+    "initial-CenterSpokeManaRows",
+    "initial-SplitFlankManaRows",
+    "retained-release",
+  ],
+  normal: [
+    "initial-SwappedManaRows",
+    "initial-CenterSpokeManaRows",
+    "retained-release",
+  ],
+  pro: [],
+} satisfies Readonly<Record<Preference, readonly string[]>>);
 
 function archivedSuggestionKind(
   suggestion: ReturnType<Game["suggestMove"]>,
@@ -40,15 +81,31 @@ function archivedPlayResultKind(result: ReturnType<Game["playFen"]>): number {
 }
 
 const corpusDirectory = fileURLToPath(
+  new URL("../../test-data/automove-decisions/v6/", import.meta.url),
+);
+const previousCorpusDirectory = fileURLToPath(
   new URL("../../test-data/automove-decisions/v5/", import.meta.url),
 );
 const manifest = JSON.parse(
   readFileSync(join(corpusDirectory, "manifest.json"), "utf8"),
 ) as CorpusManifest;
-const states = readFileSync(join(corpusDirectory, manifest.corpusFile), "utf8")
+const corpusBytes = readFileSync(join(corpusDirectory, manifest.corpusFile));
+const states = corpusBytes
+  .toString("utf8")
   .trimEnd()
   .split("\n")
   .map((line) => JSON.parse(line) as CorpusState);
+const previousStates = readFileSync(
+  join(previousCorpusDirectory, "decisions.jsonl"),
+  "utf8",
+)
+  .trimEnd()
+  .split("\n")
+  .map((line) => JSON.parse(line) as CorpusState);
+
+function sha256(value: string | Uint8Array): string {
+  return createHash("sha256").update(value).digest("hex");
+}
 
 describe("automove decision corpus", () => {
   beforeAll(() => {
@@ -59,6 +116,110 @@ describe("automove decision corpus", () => {
 
   afterAll(() => {
     vi.restoreAllMocks();
+  });
+
+  it("validates the v6 manifest and corpus identity", () => {
+    const ids = states.map((state) => state.id);
+    const initialStates = states.filter(
+      (state) => state.source.kind === "initial-variant",
+    );
+    const retainedStates = states.filter(
+      (state) => state.source.kind === "retained-fixture",
+    );
+
+    expect(manifest).toMatchObject({
+      schemaVersion: 1,
+      corpusVersion: "automove-decisions-v6",
+      description: expect.any(String),
+      fixedClockNowMs: 0,
+      corpusFile: "decisions.jsonl",
+      preferenceOrder: PREFERENCES,
+      variantOrder: Object.values(GameVariant),
+      selection: {
+        initialVariantStates: 12,
+        retainedRegressionStates: 1,
+      },
+      changesFromV5: {
+        fastObservations: 5,
+        normalObservations: 3,
+        proObservations: 0,
+      },
+    });
+    expect(corpusBytes.byteLength).toBe(manifest.corpusBytes);
+    expect(sha256(corpusBytes)).toBe(manifest.corpusSha256);
+    expect(states).toHaveLength(manifest.stateCount);
+    expect(ids).toEqual([
+      ...manifest.variantOrder.map((variant) => `initial-${variant}`),
+      "retained-release",
+    ]);
+    expect(new Set(ids).size).toBe(states.length);
+    expect(sha256(`${ids.join("\n")}\n`)).toBe(manifest.orderedIdsSha256);
+    expect(initialStates).toHaveLength(manifest.selection.initialVariantStates);
+    expect(initialStates.map((state) => state.variant)).toEqual(
+      manifest.variantOrder,
+    );
+    expect(retainedStates).toHaveLength(
+      manifest.selection.retainedRegressionStates,
+    );
+    expect(
+      states.reduce(
+        (count, state) => count + Object.keys(state.decisions).length,
+        0,
+      ),
+    ).toBe(manifest.decisionCount);
+    expect(
+      states.every(
+        (state) =>
+          state.schemaVersion === manifest.schemaVersion &&
+          isDeepStrictEqual(Object.keys(state.decisions), PREFERENCES),
+      ),
+    ).toBe(true);
+  });
+
+  it("pins the exact v5-to-v6 observation delta", () => {
+    expect(
+      states.map(({ id, variant, source, fen }) => ({
+        id,
+        variant,
+        source,
+        fen,
+      })),
+    ).toEqual(
+      previousStates.map(({ id, variant, source, fen }) => ({
+        id,
+        variant,
+        source,
+        fen,
+      })),
+    );
+
+    const previousById = new Map(
+      previousStates.map((state) => [state.id, state]),
+    );
+    const changedIds = Object.fromEntries(
+      PREFERENCES.map((preference) => [
+        preference,
+        states
+          .filter((state) => {
+            const previous = previousById.get(state.id);
+            return (
+              previous === undefined ||
+              !isDeepStrictEqual(
+                state.decisions[preference],
+                previous.decisions[preference],
+              )
+            );
+          })
+          .map((state) => state.id),
+      ]),
+    );
+
+    expect(changedIds).toEqual(EXPECTED_CHANGED_IDS);
+    expect(Object.values(changedIds).map((ids) => ids.length)).toEqual([
+      manifest.changesFromV5.fastObservations,
+      manifest.changesFromV5.normalObservations,
+      manifest.changesFromV5.proObservations,
+    ]);
   });
 
   it("replays all 39 decisions through the public API", () => {

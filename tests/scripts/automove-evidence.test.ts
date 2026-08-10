@@ -1,0 +1,1325 @@
+import { spawnSync, type SpawnSyncReturns } from "node:child_process";
+import { createHash } from "node:crypto";
+import fs from "node:fs";
+import os from "node:os";
+import path from "node:path";
+
+import { afterEach, describe, expect, it } from "vitest";
+
+const repositoryRoot = path.resolve(import.meta.dirname, "../..");
+const strengthScript = path.join(
+  repositoryRoot,
+  "scripts/run-automove-strength.mjs",
+);
+const performanceScript = path.join(
+  repositoryRoot,
+  "scripts/run-automove-performance.mjs",
+);
+const temporaryDirectories: string[] = [];
+
+afterEach(() => {
+  for (const directory of temporaryDirectories.splice(0)) {
+    fs.rmSync(directory, { force: true, recursive: true });
+  }
+});
+
+describe("automove evidence runners", () => {
+  it("runs mirrored strength pairs with stable rows and explicit invalids", () => {
+    const root = temporaryDirectory();
+    const baseline = writeBundle(root, "baseline.mjs", "B");
+    const candidate = writeBundle(root, "candidate.mjs", "C");
+    const baselineBefore = fs.readFileSync(baseline);
+    const candidateBefore = fs.readFileSync(candidate);
+    const output = path.join(root, "reports", "strength.json");
+    const result = run(strengthScript, [
+      "--baseline",
+      baseline,
+      "--candidate",
+      candidate,
+      "--modes",
+      "normal,fast",
+      "--variants",
+      "Classic",
+      "--max-plies",
+      "2",
+      "--out",
+      output,
+    ]);
+
+    expect(result.status, result.stderr).toBe(0);
+    const report = readJson(output);
+    expect(report.baselineSha256).toBe(bytesSha256(baselineBefore));
+    expect(report.candidateSha256).toBe(bytesSha256(candidateBefore));
+    expect(report.config).toMatchObject({
+      modes: ["fast", "normal"],
+      variants: ["Classic"],
+      maxPlies: 2,
+      gamesPerPairedUnit: 2,
+    });
+    expect(report.modes).toHaveLength(2);
+    expect(report.modes[0]).toMatchObject({
+      mode: "fast",
+      games: 2,
+      validGames: 2,
+      wins: 2,
+      draws: 0,
+      losses: 0,
+      cutoffs: 0,
+      score: 1,
+      invalids: { total: 0 },
+      pairedUnits: { total: 1, wins: 1, inconclusive: 0 },
+    });
+    expect(
+      report.rows.map((row: { mode: string; variant: string }) => [
+        row.mode,
+        row.variant,
+      ]),
+    ).toEqual([
+      ["fast", "Classic"],
+      ["normal", "Classic"],
+    ]);
+    expect(
+      report.games.map(
+        (game: { mode: string; candidateColor: string; result: string }) => [
+          game.mode,
+          game.candidateColor,
+          game.result,
+        ],
+      ),
+    ).toEqual([
+      ["fast", "white", "win"],
+      ["fast", "black", "win"],
+      ["normal", "white", "win"],
+      ["normal", "black", "win"],
+    ]);
+    expect(report.modes[0].timing).toMatchObject({
+      white: { count: 2 },
+      black: { count: 2 },
+      baseline: { count: 2 },
+      candidate: { count: 2 },
+    });
+    expect(report.pairedUnits[0]).toMatchObject({
+      id: "fast/Classic",
+      outcome: "win",
+      candidatePoints: 2,
+    });
+    expect(fs.readFileSync(baseline)).toEqual(baselineBefore);
+    expect(fs.readFileSync(candidate)).toEqual(candidateBefore);
+
+    for (const invalidCase of [
+      {
+        name: "mutation",
+        strategy: "C",
+        mutates: true,
+        mutatesMetadata: false,
+        invalidMetadata: false,
+        key: "sourceMutation",
+      },
+      {
+        name: "history-mutation",
+        strategy: "C",
+        mutates: false,
+        mutatesMetadata: true,
+        invalidMetadata: false,
+        key: "sourceMutation",
+      },
+      {
+        name: "payload",
+        strategy: "payload",
+        mutates: false,
+        mutatesMetadata: false,
+        invalidMetadata: false,
+        key: "illegalReplay",
+      },
+      {
+        name: "replay",
+        strategy: "Z",
+        mutates: false,
+        mutatesMetadata: false,
+        invalidMetadata: false,
+        key: "illegalReplay",
+      },
+      {
+        name: "metadata-type",
+        strategy: "C",
+        mutates: false,
+        mutatesMetadata: false,
+        invalidMetadata: true,
+        key: "illegalReplay",
+      },
+      {
+        name: "missing",
+        strategy: "none",
+        mutates: false,
+        mutatesMetadata: false,
+        invalidMetadata: false,
+        key: "noSuggestion",
+      },
+    ] as const) {
+      const invalidCandidate = writeBundle(
+        root,
+        `${invalidCase.name}.mjs`,
+        invalidCase.strategy,
+        invalidCase.mutates,
+        invalidCase.mutatesMetadata,
+        invalidCase.invalidMetadata,
+      );
+      const invalidOutput = path.join(root, `${invalidCase.name}.json`);
+      const invalidResult = run(strengthScript, [
+        "--baseline",
+        baseline,
+        "--candidate",
+        invalidCandidate,
+        "--modes",
+        "fast",
+        "--variants",
+        "all",
+        "--max-plies",
+        "2",
+        "--out",
+        invalidOutput,
+      ]);
+      expect(invalidResult.status, invalidResult.stderr).toBe(1);
+      expect(invalidResult.stderr).toContain("report written");
+      const invalidReport = readJson(invalidOutput);
+      expect(invalidReport.summary.score).toBeNull();
+      expect(invalidReport.summary.invalids).toMatchObject({
+        total: 2,
+        [invalidCase.key]: 2,
+      });
+      expect(invalidReport.summary.pairedUnits).toMatchObject({
+        total: 1,
+        inconclusive: 1,
+        invalids: 1,
+      });
+      expect(invalidReport.pairedUnits[0]).toMatchObject({
+        outcome: "inconclusive",
+        candidatePoints: null,
+        inconclusiveReason: "invalid",
+      });
+    }
+  });
+
+  it("reports capped strength games as inconclusive cutoffs", () => {
+    const root = temporaryDirectory();
+    const baseline = writeBundle(root, "baseline.mjs", "B");
+    const candidate = writeBundle(root, "candidate.mjs", "C");
+    const output = path.join(root, "cutoff.json");
+    const result = run(strengthScript, [
+      "--baseline",
+      baseline,
+      "--candidate",
+      candidate,
+      "--modes",
+      "fast",
+      "--variants",
+      "Classic",
+      "--max-plies",
+      "1",
+      "--out",
+      output,
+    ]);
+
+    expect(result.status, result.stderr).toBe(1);
+    expect(result.stderr).toContain("contained 2 cutoff games; report written");
+    const report = readJson(output);
+    expect(report.summary).toMatchObject({
+      games: 2,
+      validGames: 0,
+      wins: 0,
+      draws: 0,
+      losses: 0,
+      cutoffs: 2,
+      score: null,
+      invalids: { total: 0 },
+      pairedUnits: {
+        total: 1,
+        inconclusive: 1,
+        invalids: 0,
+        cutoffs: 1,
+      },
+    });
+    expect(report.games.map((game: { result: string }) => game.result)).toEqual(
+      ["cutoff", "cutoff"],
+    );
+    expect(report.pairedUnits[0]).toMatchObject({
+      outcome: "inconclusive",
+      candidatePoints: null,
+      inconclusiveReason: "cutoff",
+    });
+  });
+
+  it("runs sorted continuation pairs and reports invalid state FENs", () => {
+    const root = temporaryDirectory();
+    const baseline = writeBundle(root, "baseline.mjs", "B");
+    const candidate = writeBundle(root, "candidate.mjs", "C");
+    const initialState = JSON.stringify({
+      variant: "Classic",
+      ply: 0,
+      candidateColor: null,
+    });
+    const stateBank = path.join(root, "continuations.jsonl");
+    fs.writeFileSync(
+      stateBank,
+      [
+        { id: "z-state", fen: initialState },
+        {
+          id: "m-invalid",
+          fen: "not-a-fen",
+          variant: "UntrustedVariantLabel",
+        },
+        { id: "a-state", fen: initialState, variant: "Classic" },
+      ]
+        .map((state) => JSON.stringify(state))
+        .join("\n") + "\n",
+    );
+    const output = path.join(root, "continuation-strength.json");
+    const result = run(strengthScript, [
+      "--baseline",
+      baseline,
+      "--candidate",
+      candidate,
+      "--states",
+      stateBank,
+      "--modes",
+      "normal,fast",
+      "--max-plies",
+      "2",
+      "--out",
+      output,
+    ]);
+
+    expect(result.status, result.stderr).toBe(1);
+    expect(result.stderr).toContain("report written");
+    const report = readJson(output);
+    expect(report.config).toEqual({
+      modes: ["fast", "normal"],
+      stateIds: ["a-state", "m-invalid", "z-state"],
+      maxPlies: 2,
+      gamesPerPairedUnit: 2,
+    });
+    expect(report.states).toBe(3);
+    expect(report.stateBank).toBe(stateBank);
+    expect(report.stateBankSha256).toBe(fileSha256(stateBank));
+    expect(
+      report.rows.map(
+        (row: { mode: string; stateId: string; variant?: string }) => [
+          row.mode,
+          row.stateId,
+          row.variant ?? null,
+        ],
+      ),
+    ).toEqual([
+      ["fast", "a-state", "Classic"],
+      ["fast", "m-invalid", "UntrustedVariantLabel"],
+      ["fast", "z-state", null],
+      ["normal", "a-state", "Classic"],
+      ["normal", "m-invalid", "UntrustedVariantLabel"],
+      ["normal", "z-state", null],
+    ]);
+    expect(report.modes[0]).toMatchObject({
+      mode: "fast",
+      games: 6,
+      validGames: 4,
+      wins: 4,
+      draws: 0,
+      losses: 0,
+      cutoffs: 0,
+      score: null,
+      invalids: { total: 2, illegalReplay: 2 },
+      pairedUnits: {
+        total: 3,
+        wins: 2,
+        inconclusive: 1,
+        invalids: 1,
+      },
+    });
+    const invalidRow = report.rows.find(
+      (row: { mode: string; stateId: string }) =>
+        row.mode === "fast" && row.stateId === "m-invalid",
+    );
+    expect(invalidRow).toMatchObject({
+      variant: "UntrustedVariantLabel",
+      games: 2,
+      validGames: 0,
+      score: null,
+      invalids: { total: 2, illegalReplay: 2 },
+      pairedUnits: { total: 1, inconclusive: 1, invalids: 1 },
+    });
+    expect(
+      report.games
+        .filter(
+          (game: { mode: string; stateId: string }) =>
+            game.mode === "fast" && game.stateId === "m-invalid",
+        )
+        .map(
+          (game: {
+            candidateColor: string;
+            result: string;
+            invalid: { reason: string };
+          }) => [game.candidateColor, game.result, game.invalid.reason],
+        ),
+    ).toEqual([
+      ["white", "invalid", "illegal-replay"],
+      ["black", "invalid", "illegal-replay"],
+    ]);
+
+    const exclusiveOutput = path.join(root, "exclusive.json");
+    const exclusive = run(strengthScript, [
+      "--baseline",
+      baseline,
+      "--candidate",
+      candidate,
+      "--states",
+      stateBank,
+      "--variants",
+      "Classic",
+      "--out",
+      exclusiveOutput,
+    ]);
+    expect(exclusive.status).toBe(1);
+    expect(exclusive.stderr).toContain(
+      "--states and --variants are mutually exclusive",
+    );
+    expect(fs.existsSync(exclusiveOutput)).toBe(false);
+
+    const mislabeledBank = path.join(root, "mislabeled.jsonl");
+    fs.writeFileSync(
+      mislabeledBank,
+      `${JSON.stringify({
+        id: "mislabeled",
+        fen: initialState,
+        variant: "MetadataOnly",
+      })}\n`,
+    );
+    const mislabeledOutput = path.join(root, "mislabeled.json");
+    const mislabeled = run(strengthScript, [
+      "--baseline",
+      baseline,
+      "--candidate",
+      candidate,
+      "--states",
+      mislabeledBank,
+      "--modes",
+      "fast",
+      "--out",
+      mislabeledOutput,
+    ]);
+    expect(mislabeled.status).toBe(1);
+    expect(mislabeled.stderr).toContain(
+      "variant metadata MetadataOnly does not match parsed variant Classic",
+    );
+    expect(fs.existsSync(mislabeledOutput)).toBe(false);
+  });
+
+  it("rejects terminal continuation states before strength games run", () => {
+    const root = temporaryDirectory();
+    const baseline = writeBundle(root, "baseline.mjs", "B");
+    const candidate = writeBundle(root, "candidate.mjs", "C");
+    const stateBank = path.join(root, "terminal.jsonl");
+    fs.writeFileSync(
+      stateBank,
+      `${JSON.stringify({
+        id: "already-finished",
+        fen: JSON.stringify({
+          variant: "Classic",
+          ply: 2,
+          candidateColor: "white",
+        }),
+        variant: "Classic",
+      })}\n`,
+    );
+    const output = path.join(root, "terminal-strength.json");
+    const result = run(strengthScript, [
+      "--baseline",
+      baseline,
+      "--candidate",
+      candidate,
+      "--states",
+      stateBank,
+      "--modes",
+      "fast",
+      "--max-plies",
+      "2",
+      "--out",
+      output,
+    ]);
+
+    expect(result.status).toBe(1);
+    expect(result.stderr).toContain(
+      "state-bank state already-finished is terminal",
+    );
+    expect(fs.existsSync(output)).toBe(false);
+  });
+
+  it("rejects terminal variant starts before strength games run", () => {
+    const root = temporaryDirectory();
+    const baseline = writeBundle(
+      root,
+      "terminal-baseline.mjs",
+      "throw",
+      false,
+      false,
+      false,
+      true,
+    );
+    const candidate = writeBundle(
+      root,
+      "terminal-candidate.mjs",
+      "throw",
+      false,
+      false,
+      false,
+      true,
+    );
+    const output = path.join(root, "terminal-variant-strength.json");
+    const result = run(strengthScript, [
+      "--baseline",
+      baseline,
+      "--candidate",
+      candidate,
+      "--variants",
+      "Classic",
+      "--modes",
+      "fast",
+      "--max-plies",
+      "2",
+      "--out",
+      output,
+    ]);
+
+    expect(result.status).toBe(1);
+    expect(result.stderr).toContain(
+      "variant Classic is terminal and cannot be used for strength evidence",
+    );
+    expect(fs.existsSync(output)).toBe(false);
+  });
+
+  it("measures a sorted JSONL bank in repeated ABBA order", () => {
+    const root = temporaryDirectory();
+    const baseline = writeBundle(root, "baseline.mjs", "B");
+    const candidate = writeBundle(root, "candidate.mjs", "C");
+    const initialState = JSON.stringify({
+      variant: "Classic",
+      ply: 0,
+      candidateColor: null,
+    });
+    const stateBank = path.join(root, "states.jsonl");
+    fs.writeFileSync(
+      stateBank,
+      `${JSON.stringify({ id: "z-state", fen: initialState })}\n` +
+        `${JSON.stringify({ id: "a-state", fen: initialState })}\n`,
+    );
+    const output = path.join(root, "performance.json");
+    const result = run(performanceScript, [
+      "--baseline",
+      baseline,
+      "--candidate",
+      candidate,
+      "--states",
+      stateBank,
+      "--repeat",
+      "1",
+      "--modes",
+      "normal,fast",
+      "--out",
+      output,
+    ]);
+
+    expect(result.status, result.stderr).toBe(0);
+    const report = readJson(output);
+    expect(report.stateBankSha256).toBe(fileSha256(stateBank));
+    expect(report.config).toEqual({
+      modes: ["fast", "normal"],
+      repeat: 1,
+      order: "ABBA",
+      samplesPerBundlePerState: 2,
+    });
+    expect(report.states).toBe(2);
+    expect(
+      report.rows.map((row: { mode: string; id: string }) => [
+        row.mode,
+        row.id,
+      ]),
+    ).toEqual([
+      ["fast", "a-state"],
+      ["fast", "z-state"],
+      ["normal", "a-state"],
+      ["normal", "z-state"],
+    ]);
+    for (const row of report.rows) {
+      expect(row.callsPerBundle).toBe(2);
+      expect(row.baseline).toMatchObject({
+        count: 2,
+        invalids: { total: 0 },
+      });
+      expect(row.candidate).toMatchObject({
+        count: 2,
+        invalids: { total: 0 },
+      });
+      expect(row.baseline.samplesMs).toHaveLength(2);
+      expect(row.candidate.samplesMs).toHaveLength(2);
+      expect(row.candidateBaselineRatio).toEqual({
+        mean: expect.any(Number),
+        median: expect.any(Number),
+        p95: expect.any(Number),
+        max: expect.any(Number),
+      });
+    }
+    expect(report.summary).toMatchObject({
+      states: 2,
+      rows: 4,
+      callsPerBundle: 8,
+      baseline: { count: 8, invalids: { total: 0 } },
+      candidate: { count: 8, invalids: { total: 0 } },
+    });
+  });
+
+  it("fails closed without timing a fast invalid candidate", () => {
+    const root = temporaryDirectory();
+    const baseline = writeBundle(root, "baseline.mjs", "B");
+    const candidate = writeBundle(root, "fast-invalid.mjs", "none");
+    const initialState = JSON.stringify({
+      variant: "Classic",
+      ply: 0,
+      candidateColor: null,
+    });
+    const stateBank = path.join(root, "states.jsonl");
+    fs.writeFileSync(
+      stateBank,
+      `${JSON.stringify({ id: "initial", fen: initialState })}\n`,
+    );
+    const output = path.join(root, "fast-invalid-performance.json");
+    const result = run(performanceScript, [
+      "--baseline",
+      baseline,
+      "--candidate",
+      candidate,
+      "--states",
+      stateBank,
+      "--repeat",
+      "1",
+      "--modes",
+      "fast",
+      "--out",
+      output,
+    ]);
+
+    expect(result.status).toBe(1);
+    expect(result.stderr).toContain("invalid calls; report written");
+    expect(fs.existsSync(output)).toBe(true);
+    const report = readJson(output);
+    expect(report.rows[0]).toMatchObject({
+      callsPerBundle: 2,
+      baseline: { count: 2, invalids: { total: 0 } },
+      candidate: {
+        count: 0,
+        samplesMs: [],
+        invalids: { total: 2, noSuggestion: 2 },
+      },
+      candidateBaselineRatio: null,
+    });
+    expect(report.summary).toMatchObject({
+      baseline: { count: 2, invalids: { total: 0 } },
+      candidate: { count: 0, invalids: { total: 2, noSuggestion: 2 } },
+      candidateBaselineRatio: null,
+    });
+  });
+
+  it("classifies selector, payload, and preview failures without aborting", () => {
+    const root = temporaryDirectory();
+    const baseline = writeBundle(root, "baseline.mjs", "B");
+    const initialState = JSON.stringify({
+      variant: "Classic",
+      ply: 0,
+      candidateColor: null,
+    });
+    const stateBank = path.join(root, "states.jsonl");
+    fs.writeFileSync(
+      stateBank,
+      `${JSON.stringify({ id: "initial", fen: initialState })}\n`,
+    );
+
+    for (const invalidCase of [
+      {
+        strategy: "throw",
+        output: "selector-error.json",
+        counts: { selectorError: 2, sourceMutation: 0, illegalReplay: 0 },
+      },
+      {
+        strategy: "mutating-throw",
+        output: "mutating-selector-error.json",
+        counts: { selectorError: 0, sourceMutation: 2, illegalReplay: 0 },
+      },
+      {
+        strategy: "throwing-payload",
+        output: "throwing-payload.json",
+        counts: { selectorError: 0, sourceMutation: 0, illegalReplay: 2 },
+      },
+      {
+        strategy: "mutating-invalid-payload",
+        output: "mutating-invalid-payload.json",
+        counts: { selectorError: 0, sourceMutation: 2, illegalReplay: 0 },
+      },
+      {
+        strategy: "mutating-preview-throw",
+        output: "mutating-preview-throw.json",
+        counts: { selectorError: 0, sourceMutation: 2, illegalReplay: 0 },
+      },
+    ] as const) {
+      const candidate = writeBundle(
+        root,
+        `${invalidCase.strategy}.mjs`,
+        invalidCase.strategy,
+      );
+      const output = path.join(root, invalidCase.output);
+      const result = run(performanceScript, [
+        "--baseline",
+        baseline,
+        "--candidate",
+        candidate,
+        "--states",
+        stateBank,
+        "--repeat",
+        "1",
+        "--modes",
+        "fast",
+        "--out",
+        output,
+      ]);
+
+      expect(result.status, result.stderr).toBe(1);
+      expect(result.stderr).toContain("invalid calls; report written");
+      expect(readJson(output).summary.candidate.invalids).toMatchObject({
+        total: 2,
+        ...invalidCase.counts,
+      });
+      if (invalidCase.strategy === "mutating-preview-throw") {
+        expect(readJson(output).summary.baseline.invalids).toMatchObject({
+          total: 2,
+          sourceMutation: 2,
+        });
+      }
+    }
+  });
+
+  it("fails when a bundle changes while it is being loaded", () => {
+    const root = temporaryDirectory();
+    const baseline = writeBundle(root, "baseline.mjs", "B");
+    const candidate = writeBundle(root, "candidate.mjs", "C");
+    const candidateSource = fs.readFileSync(candidate, "utf8");
+    fs.writeFileSync(
+      candidate,
+      `import { appendFileSync } from "node:fs";
+import { fileURLToPath } from "node:url";
+
+const selfUrl = new URL(import.meta.url);
+selfUrl.search = "";
+appendFileSync(fileURLToPath(selfUrl), "\\n");
+
+${candidateSource}`,
+    );
+    const output = path.join(root, "changed-bundle.json");
+    const result = run(performanceScript, [
+      "--baseline",
+      baseline,
+      "--candidate",
+      candidate,
+      "--states",
+      path.join(root, "unused.jsonl"),
+      "--repeat",
+      "1",
+      "--modes",
+      "fast",
+      "--out",
+      output,
+    ]);
+
+    expect(result.status).toBe(1);
+    expect(result.stderr).toContain("candidate bundle changed while loading");
+    expect(fs.existsSync(output)).toBe(false);
+  });
+
+  it("rejects numeric work limits that are not safe integers", () => {
+    const root = temporaryDirectory();
+    const baseline = writeBundle(root, "baseline.mjs", "B");
+    const candidate = writeBundle(root, "candidate.mjs", "C");
+    const stateBank = path.join(root, "states.jsonl");
+    fs.writeFileSync(
+      stateBank,
+      `${JSON.stringify({
+        id: "initial",
+        fen: JSON.stringify({
+          variant: "Classic",
+          ply: 0,
+          candidateColor: null,
+        }),
+      })}\n`,
+    );
+
+    const performanceOutput = path.join(root, "unsafe-repeat.json");
+    const performanceResult = run(performanceScript, [
+      "--baseline",
+      baseline,
+      "--candidate",
+      candidate,
+      "--states",
+      stateBank,
+      "--repeat",
+      "9007199254740993",
+      "--modes",
+      "fast",
+      "--out",
+      performanceOutput,
+    ]);
+    expect(performanceResult.status).toBe(1);
+    expect(performanceResult.stderr).toContain(
+      "--repeat must be a positive safe integer",
+    );
+    expect(fs.existsSync(performanceOutput)).toBe(false);
+
+    const strengthOutput = path.join(root, "unsafe-max-plies.json");
+    const strengthResult = run(strengthScript, [
+      "--baseline",
+      baseline,
+      "--candidate",
+      candidate,
+      "--variants",
+      "Classic",
+      "--max-plies",
+      "9007199254740993",
+      "--out",
+      strengthOutput,
+    ]);
+    expect(strengthResult.status).toBe(1);
+    expect(strengthResult.stderr).toContain(
+      "--max-plies must be a positive safe integer",
+    );
+    expect(fs.existsSync(strengthOutput)).toBe(false);
+  });
+
+  it("accepts practical work-limit boundaries and rejects larger values", () => {
+    const root = temporaryDirectory();
+    const baseline = writeBundle(root, "baseline.mjs", "B");
+    const candidate = writeBundle(root, "candidate.mjs", "C");
+    const stateBank = path.join(root, "states.jsonl");
+    fs.writeFileSync(
+      stateBank,
+      `${JSON.stringify({
+        id: "initial",
+        fen: JSON.stringify({
+          variant: "Classic",
+          ply: 0,
+          candidateColor: null,
+        }),
+      })}\n`,
+    );
+
+    const boundaryPerformanceOutput = path.join(root, "boundary-repeat.json");
+    const boundaryPerformance = run(performanceScript, [
+      "--baseline",
+      baseline,
+      "--candidate",
+      candidate,
+      "--states",
+      stateBank,
+      "--repeat",
+      "100",
+      "--modes",
+      "fast",
+      "--out",
+      boundaryPerformanceOutput,
+    ]);
+    expect(boundaryPerformance.status, boundaryPerformance.stderr).toBe(0);
+    expect(readJson(boundaryPerformanceOutput).config.repeat).toBe(100);
+
+    const excessivePerformanceOutput = path.join(root, "excessive-repeat.json");
+    const excessivePerformance = run(performanceScript, [
+      "--baseline",
+      baseline,
+      "--candidate",
+      candidate,
+      "--states",
+      stateBank,
+      "--repeat",
+      "101",
+      "--modes",
+      "fast",
+      "--out",
+      excessivePerformanceOutput,
+    ]);
+    expect(excessivePerformance.status).toBe(1);
+    expect(excessivePerformance.stderr).toContain(
+      "--repeat must be at most 100",
+    );
+    expect(fs.existsSync(excessivePerformanceOutput)).toBe(false);
+
+    const boundaryStrengthOutput = path.join(root, "boundary-max-plies.json");
+    const boundaryStrength = run(strengthScript, [
+      "--baseline",
+      baseline,
+      "--candidate",
+      candidate,
+      "--variants",
+      "Classic",
+      "--modes",
+      "fast",
+      "--max-plies",
+      "1024",
+      "--out",
+      boundaryStrengthOutput,
+    ]);
+    expect(boundaryStrength.status, boundaryStrength.stderr).toBe(0);
+    expect(readJson(boundaryStrengthOutput).config.maxPlies).toBe(1024);
+
+    const excessiveStrengthOutput = path.join(root, "excessive-max-plies.json");
+    const excessiveStrength = run(strengthScript, [
+      "--baseline",
+      baseline,
+      "--candidate",
+      candidate,
+      "--variants",
+      "Classic",
+      "--modes",
+      "fast",
+      "--max-plies",
+      "1025",
+      "--out",
+      excessiveStrengthOutput,
+    ]);
+    expect(excessiveStrength.status).toBe(1);
+    expect(excessiveStrength.stderr).toContain(
+      "--max-plies must be at most 1024",
+    );
+    expect(fs.existsSync(excessiveStrengthOutput)).toBe(false);
+  });
+
+  it("preflights report destinations before reading evidence inputs", () => {
+    const root = temporaryDirectory();
+    const missingBaseline = path.join(root, "missing-baseline.mjs");
+    const missingCandidate = path.join(root, "missing-candidate.mjs");
+    const missingStates = path.join(root, "missing-states.jsonl");
+    const existingOutput = path.join(root, "existing.json");
+    const existingBytes = Buffer.from("preserve this report\n");
+    fs.writeFileSync(existingOutput, existingBytes);
+    const forbiddenOutput = path.join(repositoryRoot, "package.json");
+    const forbiddenBytes = fs.readFileSync(forbiddenOutput);
+    const invocations = [
+      {
+        script: performanceScript,
+        arguments: [
+          "--baseline",
+          missingBaseline,
+          "--candidate",
+          missingCandidate,
+          "--states",
+          missingStates,
+          "--modes",
+          "fast",
+          "--repeat",
+          "1",
+        ],
+      },
+      {
+        script: strengthScript,
+        arguments: [
+          "--baseline",
+          missingBaseline,
+          "--candidate",
+          missingCandidate,
+          "--variants",
+          "Classic",
+          "--modes",
+          "fast",
+          "--max-plies",
+          "1",
+        ],
+      },
+    ];
+
+    for (const invocation of invocations) {
+      const missing = run(invocation.script, invocation.arguments);
+      expect(missing.status).toBe(1);
+      expect(missing.stderr).toContain("missing required option: --out");
+
+      const existing = run(invocation.script, [
+        ...invocation.arguments,
+        "--out",
+        existingOutput,
+      ]);
+      expect(existing.status).toBe(1);
+      expect(existing.stderr).toContain(
+        "refusing to overwrite existing evidence report",
+      );
+
+      const forbidden = run(invocation.script, [
+        ...invocation.arguments,
+        "--out",
+        forbiddenOutput,
+      ]);
+      expect(forbidden.status).toBe(1);
+      expect(forbidden.stderr).toContain(
+        "outside target/ or the OS temporary directory",
+      );
+    }
+
+    expect(fs.existsSync(missingBaseline)).toBe(false);
+    expect(fs.existsSync(missingCandidate)).toBe(false);
+    expect(fs.existsSync(missingStates)).toBe(false);
+    expect(fs.readFileSync(existingOutput)).toEqual(existingBytes);
+    expect(fs.readFileSync(forbiddenOutput)).toEqual(forbiddenBytes);
+  });
+
+  it("refuses report destinations in arbitrary repository paths", () => {
+    const root = temporaryDirectory();
+    const baseline = writeBundle(root, "baseline.mjs", "B");
+    const candidate = writeBundle(root, "candidate.mjs", "C");
+    const configDestination = path.join(repositoryRoot, "package.json");
+    const configBefore = fs.readFileSync(configDestination);
+    const sourceDestination = path.join(
+      repositoryRoot,
+      "scripts",
+      "automove-evidence-forbidden.json",
+    );
+    expect(fs.existsSync(sourceDestination)).toBe(false);
+
+    for (const destination of [configDestination, sourceDestination]) {
+      const result = run(strengthScript, [
+        "--baseline",
+        baseline,
+        "--candidate",
+        candidate,
+        "--modes",
+        "fast",
+        "--variants",
+        "Classic",
+        "--max-plies",
+        "1",
+        "--out",
+        destination,
+      ]);
+      expect(result.status).toBe(1);
+      expect(result.stderr).toContain(
+        "outside target/ or the OS temporary directory",
+      );
+    }
+
+    expect(fs.readFileSync(configDestination)).toEqual(configBefore);
+    expect(fs.existsSync(sourceDestination)).toBe(false);
+  });
+
+  it("refuses report paths that escape through directory symlinks", () => {
+    const root = temporaryDirectory();
+    const baseline = writeBundle(root, "baseline.mjs", "B");
+    const candidate = writeBundle(root, "candidate.mjs", "C");
+    const protectedDestination = path.join(
+      repositoryRoot,
+      "test-data",
+      "automove-evidence-symlink-forbidden.json",
+    );
+    const sourceDestination = path.join(
+      repositoryRoot,
+      "scripts",
+      "automove-evidence-symlink-forbidden.json",
+    );
+    expect(fs.existsSync(protectedDestination)).toBe(false);
+    expect(fs.existsSync(sourceDestination)).toBe(false);
+    const linkedTestData = path.join(root, "linked-test-data");
+    const linkedScripts = path.join(root, "linked-scripts");
+    fs.symlinkSync(
+      path.join(repositoryRoot, "test-data"),
+      linkedTestData,
+      "dir",
+    );
+    fs.symlinkSync(path.join(repositoryRoot, "scripts"), linkedScripts, "dir");
+
+    for (const [output, message] of [
+      [
+        path.join(linkedTestData, path.basename(protectedDestination)),
+        "under test-data/",
+      ],
+      [
+        path.join(linkedScripts, path.basename(sourceDestination)),
+        "outside target/ or the OS temporary directory",
+      ],
+    ] as const) {
+      const result = run(strengthScript, [
+        "--baseline",
+        baseline,
+        "--candidate",
+        candidate,
+        "--modes",
+        "fast",
+        "--variants",
+        "Classic",
+        "--max-plies",
+        "1",
+        "--out",
+        output,
+      ]);
+      expect(result.status).toBe(1);
+      expect(result.stderr).toContain(message);
+    }
+
+    expect(fs.existsSync(protectedDestination)).toBe(false);
+    expect(fs.existsSync(sourceDestination)).toBe(false);
+  });
+
+  it("refuses to overwrite an existing report", () => {
+    const root = temporaryDirectory();
+    const baseline = writeBundle(root, "baseline.mjs", "B");
+    const candidate = writeBundle(root, "candidate.mjs", "C");
+    const output = path.join(root, "existing.json");
+    const existing = Buffer.from("preserve this report\n");
+    fs.writeFileSync(output, existing);
+
+    const result = run(strengthScript, [
+      "--baseline",
+      baseline,
+      "--candidate",
+      candidate,
+      "--modes",
+      "fast",
+      "--variants",
+      "Classic",
+      "--max-plies",
+      "1",
+      "--out",
+      output,
+    ]);
+
+    expect(result.status).toBe(1);
+    expect(result.stderr).toContain(
+      "refusing to overwrite existing evidence report",
+    );
+    expect(fs.readFileSync(output)).toEqual(existing);
+  });
+
+  it("refuses to place a report in the immutable test-data tree", () => {
+    const root = temporaryDirectory();
+    const baseline = writeBundle(root, "baseline.mjs", "B");
+    const candidate = writeBundle(root, "candidate.mjs", "C");
+    const forbiddenOutput = path.join(
+      repositoryRoot,
+      "test-data",
+      "automove-evidence-forbidden.json",
+    );
+    expect(fs.existsSync(forbiddenOutput)).toBe(false);
+    const result = run(strengthScript, [
+      "--baseline",
+      baseline,
+      "--candidate",
+      candidate,
+      "--modes",
+      "fast",
+      "--variants",
+      "Classic",
+      "--max-plies",
+      "1",
+      "--out",
+      forbiddenOutput,
+    ]);
+
+    expect(result.status).toBe(1);
+    expect(result.stderr).toContain("refusing to write");
+    expect(fs.existsSync(forbiddenOutput)).toBe(false);
+  });
+});
+
+function temporaryDirectory(): string {
+  const directory = fs.mkdtempSync(
+    path.join(os.tmpdir(), "mons-automove-evidence-test-"),
+  );
+  temporaryDirectories.push(directory);
+  return directory;
+}
+
+function writeBundle(
+  directory: string,
+  name: string,
+  strategy:
+    | "B"
+    | "C"
+    | "Z"
+    | "payload"
+    | "none"
+    | "throw"
+    | "mutating-throw"
+    | "throwing-payload"
+    | "mutating-invalid-payload"
+    | "mutating-preview-throw",
+  mutates = false,
+  mutatesMetadata = false,
+  invalidMetadata = false,
+  terminalInitial = false,
+): string {
+  const filePath = path.join(directory, name);
+  const suggestion =
+    strategy === "none"
+      ? "return undefined;"
+      : strategy === "throw"
+        ? 'throw new Error("synthetic selector failure");'
+        : strategy === "mutating-throw"
+          ? 'this.state.ply += 1; throw new Error("synthetic selector failure");'
+          : strategy === "throwing-payload"
+            ? 'return Object.defineProperty({}, "inputFen", { get() { throw new Error("synthetic payload failure"); } });'
+            : strategy === "mutating-invalid-payload"
+              ? "const game = this; return { get inputFen() { game.state.ply += 1; return null; }, inputs: [], events: [] };"
+              : strategy === "payload"
+                ? 'return { inputFen: "C", inputs: [{ kind: "synthetic", value: "C" }], events: [] };'
+                : `${mutates ? "this.state.ply += 1;" : ""}
+    ${mutatesMetadata ? "this.takebacks.push(this.toFen());" : ""}
+    const inputFen = ${JSON.stringify(strategy === "mutating-preview-throw" ? "C" : strategy)};
+    return {
+      inputFen,
+      inputs: [{ kind: "synthetic", value: inputFen }],
+      events: eventsFor(inputFen),
+    };`;
+  fs.writeFileSync(
+    filePath,
+    `export const GameVariant = Object.freeze({ Classic: "Classic" });
+
+function eventsFor(inputFen) {
+  return [{ kind: "synthetic-event", inputFen }];
+}
+
+function inputFenFromInputs(inputs) {
+  if (
+    !Array.isArray(inputs) ||
+    inputs.length !== 1 ||
+    inputs[0]?.kind !== "synthetic" ||
+    typeof inputs[0].value !== "string"
+  ) return undefined;
+  return inputs[0].value;
+}
+
+export class Game {
+  constructor(options = {}) {
+    this.state = {
+      variant: options.variant ?? GameVariant.Classic,
+      ply: ${terminalInitial ? 2 : 0},
+      candidateColor: ${terminalInitial ? '"white"' : "null"},
+    };
+    this.takebacks = [];
+    this.tracking = [];
+  }
+
+  static fromFen(fen) {
+    try {
+      const state = JSON.parse(fen);
+      if (
+        state.variant !== GameVariant.Classic ||
+        !Number.isInteger(state.ply) ||
+        ![null, "white", "black"].includes(state.candidateColor)
+      ) return undefined;
+      const game = new Game({ variant: state.variant });
+      game.state = { ...state };
+      return game.toFen() === fen ? game : undefined;
+    } catch {
+      return undefined;
+    }
+  }
+
+  get activeColor() {
+    return this.state.ply % 2 === 0 ? "white" : "black";
+  }
+
+  get variant() {
+    return this.state.variant;
+  }
+
+  get turnNumber() {
+    return this.state.ply;
+  }
+
+  get scores() {
+    return { white: 0, black: 0 };
+  }
+
+  get potions() {
+    return { white: 0, black: 0 };
+  }
+
+  get winner() {
+    return this.state.ply >= 2 && this.state.candidateColor !== null
+      ? this.state.candidateColor
+      : undefined;
+  }
+
+  get historyVerified() {
+    return ${invalidMetadata ? '"yes"' : "true"};
+  }
+
+  get takebackFens() {
+    return [...this.takebacks];
+  }
+
+  get trackingEntries() {
+    return this.tracking.map((entry) => ({
+      ...entry,
+      events: [...entry.events],
+    }));
+  }
+
+  toFen() {
+    return JSON.stringify(this.state);
+  }
+
+  availableMoveCounts() {
+    return { monMoves: 1, manaMoves: 1, actions: 1, potions: 0 };
+  }
+
+  canTakeback() {
+    return false;
+  }
+
+  preview(inputs) {
+    ${strategy === "mutating-preview-throw" ? 'this.state.ply += 1; throw new Error("synthetic preview failure");' : ""}
+    const inputFen = inputFenFromInputs(inputs);
+    if (inputFen !== "B" && inputFen !== "C") {
+      return { kind: "invalid", inputFen: inputFen ?? "" };
+    }
+    return { kind: "complete", inputFen, events: eventsFor(inputFen) };
+  }
+
+  suggestMove() {
+    ${suggestion}
+  }
+
+  playFen(inputFen) {
+    if (inputFen !== "B" && inputFen !== "C") {
+      return { kind: "invalid", inputFen };
+    }
+    const candidateColor =
+      inputFen === "C" ? this.activeColor : this.state.candidateColor;
+    this.state = {
+      ...this.state,
+      ply: this.state.ply + 1,
+      candidateColor,
+    };
+    return { kind: "complete", inputFen, events: eventsFor(inputFen) };
+  }
+}
+`,
+  );
+  return filePath;
+}
+
+function run(script: string, arguments_: string[]): SpawnSyncReturns<string> {
+  return spawnSync(process.execPath, [script, ...arguments_], {
+    cwd: repositoryRoot,
+    encoding: "utf8",
+  });
+}
+
+function readJson(filePath: string) {
+  return JSON.parse(fs.readFileSync(filePath, "utf8"));
+}
+
+function fileSha256(filePath: string): string {
+  return bytesSha256(fs.readFileSync(filePath));
+}
+
+function bytesSha256(bytes: NodeJS.ArrayBufferView): string {
+  return createHash("sha256").update(bytes).digest("hex");
+}

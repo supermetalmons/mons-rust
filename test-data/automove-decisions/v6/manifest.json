@@ -1,0 +1,40 @@
+{
+  "schemaVersion": 1,
+  "corpusVersion": "automove-decisions-v6",
+  "description": "Deterministic public suggestMove decisions after Fast and Normal adopted packed-state search for supported positions while Pro remained unchanged.",
+  "fixedClockNowMs": 0,
+  "corpusFile": "decisions.jsonl",
+  "corpusSha256": "32799d75bebfe49494770af1657ff232208244081f7eafe9adaa606b1a251ee1",
+  "corpusBytes": 21921,
+  "orderedIdsSha256": "3c3e6062268009985d9c947fb05cea4586af8b81909a68025dd364ef15564ad6",
+  "stateCount": 13,
+  "decisionCount": 39,
+  "preferenceOrder": [
+    "fast",
+    "normal",
+    "pro"
+  ],
+  "variantOrder": [
+    "Classic",
+    "SwappedManaRows",
+    "OffsetArcManaRows",
+    "CenterSpokeManaRows",
+    "AlternatingManaRows",
+    "InnerWedgeManaRows",
+    "OuterWedgeManaRows",
+    "BentCenterManaRows",
+    "OuterEdgeManaRows",
+    "SplitFlankManaRows",
+    "ForwardBridgeManaRows",
+    "CornerChainManaRows"
+  ],
+  "selection": {
+    "initialVariantStates": 12,
+    "retainedRegressionStates": 1
+  },
+  "changesFromV5": {
+    "fastObservations": 5,
+    "normalObservations": 3,
+    "proObservations": 0
+  }
+}

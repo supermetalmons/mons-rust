@@ -1,5 +1,6 @@
 import { BOARD_CELLS, BOARD_SIZE } from "../../engine/geometry.js";
 import { MONS_MOVES_PER_TURN, TARGET_SCORE } from "../../engine/config.js";
+import { rethrowFastWorkspaceAllocation } from "./allocation.js";
 import {
   CENTER_ROW_DISTANCE,
   CONS_BOMB,
@@ -165,7 +166,7 @@ export type EvalTables = {
 };
 
 function distanceTable(numerator: number): Int32Array {
-  const table = new Int32Array(DISTANCE_TABLE_SIZE);
+  const table = createInt32Table(DISTANCE_TABLE_SIZE);
   for (let distance = 0; distance < DISTANCE_TABLE_SIZE; distance += 1) {
     table[distance] = Math.trunc(numerator / (distance + 1));
   }
@@ -173,7 +174,7 @@ function distanceTable(numerator: number): Int32Array {
 }
 
 function manaPointsAttractionTable(weight: number): Int32Array {
-  const table = new Int32Array(MANA_POINT_SLOTS * DISTANCE_TABLE_SIZE);
+  const table = createInt32Table(MANA_POINT_SLOTS * DISTANCE_TABLE_SIZE);
   for (let points = 0; points < MANA_POINT_SLOTS; points += 1) {
     const base = points * DISTANCE_TABLE_SIZE;
     for (let distance = 0; distance < DISTANCE_TABLE_SIZE; distance += 1) {
@@ -184,7 +185,7 @@ function manaPointsAttractionTable(weight: number): Int32Array {
 }
 
 function threatWalkTable(weight: number, factor: number): Float64Array {
-  const table = new Float64Array(THREAT_WALK_TABLE_SIZE);
+  const table = createFloat64Table(THREAT_WALK_TABLE_SIZE);
   for (let steps = 0; steps < THREAT_WALK_TABLE_SIZE; steps += 1) {
     table[steps] = Math.trunc(
       (weight * factor * (MONS_MOVES_PER_TURN + 1 - steps)) /
@@ -192,6 +193,22 @@ function threatWalkTable(weight: number, factor: number): Float64Array {
     );
   }
   return table;
+}
+
+function createInt32Table(length: number): Int32Array {
+  try {
+    return new Int32Array(length);
+  } catch (error) {
+    rethrowFastWorkspaceAllocation(error);
+  }
+}
+
+function createFloat64Table(length: number): Float64Array {
+  try {
+    return new Float64Array(length);
+  } catch (error) {
+    rethrowFastWorkspaceAllocation(error);
+  }
 }
 
 export function createEvalTables(weights: EvalWeights): EvalTables {
