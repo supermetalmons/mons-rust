@@ -1,16 +1,13 @@
 import { describe, expect, it } from "vitest";
 
-import {
-  moveToInputs,
-  tryLoadPosition,
-} from "../../src/automove/fast/bridge.js";
-import { cellCooldown } from "../../src/automove/fast/board.js";
-import { MAX_MOVES, generateMoves } from "../../src/automove/fast/moves.js";
+import { moveToInputs, tryLoadPosition } from "../../src/automove/packed/bridge.js";
+import { cellCooldown } from "../../src/automove/packed/board.js";
+import { MAX_MOVES, generateMoves } from "../../src/automove/packed/moves.js";
 import {
   FAST_MOVE_UNREPRESENTABLE,
   FastPosition,
   applyFastMove,
-} from "../../src/automove/fast/position.js";
+} from "../../src/automove/packed/state.js";
 import {
   Color,
   Consumable,
@@ -23,15 +20,15 @@ import {
   regularMana,
   type Input,
   type Item,
-} from "../../src/engine/domain.js";
-import { inputArrayFen } from "../../src/engine/fen.js";
-import { MonsGame } from "../../src/engine/game.js";
+} from "../../src/engine/model/domain.js";
+import { inputArrayFen } from "../../src/engine/codec/input.js";
+import { MonsGame } from "../../src/engine/game/mons-game.js";
 import {
   BOARD_SIZE,
   location,
   locationIndex,
   type Location,
-} from "../../src/engine/geometry.js";
+} from "../../src/engine/board/geometry.js";
 import {
   expectFastPositionInvariants,
   fastPositionSnapshot,
@@ -112,10 +109,7 @@ describe("fast packed-state compatibility", () => {
         "duplicate mon",
         gameWith([
           [location(5, 3), monItem(duplicateMon)],
-          [
-            location(5, 4),
-            monWithConsumableItem(duplicateMon, Consumable.Bomb),
-          ],
+          [location(5, 4), monWithConsumableItem(duplicateMon, Consumable.Bomb)],
         ]),
         1,
       ],
@@ -134,21 +128,9 @@ describe("fast packed-state compatibility", () => {
         ]),
         1,
       ],
-      [
-        "white potion headroom",
-        gameWith([], { whitePotionsCount: INT32_MAX - 1 }),
-        2,
-      ],
-      [
-        "black potion headroom",
-        gameWith([], { blackPotionsCount: INT32_MAX - 1 }),
-        2,
-      ],
-      [
-        "turn headroom",
-        gameWith([], { turnNumber: Number.MAX_SAFE_INTEGER - 1 }),
-        2,
-      ],
+      ["white potion headroom", gameWith([], { whitePotionsCount: INT32_MAX - 1 }), 2],
+      ["black potion headroom", gameWith([], { blackPotionsCount: INT32_MAX - 1 }), 2],
+      ["turn headroom", gameWith([], { turnNumber: Number.MAX_SAFE_INTEGER - 1 }), 2],
     ] as const;
 
     for (const [name, game, maxDepth] of unsupported) {
@@ -289,9 +271,7 @@ describe("fast packed-state compatibility", () => {
         expect(game.fork().processInput(inputs, false, false).kind, label).toBe(
           "invalid-input",
         );
-        expect(generatedMoves(game).has(inputArrayFen(inputs)), label).toBe(
-          false,
-        );
+        expect(generatedMoves(game).has(inputArrayFen(inputs)), label).toBe(false);
       }
     }
   });
@@ -307,13 +287,10 @@ describe("fast packed-state compatibility", () => {
       ]);
       const inputs = moveInputs(from, attack.to);
 
-      expect(generatedMoves(game).has(inputArrayFen(inputs)), attack.name).toBe(
-        true,
+      expect(generatedMoves(game).has(inputArrayFen(inputs)), attack.name).toBe(true);
+      expect(game.fork().processInput(inputs, false, false).kind, attack.name).toBe(
+        "events",
       );
-      expect(
-        game.fork().processInput(inputs, false, false).kind,
-        attack.name,
-      ).toBe("events");
     }
   });
 
@@ -352,12 +329,10 @@ describe("fast packed-state compatibility", () => {
     const position = loadedPosition(game, 1);
     expectRepresentable(position, move);
     expect(cellCooldown(position.cells[locationIndex(plainAt)] ?? 0)).toBe(1);
-    expect(
-      cellCooldown(position.cells[locationIndex(manaCarrierAt)] ?? 0),
-    ).toBe(2);
-    expect(
-      cellCooldown(position.cells[locationIndex(consumableCarrierAt)] ?? 0),
-    ).toBe(2);
+    expect(cellCooldown(position.cells[locationIndex(manaCarrierAt)] ?? 0)).toBe(2);
+    expect(cellCooldown(position.cells[locationIndex(consumableCarrierAt)] ?? 0)).toBe(
+      2,
+    );
 
     const canonical = game.fork();
     expect(canonical.processInput(inputs, false, false).kind).toBe("events");

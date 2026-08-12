@@ -1,12 +1,12 @@
 import { describe, expect, it } from "vitest";
 
-import { Board } from "../../src/engine/board.js";
+import { Board } from "../../src/engine/board/storage.js";
 import {
   ALL_LOCATIONS,
   fromLocationIndex,
   locationIndex,
   nearbyLocations,
-} from "../../src/engine/geometry.js";
+} from "../../src/engine/board/geometry.js";
 
 describe("strict board geometry", () => {
   it("rejects coordinates that used to alias a valid array slot", () => {

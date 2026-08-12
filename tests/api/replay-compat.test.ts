@@ -8,7 +8,7 @@ import type { InputAction } from "../../src/api/types.js";
 import {
   GameVariant as EngineGameVariant,
   type GameVariant as EngineGameVariantValue,
-} from "../../src/engine/config.js";
+} from "../../src/engine/board/config.js";
 import {
   Color as EngineColor,
   Consumable as EngineConsumable,
@@ -22,8 +22,8 @@ import {
   type MonKind as EngineMonKindValue,
   type NextInputKind,
   type Square as EngineSquare,
-} from "../../src/engine/domain.js";
-import { MonsGame } from "../../src/engine/game.js";
+} from "../../src/engine/model/domain.js";
+import { MonsGame } from "../../src/engine/game/mons-game.js";
 import {
   Color,
   Consumable,
@@ -66,10 +66,7 @@ type CompleteGame = {
 
 function firstCompleteGame(): CompleteGame {
   const corpusPath = fileURLToPath(
-    new URL(
-      "../../test-data/complete-games/v1/complete-games.jsonl",
-      import.meta.url,
-    ),
+    new URL("../../test-data/complete-games/v1/complete-games.jsonl", import.meta.url),
   );
   const firstLine = readFileSync(corpusPath, "utf8").split("\n", 1)[0];
   if (firstLine === undefined || firstLine.trim() === "") {
@@ -172,9 +169,7 @@ describe("interleaved move replay", () => {
 
   it("reports the consumed side when its history is exhausted", () => {
     const game = new MonsGame(false, EngineGameVariant.Classic);
-    expect(
-      replayInterleavedMoves(game, [WHITE_TURN[0]], [BLACK_TURN[0]]),
-    ).toEqual({
+    expect(replayInterleavedMoves(game, [WHITE_TURN[0]], [BLACK_TURN[0]])).toEqual({
       status: "missing-move",
       whiteMovesProcessed: 1,
       blackMovesProcessed: 0,
@@ -204,9 +199,7 @@ describe("Game history", () => {
     expect(takebackBefore.length).toBeGreaterThan(0);
     expect(trackingBefore.length).toBeGreaterThan(0);
     expect(
-      trackingBefore.some(
-        ({ eventsFen, fen }) => eventsFen !== "" && fen !== "",
-      ),
+      trackingBefore.some(({ eventsFen, fen }) => eventsFen !== "" && fen !== ""),
     ).toBe(true);
 
     expect(
@@ -352,8 +345,7 @@ describe("resolveMatch", () => {
       white: [...moves.white],
       black: [...moves.black],
     };
-    const losingColor =
-      winningColor === Color.White ? Color.Black : Color.White;
+    const losingColor = winningColor === Color.White ? Color.Black : Color.White;
     trailingLosing[losingColor].push("garbage");
     expect(
       resolveMatch({

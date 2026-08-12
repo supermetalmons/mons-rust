@@ -10,19 +10,19 @@ import {
   monWithManaItem,
   regularMana,
   type Input,
-} from "../../src/engine/domain.js";
-import { GameVariant } from "../../src/engine/config.js";
-import { MonsGame } from "../../src/engine/game.js";
-import { exactSearchStateHash } from "../../src/automove/exact.js";
+} from "../../src/engine/model/domain.js";
+import { GameVariant } from "../../src/engine/board/config.js";
+import { MonsGame } from "../../src/engine/game/mons-game.js";
+import { exactSearchStateHash } from "../../src/automove/exact/hash.js";
 import {
   clearMoveEfficiencyCache,
   moveEfficiencyDeltaFromBeforeSnapshot,
   moveEfficiencySnapshotUncachedWithHash,
   moveEfficiencySnapshotWithHash,
-} from "../../src/automove/move-efficiency.js";
-import { applyInputsForSearchWithEvents } from "../../src/automove/transitions.js";
+} from "../../src/automove/root/move-efficiency.js";
+import { applyInputsForSearchWithEvents } from "../../src/automove/transitions/simulation.js";
 import { createTestAutomoveExecutionContext } from "./execution-context.test-helper.js";
-import type { AutomoveExecutionContext } from "../../src/automove/execution-context.js";
+import type { AutomoveExecutionContext } from "../../src/automove/core/execution-context.js";
 
 const OPENING_MOVE: readonly Input[] = [
   { kind: "location", location: { i: 10, j: 5 } },
@@ -54,14 +54,7 @@ describe("move-efficiency snapshots", () => {
       hash,
     );
     expect(
-      moveEfficiencySnapshotWithHash(
-        execution,
-        game,
-        Color.White,
-        false,
-        false,
-        hash,
-      ),
+      moveEfficiencySnapshotWithHash(execution, game, Color.White, false, false, hash),
     ).toBe(approximate);
 
     const exact = moveEfficiencySnapshotWithHash(
@@ -144,10 +137,7 @@ describe("move-efficiency snapshots", () => {
     const spiritBase = awake.board.base(whiteSpirit);
     const cooling = awake.copy();
     const coolingBoard = cooling.board.fork();
-    coolingBoard.set(
-      spiritBase,
-      monItem(createMon(MonKind.Spirit, Color.White, 1)),
-    );
+    coolingBoard.set(spiritBase, monItem(createMon(MonKind.Spirit, Color.White, 1)));
     cooling.replaceBoardItems(coolingBoard.entries());
 
     const awakeHash = exactSearchStateHash(awake);
@@ -218,10 +208,7 @@ describe("move-efficiency snapshots", () => {
       board.delete(location);
     }
     board.delete(whiteSpiritBase);
-    board.set(
-      whiteSpiritAway,
-      monWithConsumableItem(whiteSpirit, Consumable.Bomb),
-    );
+    board.set(whiteSpiritAway, monWithConsumableItem(whiteSpirit, Consumable.Bomb));
     board.set(
       whiteCarrierNear,
       monWithManaItem(

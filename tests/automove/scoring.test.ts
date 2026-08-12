@@ -11,26 +11,30 @@ import {
   monWithManaItem,
   monWithConsumableItem,
   type Item,
-} from "../../src/engine/domain.js";
-import { GameVariant } from "../../src/engine/config.js";
-import { parseGameFen } from "../../src/engine/fen.js";
-import { MonsGame } from "../../src/engine/game.js";
+} from "../../src/engine/model/domain.js";
+import { GameVariant } from "../../src/engine/board/config.js";
+import { parseGameFen } from "../../src/engine/codec/game-board.js";
+import { MonsGame } from "../../src/engine/game/mons-game.js";
 import {
   BALANCED_DISTANCE_SCORING_WEIGHTS,
   DEFAULT_SCORING_WEIGHTS,
   RUNTIME_FAST_BOOLEAN_DRAINER_SCORING_WEIGHTS,
-  ScoringEvalContext,
-  defineScoringProfile,
+} from "../../src/automove/scoring/presets.js";
+import { ScoringEvalContext } from "../../src/automove/scoring/context.js";
+import {
   evaluatePreferabilityWithContext,
   evaluatePreferabilityWithWeightsAndExactPolicy,
+} from "../../src/automove/scoring/evaluator.js";
+import {
+  defineScoringProfile,
   scoringProfileId,
   validateScoringProfile,
-} from "../../src/automove/scoring.js";
+} from "../../src/automove/scoring/profile-validation.js";
 import { createTestAutomoveExecutionContext } from "./execution-context.test-helper.js";
 import {
   MAX_HEURISTIC_SCORE,
   MIN_HEURISTIC_SCORE,
-} from "../../src/automove/score-math.js";
+} from "../../src/automove/core/score-math.js";
 
 const SPIRIT_UTILITY_POINTS = 37;
 const SPIRIT_UTILITY_WEIGHTS = defineScoringProfile({
@@ -227,15 +231,9 @@ describe("scoring evaluation", () => {
     const second = context.drainerImmediateThreats(Color.White, secondLocation);
     const third = context.drainerImmediateThreats(Color.White, thirdLocation);
 
-    expect(context.drainerImmediateThreats(Color.White, firstLocation)).toBe(
-      first,
-    );
-    expect(context.drainerImmediateThreats(Color.White, secondLocation)).toBe(
-      second,
-    );
-    expect(context.drainerImmediateThreats(Color.White, thirdLocation)).toBe(
-      third,
-    );
+    expect(context.drainerImmediateThreats(Color.White, firstLocation)).toBe(first);
+    expect(context.drainerImmediateThreats(Color.White, secondLocation)).toBe(second);
+    expect(context.drainerImmediateThreats(Color.White, thirdLocation)).toBe(third);
   });
 
   it.each([
@@ -251,32 +249,25 @@ describe("scoring evaluation", () => {
       "spirit with mana",
       monWithManaItem(createMon(MonKind.Spirit, Color.White, 0), SUPERMANA),
     ],
-  ])(
-    "counts only eligible reachable targets for a %s",
-    (_description, spiritItem) => {
-      const baseline = heuristicSpiritScore(spiritItem);
-      const liveMon = monItem(createMon(MonKind.Demon, Color.Black, 0));
-      const faintedMon = monItem(createMon(MonKind.Demon, Color.Black, 2));
-      const looseConsumable = consumableItem(Consumable.Bomb);
+  ])("counts only eligible reachable targets for a %s", (_description, spiritItem) => {
+    const baseline = heuristicSpiritScore(spiritItem);
+    const liveMon = monItem(createMon(MonKind.Demon, Color.Black, 0));
+    const faintedMon = monItem(createMon(MonKind.Demon, Color.Black, 2));
+    const looseConsumable = consumableItem(Consumable.Bomb);
 
-      expect(heuristicSpiritScore(spiritItem, liveMon) - baseline).toBe(
-        SPIRIT_UTILITY_POINTS,
-      );
-      expect(heuristicSpiritScore(spiritItem, faintedMon) - baseline).toBe(0);
-      expect(heuristicSpiritScore(spiritItem, looseConsumable) - baseline).toBe(
-        SPIRIT_UTILITY_POINTS,
-      );
-    },
-  );
+    expect(heuristicSpiritScore(spiritItem, liveMon) - baseline).toBe(
+      SPIRIT_UTILITY_POINTS,
+    );
+    expect(heuristicSpiritScore(spiritItem, faintedMon) - baseline).toBe(0);
+    expect(heuristicSpiritScore(spiritItem, looseConsumable) - baseline).toBe(
+      SPIRIT_UTILITY_POINTS,
+    );
+  });
 
   it("keeps exported scoring profiles frozen singletons", () => {
     expect(Object.isFrozen(BALANCED_DISTANCE_SCORING_WEIGHTS)).toBe(true);
-    expect(Object.isFrozen(BALANCED_DISTANCE_SCORING_WEIGHTS.position)).toBe(
-      true,
-    );
-    expect(Object.isFrozen(RUNTIME_FAST_BOOLEAN_DRAINER_SCORING_WEIGHTS)).toBe(
-      true,
-    );
+    expect(Object.isFrozen(BALANCED_DISTANCE_SCORING_WEIGHTS.position)).toBe(true);
+    expect(Object.isFrozen(RUNTIME_FAST_BOOLEAN_DRAINER_SCORING_WEIGHTS)).toBe(true);
     expect(scoringProfileId(BALANCED_DISTANCE_SCORING_WEIGHTS)).toBe(
       "balanced-distance",
     );

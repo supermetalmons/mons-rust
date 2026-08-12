@@ -7,23 +7,25 @@ import {
   type Event,
   type Input,
   type Output,
-} from "../../src/engine/domain.js";
-import { GameVariant } from "../../src/engine/config.js";
-import { inputArrayFen } from "../../src/engine/fen.js";
+} from "../../src/engine/model/domain.js";
+import { GameVariant } from "../../src/engine/board/config.js";
+import { inputArrayFen } from "../../src/engine/codec/input.js";
+import { MonsGame } from "../../src/engine/game/mons-game.js";
+import { FOR_AUTOMOVE_START_INPUT_OPTIONS } from "../../src/engine/game/input-support.js";
 import {
-  FOR_AUTOMOVE_START_INPUT_OPTIONS,
-  MonsGame,
-} from "../../src/engine/game.js";
-import {
-  compareInputChains,
-  compareInputs,
   enumerateLegalTransitions,
   enumerateLegalTransitionsLexicographicBounded,
   enumerateLegalTransitionsWithPriority,
+} from "../../src/automove/transitions/enumerate.js";
+import {
   hasMaterialEvent,
   isQuiescenceTacticalTransition,
-} from "../../src/automove/transitions.js";
-import type { AutomoveExecutionContext } from "../../src/automove/execution-context.js";
+} from "../../src/automove/transitions/event-classification.js";
+import {
+  compareInputChains,
+  compareInputs,
+} from "../../src/automove/transitions/order.js";
+import type { AutomoveExecutionContext } from "../../src/automove/core/execution-context.js";
 import { createTestAutomoveExecutionContext } from "./execution-context.test-helper.js";
 
 const FIRST_ENGINE_LOCATION = { i: 1, j: 0 };
@@ -59,9 +61,7 @@ function locationInput(i: number, j: number): Input {
 }
 
 function branchingGame(onApplyEvents?: () => void): MonsGame {
-  const terminalEvents: readonly Event[] = [
-    { kind: "next-turn", color: Color.Black },
-  ];
+  const terminalEvents: readonly Event[] = [{ kind: "next-turn", color: Color.Black }];
   const game = {
     fork(): MonsGame {
       return game as unknown as MonsGame;
@@ -124,9 +124,7 @@ describe("deterministic transition ordering", () => {
     expect(compareInputs(takeback, location00)).toBeLessThan(0);
     expect(compareInputs(location00, modifier)).toBeLessThan(0);
     expect(compareInputs(location00, location01)).toBeLessThan(0);
-    expect(
-      compareInputChains([location00], [location00, location01]),
-    ).toBeLessThan(0);
+    expect(compareInputChains([location00], [location00, location01])).toBeLessThan(0);
   });
 
   it("bounds ordinary traversal before sorting and lexicographic traversal after per-level sorting", () => {
@@ -137,9 +135,7 @@ describe("deterministic transition ordering", () => {
       "l1,0;l1,2",
     ]);
     expect(
-      inputFens(
-        enumerateLegalTransitionsLexicographicBounded(execution, game, 2),
-      ),
+      inputFens(enumerateLegalTransitionsLexicographicBounded(execution, game, 2)),
     ).toEqual(["l0,0;l0,1", "l0,0;l0,2"]);
   });
 
@@ -229,9 +225,7 @@ describe("deterministic transition ordering", () => {
 
   it("clears partial ordinary and lexicographic results after timeout", () => {
     let currentTime = 0;
-    const timedExecution = createTestAutomoveExecutionContext(
-      () => currentTime,
-    );
+    const timedExecution = createTestAutomoveExecutionContext(() => currentTime);
     const game = branchingGame(() => {
       currentTime = 10;
     });
@@ -248,11 +242,7 @@ describe("deterministic transition ordering", () => {
       const nextGame = branchingGame(() => {
         currentTime = 30;
       });
-      return enumerateLegalTransitionsLexicographicBounded(
-        timedExecution,
-        nextGame,
-        4,
-      );
+      return enumerateLegalTransitionsLexicographicBounded(timedExecution, nextGame, 4);
     });
     expect(lexicographic).toEqual([]);
     expect(session.takePreviousTimeout()).toBe(true);

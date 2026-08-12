@@ -43,6 +43,16 @@ npm ci --engine-strict
 npm run check
 ```
 
+For a fast integrity check of the immutable complete-games corpus without a
+rules replay, run:
+
+```sh
+node ./scripts/run-complete-games.mjs --check-only
+```
+
+The repository's intended dependency boundaries and tooling layout are
+described in [docs/architecture.md on GitHub](https://github.com/supermetalmons/rules/blob/main/docs/architecture.md).
+
 ## Release
 
 ```sh

@@ -34,6 +34,7 @@
     "bump": "npm version patch --no-git-tag-version",
     "check": "npm run format:check && npm run lint && npm run typecheck && npm test && ./scripts/run-rules-tests.sh && npm run test:complete-games && npm run check:corpora && npm run build && node ./scripts/check-package.mjs .",
     "check:corpora": "node ./scripts/check-protected-corpora.mjs",
+    "check:refactor-performance": "npm run build && node ./scripts/check-refactor-performance.mjs --candidate ./dist/mons-rules.js",
     "clean": "node --input-type=module --eval \"import { rmSync } from 'node:fs'; rmSync('dist', { recursive: true, force: true });\"",
     "format": "prettier --write .",
     "format:check": "prettier --check .",

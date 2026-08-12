@@ -1,23 +1,26 @@
 import { describe, expect, it } from "vitest";
 
-import { ALL_GAME_VARIANTS, GameVariant } from "../../src/engine/config.js";
-import { Color, Modifier, MonKind } from "../../src/engine/domain.js";
+import { ALL_GAME_VARIANTS, GameVariant } from "../../src/engine/board/config.js";
+import { Color, Modifier, MonKind } from "../../src/engine/model/domain.js";
+import { parseLocationFen } from "../../src/engine/codec/common.js";
+import {
+  monFen,
+  parseItemFen,
+  parseMonFen,
+} from "../../src/engine/codec/domain-item.js";
 import {
   boardFen,
-  eventArrayFen,
   gameFen,
-  inputArrayFen,
-  monFen,
-  outputFen,
   parseBoardFen,
   parseGameFen,
+} from "../../src/engine/codec/game-board.js";
+import {
+  inputArrayFen,
   parseInputArrayFen,
   parseInputFen,
-  parseItemFen,
-  parseLocationFen,
-  parseMonFen,
-} from "../../src/engine/fen.js";
-import { MonsGame } from "../../src/engine/game.js";
+} from "../../src/engine/codec/input.js";
+import { eventArrayFen, outputFen } from "../../src/engine/codec/output-event.js";
+import { MonsGame } from "../../src/engine/game/mons-game.js";
 
 describe("strict FEN codecs", () => {
   it("accepts only gameplay-valid mon cooldowns", () => {
@@ -78,9 +81,7 @@ describe("strict FEN codecs", () => {
     for (const index of [6, 7, 8]) {
       expect(parseGameFen(withField(index, "1000001"))).toBeDefined();
       expect(parseGameFen(withField(index, "9007199254740991"))).toBeDefined();
-      expect(
-        parseGameFen(withField(index, "9007199254740992")),
-      ).toBeUndefined();
+      expect(parseGameFen(withField(index, "9007199254740992"))).toBeUndefined();
     }
     for (const index of [0, 1, 3, 4, 5, 6, 7, 8]) {
       expect(parseGameFen(withField(index, "00"))).toBeUndefined();
@@ -150,10 +151,7 @@ describe("strict FEN codecs", () => {
       boardCode.replace("y0x", "z0x"),
       `${boardCode}é`,
     ]) {
-      expect(
-        parseBoardFen(malformed, GameVariant.Classic),
-        malformed,
-      ).toBeUndefined();
+      expect(parseBoardFen(malformed, GameVariant.Classic), malformed).toBeUndefined();
     }
   });
 

@@ -1,6 +1,6 @@
-import { Color, type Input } from "../engine/domain.js";
-import { parseInputArrayFen } from "../engine/fen.js";
-import type { MonsGame } from "../engine/game.js";
+import { parseInputArrayFen } from "../engine/codec/input.js";
+import { Color, type Input } from "../engine/model/domain.js";
+import type { MonsGame } from "../engine/game/mons-game.js";
 
 type ReplayProgress = {
   readonly whiteMovesProcessed: number;

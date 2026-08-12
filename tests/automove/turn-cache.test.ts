@@ -1,24 +1,26 @@
 import { describe, expect, it } from "vitest";
 
-import { AutomoveEngine } from "../../src/automove/automove-engine.js";
+import { AutomoveEngine } from "../../src/automove/runtime/engine.js";
+import {
+  turnCacheAdd,
+  turnCacheHas,
+  turnEngineCaches,
+} from "../../src/automove/turn/cache.js";
 import {
   cacheKey,
   configFingerprint,
   createUtilityCacheIdentity,
-  turnCacheAdd,
-  turnCacheHas,
-  turnEngineCaches,
   utilityCacheKey,
-} from "../../src/automove/turn-cache.js";
-import { hash64 } from "../../src/automove/hash64.js";
+} from "../../src/automove/turn/fingerprint.js";
+import { hash64 } from "../../src/automove/core/hash64.js";
 import {
   TURN_ENGINE_MODE_CACHE_TAG,
   TurnEngineMode,
   type TurnEngineConfig,
-} from "../../src/automove/turn-types.js";
-import { DEFAULT_SCORING_WEIGHTS } from "../../src/automove/scoring.js";
-import { Color } from "../../src/engine/domain.js";
-import { MonsGame } from "../../src/engine/game.js";
+} from "../../src/automove/turn/model.js";
+import { DEFAULT_SCORING_WEIGHTS } from "../../src/automove/scoring/presets.js";
+import { Color } from "../../src/engine/model/domain.js";
+import { MonsGame } from "../../src/engine/game/mons-game.js";
 
 const BASE_CONFIG = Object.freeze({
   mode: TurnEngineMode.Baseline,
@@ -64,9 +66,7 @@ describe("turn-engine cache identity", () => {
       turnCacheAdd(noPlanCache, cacheKey(game, BASE_CONFIG));
 
       expect(turnCacheHas(noPlanCache, cacheKey(game, BASE_CONFIG))).toBe(true);
-      expect(turnCacheHas(noPlanCache, cacheKey(game, projectionConfig))).toBe(
-        false,
-      );
+      expect(turnCacheHas(noPlanCache, cacheKey(game, projectionConfig))).toBe(false);
     });
   });
 
@@ -84,14 +84,10 @@ describe("turn-engine cache identity", () => {
       Color.Black,
       BASE_CONFIG,
     );
-    const projectionIdentity = createUtilityCacheIdentity(
-      startHash,
-      Color.White,
-      {
-        ...BASE_CONFIG,
-        enableLazyOracleScoreWindowProjection: true,
-      },
-    );
+    const projectionIdentity = createUtilityCacheIdentity(startHash, Color.White, {
+      ...BASE_CONFIG,
+      enableLazyOracleScoreWindowProjection: true,
+    });
 
     expect(utilityCacheKey(firstState, whiteIdentity)).toEqual({
       stateHash: firstState,

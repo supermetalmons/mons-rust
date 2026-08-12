@@ -1,15 +1,13 @@
 import { describe, expect, it } from "vitest";
 
-import { GameVariant } from "../../src/engine/config.js";
-import { Color, type Event } from "../../src/engine/domain.js";
-import {
-  applyRulesEvents,
-  type MutableRulesState,
-} from "../../src/engine/event-reducer.js";
-import { parseGameFen } from "../../src/engine/fen.js";
-import { MonsGame } from "../../src/engine/game.js";
-import { GameHistory } from "../../src/engine/history.js";
-import type { Location } from "../../src/engine/geometry.js";
+import { GameVariant } from "../../src/engine/board/config.js";
+import { Color, type Event } from "../../src/engine/model/domain.js";
+import { applyRulesEvents } from "../../src/engine/rules/event-reducer.js";
+import type { MutableRulesState } from "../../src/engine/rules/state.js";
+import { parseGameFen } from "../../src/engine/codec/game-board.js";
+import { MonsGame } from "../../src/engine/game/mons-game.js";
+import { GameHistory } from "../../src/engine/game/history.js";
+import type { Location } from "../../src/engine/board/geometry.js";
 
 function monMove(
   state: MutableRulesState,
@@ -254,9 +252,7 @@ describe("game history", () => {
       preparedForCommit.trackingEntries,
     );
     expect(Reflect.set(preparedForCommitEvent.at, "j", 99)).toBe(true);
-    expect(Reflect.set(preparedForCommitEvent, "at", { i: 99, j: 99 })).toBe(
-      true,
-    );
+    expect(Reflect.set(preparedForCommitEvent, "at", { i: 99, j: 99 })).toBe(true);
     preparedForCommit.trackingEntries.length = 0;
 
     expect(committed.takebackFens).toEqual(["first"]);

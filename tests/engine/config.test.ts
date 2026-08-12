@@ -1,13 +1,13 @@
 import { describe, expect, it } from "vitest";
 
-import { Board } from "../../src/engine/board.js";
+import { Board } from "../../src/engine/board/storage.js";
 import {
   ALL_GAME_VARIANTS,
   GAME_VARIANT_IDS,
   GameVariant,
   gameVariantFromId,
   manaBaseLocations,
-} from "../../src/engine/config.js";
+} from "../../src/engine/board/config.js";
 import {
   COLOR_IDS,
   Color,
@@ -15,9 +15,9 @@ import {
   MON_KIND_IDS,
   Modifier,
   MonKind,
-} from "../../src/engine/domain.js";
-import { boardFen, parseBoardFen } from "../../src/engine/fen.js";
-import { isValidLocation } from "../../src/engine/geometry.js";
+} from "../../src/engine/model/domain.js";
+import { boardFen, parseBoardFen } from "../../src/engine/codec/game-board.js";
+import { isValidLocation } from "../../src/engine/board/geometry.js";
 
 describe("game variant configuration", () => {
   it("keeps the twelve persisted wire identities stable", () => {

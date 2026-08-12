@@ -1,13 +1,13 @@
-import type { Input } from "../../engine/domain.js";
-import { parseInputArrayFen } from "../../engine/fen.js";
-import type { MonsGame } from "../../engine/game.js";
-import type { AutomoveExecutionContext } from "../execution-context.js";
+import type { Input } from "../../engine/model/domain.js";
+import { parseInputArrayFen } from "../../engine/codec/input.js";
+import type { MonsGame } from "../../engine/game/mons-game.js";
+import type { AutomoveExecutionContext } from "../core/execution-context.js";
 import {
   clearProductionSelectorCaches,
   smartSearchBestInputs,
-} from "../production-selector.js";
-import type { AutomoveConfig } from "../selector-types.js";
-import { clearTurnEnginePlanCache } from "../turn-engine.js";
+} from "../policy/production/selector.js";
+import type { AutomoveConfig } from "../config/types.js";
+import { clearTurnEnginePlanCache } from "../turn/cache.js";
 import { randomAutomove } from "./input-selection.js";
 
 export function clearTimedOutSelectionCaches(

@@ -12,21 +12,21 @@ import {
   cellMonKind,
   cellOccupancy,
   monId,
-} from "../../src/automove/fast/board.js";
+} from "../../src/automove/packed/board.js";
 import type {
   FastPosition,
   FastPositionSnapshot,
-} from "../../src/automove/fast/position.js";
-import { Board } from "../../src/engine/board.js";
-import type { GameFenState } from "../../src/engine/codecs/game-board.js";
-import type { Input, Item } from "../../src/engine/domain.js";
-import { gameFen, parseGameFen } from "../../src/engine/fen.js";
-import { MonsGame } from "../../src/engine/game.js";
+} from "../../src/automove/packed/state.js";
+import { Board } from "../../src/engine/board/storage.js";
+import type { GameFenState } from "../../src/engine/codec/game-board.js";
+import type { Input, Item } from "../../src/engine/model/domain.js";
+import { gameFen, parseGameFen } from "../../src/engine/codec/game-board.js";
+import { MonsGame } from "../../src/engine/game/mons-game.js";
 import {
   BOARD_CELLS,
   locationIndex,
   type Location,
-} from "../../src/engine/geometry.js";
+} from "../../src/engine/board/geometry.js";
 
 export function locationInput(at: Location): Input {
   return { kind: "location", location: at };
@@ -84,8 +84,7 @@ export function expectFastPositionInvariants(
     hashHi ^= cellHashHi(index, cell);
     const occupancy = cellOccupancy(cell);
     if (occupancy === OCC_MON) {
-      expectedMonLocations[monId(cellMonKind(cell), cellMonColor(cell))] =
-        index;
+      expectedMonLocations[monId(cellMonKind(cell), cellMonColor(cell))] = index;
     } else if (occupancy === OCC_MANA) {
       const mana = cellMana(cell);
       if (mana === 1 || mana === 2) {

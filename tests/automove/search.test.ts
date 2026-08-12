@@ -1,30 +1,28 @@
 import { describe, expect, it } from "vitest";
 
-import { GameVariant } from "../../src/engine/config.js";
-import { Color, type Input } from "../../src/engine/domain.js";
-import { inputArrayFen } from "../../src/engine/fen.js";
-import { MonsGame } from "../../src/engine/game.js";
+import { GameVariant } from "../../src/engine/board/config.js";
+import { Color, type Input } from "../../src/engine/model/domain.js";
+import { inputArrayFen } from "../../src/engine/codec/input.js";
+import { MonsGame } from "../../src/engine/game/mons-game.js";
 import {
   clearSearchCaches,
+  searchRootCandidates,
+  type SearchResult,
+} from "../../src/automove/search/engine.js";
+import {
   compareRankedChildren,
   enforceTacticalChildTop2,
   isPriorityChild,
   isQuietReductionCandidate,
   isSelectiveExtensionCandidate,
-  searchRootCandidates,
   truncateChildrenWithCoverage,
   type RankedChild,
-  type SearchResult,
-} from "../../src/automove/search.js";
-import { hash64 } from "../../src/automove/hash64.js";
-import {
-  rankRootCandidates,
-  type MoveClassFlags,
-} from "../../src/automove/root-candidates.js";
-import {
-  automoveConfigForGame,
-  patchAutomoveConfig,
-} from "../../src/automove/selector-config.js";
+} from "../../src/automove/search/ordering.js";
+import { hash64 } from "../../src/automove/core/hash64.js";
+import { rankRootCandidates } from "../../src/automove/root/candidates.js";
+import type { MoveClassFlags } from "../../src/automove/root/types.js";
+import { automoveConfigForGame } from "../../src/automove/config/runtime.js";
+import { patchAutomoveConfig } from "../../src/automove/config/patch.js";
 import { createTestAutomoveExecutionContext } from "./execution-context.test-helper.js";
 
 const QUIET_CLASSES: MoveClassFlags = Object.freeze({
@@ -36,9 +34,7 @@ const QUIET_CLASSES: MoveClassFlags = Object.freeze({
   quiet: true,
 });
 
-type ChildOverrides = Partial<
-  Omit<RankedChild, "game" | "hash" | "classes">
-> & {
+type ChildOverrides = Partial<Omit<RankedChild, "game" | "hash" | "classes">> & {
   readonly classes?: Partial<MoveClassFlags>;
 };
 
@@ -57,9 +53,7 @@ function child(id: number, overrides: ChildOverrides = {}): RankedChild {
 }
 
 function selectedInput(result: SearchResult): string | undefined {
-  return result.best === undefined
-    ? undefined
-    : inputArrayFen(result.best.inputs);
+  return result.best === undefined ? undefined : inputArrayFen(result.best.inputs);
 }
 
 function observations(result: SearchResult): readonly object[] {
@@ -101,9 +95,7 @@ describe("ranked search children", () => {
     ];
 
     expect(
-      truncateChildrenWithCoverage(children, 2, true).map(
-        ({ hash }) => hash.lo,
-      ),
+      truncateChildrenWithCoverage(children, 2, true).map(({ hash }) => hash.lo),
     ).toEqual([1, 3]);
     expect(truncateChildrenWithCoverage(children, 0, true)).toEqual(children);
   });
@@ -122,9 +114,7 @@ describe("ranked search children", () => {
     enforceTacticalChildTop2(children, true);
     expect(children.map(({ hash }) => hash.lo)).toEqual([1, 3, 2, 4]);
     const promoted = children[1];
-    expect(promoted === undefined ? false : isPriorityChild(promoted)).toBe(
-      true,
-    );
+    expect(promoted === undefined ? false : isPriorityChild(promoted)).toBe(true);
   });
 
   it("keeps reduction and extension predicates mutually explicit", () => {
@@ -155,12 +145,10 @@ describe("root search orchestration", () => {
         twoPassRootAllocation: false,
       },
     });
-    const candidates = rankRootCandidates(
-      execution,
-      game,
-      Color.White,
-      config,
-    ).slice(0, 6);
+    const candidates = rankRootCandidates(execution, game, Color.White, config).slice(
+      0,
+      6,
+    );
     expect(candidates.length).toBeGreaterThan(3);
     const priorityInputs: readonly (readonly Input[])[] = [
       candidates.at(-1)?.inputs ?? [],
@@ -225,12 +213,10 @@ describe("root search orchestration", () => {
         enabled: false,
       },
     });
-    const candidates = rankRootCandidates(
-      execution,
-      game,
-      Color.White,
-      config,
-    ).slice(0, 6);
+    const candidates = rankRootCandidates(execution, game, Color.White, config).slice(
+      0,
+      6,
+    );
     expect(candidates.length).toBeGreaterThan(3);
     const candidateFens = candidates.map(({ game: candidateGame }) =>
       candidateGame.fen(),
@@ -254,9 +240,9 @@ describe("root search orchestration", () => {
     );
 
     expect(game.fen()).toBe(sourceFen);
-    expect(
-      candidates.map(({ game: candidateGame }) => candidateGame.fen()),
-    ).toEqual(candidateFens);
+    expect(candidates.map(({ game: candidateGame }) => candidateGame.fen())).toEqual(
+      candidateFens,
+    );
     expect(first.evaluations.length).toBeGreaterThan(0);
     expect(observations(second)).toEqual(observations(first));
     expect(selectedInput(second)).toBe(selectedInput(first));

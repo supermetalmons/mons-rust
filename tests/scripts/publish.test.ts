@@ -75,9 +75,7 @@ function writeRegistryResponses(
   });
 }
 
-function createPublishHarness(
-  options: PublishHarnessOptions = {},
-): PublishHarness {
+function createPublishHarness(options: PublishHarnessOptions = {}): PublishHarness {
   const releaseVersion = options.version ?? "0.2.0";
   const root = fs.mkdtempSync(path.join(os.tmpdir(), "mons-publish-test-"));
   const binDir = path.join(root, "bin");
@@ -264,9 +262,7 @@ fi
     PUBLISH_TEST_LOG: logPath,
     PUBLISH_TEST_PACKAGE_DIR: root,
     PUBLISH_TEST_RESPONSE_DIR: responseDir,
-    PUBLISH_TEST_PUBLISH_STATUS: String(
-      options.publishStatuses?.["mons-rules"] ?? 0,
-    ),
+    PUBLISH_TEST_PUBLISH_STATUS: String(options.publishStatuses?.["mons-rules"] ?? 0),
     PUBLISH_TEST_WHOAMI_STATUS: String(whoamiStatus),
     ...overrides,
   });
@@ -275,8 +271,7 @@ fi
     gitLogPath,
     logPath,
     root,
-    calls: () =>
-      fs.existsSync(logPath) ? fs.readFileSync(logPath, "utf8") : "",
+    calls: () => (fs.existsSync(logPath) ? fs.readFileSync(logPath, "utf8") : ""),
     gitCalls: () =>
       fs.existsSync(gitLogPath) ? fs.readFileSync(gitLogPath, "utf8") : "",
     run: (args, whoamiStatus = 0) =>
@@ -286,14 +281,10 @@ fi
         env: environment(whoamiStatus),
       }),
     start: (args, environmentOverrides = {}) => {
-      const child = spawn(
-        "/bin/bash",
-        [path.join(scriptsDir, "publish.sh"), ...args],
-        {
-          cwd: root,
-          env: environment(0, environmentOverrides),
-        },
-      );
+      const child = spawn("/bin/bash", [path.join(scriptsDir, "publish.sh"), ...args], {
+        cwd: root,
+        env: environment(0, environmentOverrides),
+      });
       let stderr = "";
       let stdout = "";
       child.stderr.setEncoding("utf8");
@@ -318,10 +309,7 @@ fi
 function realPublishCalls(calls: string): string[] {
   return calls
     .split("\n")
-    .filter(
-      (call) =>
-        call === "publish --access public --tag latest --ignore-scripts",
-    );
+    .filter((call) => call === "publish --access public --tag latest --ignore-scripts");
 }
 
 async function waitForFile(filePath: string): Promise<void> {
@@ -340,9 +328,7 @@ describe("release npm scripts", () => {
       scripts?: Record<string, string>;
     };
 
-    expect(manifest.scripts?.["bump"]).toBe(
-      "npm version patch --no-git-tag-version",
-    );
+    expect(manifest.scripts?.["bump"]).toBe("npm version patch --no-git-tag-version");
     expect(manifest.scripts?.["publish"]).toBe("./scripts/publish.sh");
     expect(fs.existsSync("publish.sh")).toBe(false);
     expect(fs.existsSync("scripts/publish.sh")).toBe(true);
@@ -362,14 +348,10 @@ describe("scripts/publish.sh", () => {
       expect(calls).toContain("view mons-rules dist-tags --json");
       expect(calls).toContain("run check");
       expect(
-        calls.match(
-          /publish --dry-run --access public --tag latest --ignore-scripts/g,
-        ),
+        calls.match(/publish --dry-run --access public --tag latest --ignore-scripts/g),
       ).toHaveLength(1);
       expect(harness.gitCalls()).not.toContain("commit-tree");
-      expect(harness.gitCalls()).not.toContain(
-        "refs/tags/mons-npm-publish-lock",
-      );
+      expect(harness.gitCalls()).not.toContain("refs/tags/mons-npm-publish-lock");
     } finally {
       fs.rmSync(harness.root, { force: true, recursive: true });
     }
@@ -381,9 +363,9 @@ describe("scripts/publish.sh", () => {
       const result = harness.run([]);
       expect(result.status, result.stderr).toBe(0);
       expect(realPublishCalls(harness.calls())).toHaveLength(1);
-      expect(
-        harness.calls().match(/view mons-rules dist-tags --json/g),
-      ).toHaveLength(2);
+      expect(harness.calls().match(/view mons-rules dist-tags --json/g)).toHaveLength(
+        2,
+      );
 
       const gitCalls = harness.gitCalls();
       const acquiredOid =
@@ -405,9 +387,7 @@ describe("scripts/publish.sh", () => {
       const result = harness.run([]);
       expect(result.status).toBe(1);
       expect(realPublishCalls(harness.calls())).toHaveLength(0);
-      expect(result.stderr).toContain(
-        "Could not acquire the npm publication lock",
-      );
+      expect(result.stderr).toContain("Could not acquire the npm publication lock");
       expect(result.stderr).toContain(
         `git fetch --no-tags origin refs/tags/mons-npm-publish-lock`,
       );
@@ -430,9 +410,7 @@ describe("scripts/publish.sh", () => {
 
       const second = harness.run([]);
       expect(second.status).toBe(1);
-      expect(second.stderr).toContain(
-        "Could not acquire the npm publication lock",
-      );
+      expect(second.stderr).toContain("Could not acquire the npm publication lock");
 
       fs.writeFileSync(`${publishGate}.release`, "");
       const firstResult = await first.completed;
@@ -571,12 +549,10 @@ describe("scripts/publish.sh", () => {
       expect(result.status, result.stderr).toBe(0);
       expect(result.stderr).not.toContain("npm error code E404");
       expect(realPublishCalls(harness.calls())).toHaveLength(1);
-      expect(
-        harness.calls().match(/view mons-rules versions --json/g),
-      ).toHaveLength(2);
-      expect(
-        harness.calls().match(/view mons-rules dist-tags --json/g),
-      ).toHaveLength(2);
+      expect(harness.calls().match(/view mons-rules versions --json/g)).toHaveLength(2);
+      expect(harness.calls().match(/view mons-rules dist-tags --json/g)).toHaveLength(
+        2,
+      );
     } finally {
       fs.rmSync(harness.root, { force: true, recursive: true });
     }
@@ -611,9 +587,7 @@ describe("scripts/publish.sh", () => {
       expect(result.stderr).toContain(
         "The mons-rules publish command started but npm did not confirm completion.",
       );
-      expect(result.stderr).toContain(
-        "registry changes cannot be safely attributed",
-      );
+      expect(result.stderr).toContain("registry changes cannot be safely attributed");
       expect(result.stderr).not.toContain(
         "mons-rules dist-tags before this publication attempt",
       );

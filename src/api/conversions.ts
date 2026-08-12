@@ -9,12 +9,12 @@ import {
   type NextInput as EngineNextInput,
   type Output as EngineOutput,
   type Square as EngineSquare,
-} from "../engine/domain.js";
+} from "../engine/model/domain.js";
 import {
   BOARD_SIZE,
   isValidLocation,
   type Location as EnginePosition,
-} from "../engine/geometry.js";
+} from "../engine/board/geometry.js";
 import type {
   AvailableMoveCounts,
   BoardItem,

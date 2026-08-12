@@ -13,9 +13,7 @@ const outputFile = path.join(targetDirectory, "replay-complete-games.mjs");
 mkdirSync(targetDirectory, { recursive: true });
 buildSync({
   bundle: true,
-  entryPoints: [
-    path.join(repositoryRoot, "src", "cli", "replay-complete-games.ts"),
-  ],
+  entryPoints: [path.join(repositoryRoot, "src", "cli", "replay-complete-games.ts")],
   format: "esm",
   logLevel: "warning",
   outfile: outputFile,
@@ -24,11 +22,9 @@ buildSync({
   target: "node22",
 });
 
-const result = spawnSync(
-  process.execPath,
-  [outputFile, ...process.argv.slice(2)],
-  { stdio: "inherit" },
-);
+const result = spawnSync(process.execPath, [outputFile, ...process.argv.slice(2)], {
+  stdio: "inherit",
+});
 if (result.error) {
   throw result.error;
 }

@@ -111,9 +111,9 @@ describe("public API", () => {
     expect(partial.kind).toBe("awaiting-input");
     expect(game.toFen()).toBe(initialFen);
 
-    expect(
-      game.play([{ kind: "position", position: { row: 10, column: 3 } }]),
-    ).toEqual({ kind: "invalid", inputFen: "l10,3" });
+    expect(game.play([{ kind: "position", position: { row: 10, column: 3 } }])).toEqual(
+      { kind: "invalid", inputFen: "l10,3" },
+    );
     expect(game.toFen()).toBe(initialFen);
 
     const applied = game.playFen("l10,3;l9,2");
@@ -282,9 +282,7 @@ describe("public API", () => {
       }
     };
     const consumeEvent = (event: GameEvent): string => event.kind;
-    const consumeMatch = (
-      resolution: ReturnType<typeof api.resolveMatch>,
-    ): string => {
+    const consumeMatch = (resolution: ReturnType<typeof api.resolveMatch>): string => {
       switch (resolution.kind) {
         case "ongoing":
         case "invalid":
@@ -303,12 +301,8 @@ describe("public API", () => {
     expectTypeOf<
       NonNullable<ReturnType<Game["suggestMove"]>>["inputs"]
     >().toEqualTypeOf<readonly Input[]>();
-    expectTypeOf(
-      new Game().availableMoveCounts(),
-    ).toEqualTypeOf<AvailableMoveCounts>();
-    expectTypeOf(new Game().itemAt(position)).toEqualTypeOf<
-      BoardItem | undefined
-    >();
+    expectTypeOf(new Game().availableMoveCounts()).toEqualTypeOf<AvailableMoveCounts>();
+    expectTypeOf(new Game().itemAt(position)).toEqualTypeOf<BoardItem | undefined>();
     expectTypeOf(new Game().squareAt(position)).toEqualTypeOf<Square>();
     expectTypeOf<Mana>().toExtend<
       { readonly kind: "supermana" } | { readonly kind: "regular" }
@@ -317,9 +311,7 @@ describe("public API", () => {
     expectTypeOf<readonly [number, number]>().not.toExtend<Position>();
 
     expect(consumeResolution(new Game().preview([]))).toBe("5");
-    expect(consumeMatch({ kind: "winner", winner: Color.White })).toBe(
-      Color.White,
-    );
+    expect(consumeMatch({ kind: "winner", winner: Color.White })).toBe(Color.White);
     expect(position).toEqual({ row: 10, column: 3 });
     expect(
       consumeEvent({

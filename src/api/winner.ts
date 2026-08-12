@@ -1,5 +1,5 @@
-import { Color as EngineColor } from "../engine/domain.js";
-import { MonsGame } from "../engine/game.js";
+import { MonsGame } from "../engine/game/mons-game.js";
+import { Color as EngineColor } from "../engine/model/domain.js";
 import { replayInterleavedMoves } from "./replay.js";
 import { Color, type MatchResolution, type MatchSubmission } from "./types.js";
 
@@ -23,10 +23,7 @@ export function resolveMatch(submission: MatchSubmission): MatchResolution {
 
   const normalizedWhiteFen = whiteGame.fen();
   const normalizedBlackFen = blackGame.fen();
-  if (
-    whiteGame.winnerColor() === undefined &&
-    blackGame.winnerColor() === undefined
-  ) {
+  if (whiteGame.winnerColor() === undefined && blackGame.winnerColor() === undefined) {
     return { kind: "ongoing" };
   }
 

@@ -114,9 +114,7 @@ describe("archived public API edge-case corpus", () => {
       { row: 0, column: 37 },
       { row: Number.NaN, column: Number.POSITIVE_INFINITY },
     ]) {
-      expect(() => game.itemAt(position), JSON.stringify(position)).toThrow(
-        RangeError,
-      );
+      expect(() => game.itemAt(position), JSON.stringify(position)).toThrow(RangeError);
       expect(() => game.squareAt(position), JSON.stringify(position)).toThrow(
         RangeError,
       );

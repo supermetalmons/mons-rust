@@ -54,8 +54,7 @@ export type Mon = {
 };
 
 export type Mana =
-  | { readonly kind: "regular"; readonly color: Color }
-  | { readonly kind: "supermana" };
+  { readonly kind: "regular"; readonly color: Color } | { readonly kind: "supermana" };
 
 type Carryable =
   | { readonly kind: "mana"; readonly mana: Mana }
@@ -100,9 +99,7 @@ export type InputAction =
 type PositionInput = Extract<Input, { readonly kind: "position" }>;
 type ModifierInput = Extract<Input, { readonly kind: "modifier" }>;
 
-type PositionInputOption<
-  Action extends Exclude<InputAction, "select-consumable">,
-> = {
+type PositionInputOption<Action extends Exclude<InputAction, "select-consumable">> = {
   readonly action: Action;
   readonly input: PositionInput;
   readonly actor?: BoardItem;

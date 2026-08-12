@@ -1,9 +1,4 @@
-const RULE_CASE_KEYS = [
-  "fenAfter",
-  "fenBefore",
-  "inputFen",
-  "outputFen",
-] as const;
+const RULE_CASE_KEYS = ["fenAfter", "fenBefore", "inputFen", "outputFen"] as const;
 
 const UTF8_DECODER = new TextDecoder("utf-8", {
   fatal: true,
@@ -85,12 +80,8 @@ export function terminalEventMembershipError(
   events: readonly { readonly kind: string }[],
   expected: TerminalEventKind | undefined,
 ): string | undefined {
-  const nextTurnCount = events.filter(
-    (event) => event.kind === "next-turn",
-  ).length;
-  const gameOverCount = events.filter(
-    (event) => event.kind === "game-over",
-  ).length;
+  const nextTurnCount = events.filter((event) => event.kind === "next-turn").length;
+  const gameOverCount = events.filter((event) => event.kind === "game-over").length;
 
   if (expected === undefined) {
     return nextTurnCount === 0 && gameOverCount === 0

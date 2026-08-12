@@ -1,4 +1,4 @@
-import type { Input, Output } from "../../engine/domain.js";
+import type { Input, Output } from "../../engine/model/domain.js";
 
 export type AutomoveSuggestion = {
   readonly output: Output;
@@ -13,8 +13,6 @@ export const CONTINUE_PRODUCTION_GUARD = Object.freeze({
   kind: "continue",
 } as const satisfies ProductionGuardResult);
 
-export function selectProductionGuard(
-  inputs: readonly Input[],
-): ProductionGuardResult {
+export function selectProductionGuard(inputs: readonly Input[]): ProductionGuardResult {
   return { kind: "select", inputs };
 }

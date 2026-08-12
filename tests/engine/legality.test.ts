@@ -1,13 +1,13 @@
 import { describe, expect, it, vi } from "vitest";
 
-import { Board } from "../../src/engine/board.js";
+import { Board } from "../../src/engine/board/storage.js";
 import {
   ACTIONS_PER_TURN,
   MANA_MOVES_PER_TURN,
   MONS_MOVES_PER_TURN,
   TARGET_SCORE,
-} from "../../src/engine/config.js";
-import { Color } from "../../src/engine/domain.js";
+} from "../../src/engine/board/config.js";
+import { Color } from "../../src/engine/model/domain.js";
 import {
   canMoveManaForCounts,
   canMoveMonForCounts,
@@ -16,8 +16,8 @@ import {
   shouldAdvanceTurnForCounts,
   shouldSuggestRegularManaStartsFromScalars,
   winnerForScores,
-} from "../../src/engine/legality.js";
-import { location } from "../../src/engine/geometry.js";
+} from "../../src/engine/rules/legality.js";
+import { location } from "../../src/engine/board/geometry.js";
 
 describe("scalar legality policy", () => {
   it("selects the winner with canonical White precedence", () => {
@@ -208,9 +208,9 @@ describe("scalar legality policy", () => {
   ])(
     "decides turn advancement for $name",
     ({ firstTurn, monsMoves, manaMoves, hasMana, expected }) => {
-      expect(
-        shouldAdvanceTurnForCounts(firstTurn, monsMoves, manaMoves, hasMana),
-      ).toBe(expected);
+      expect(shouldAdvanceTurnForCounts(firstTurn, monsMoves, manaMoves, hasMana)).toBe(
+        expected,
+      );
     },
   );
 

@@ -2,17 +2,13 @@ import {
   MAX_INPUTS_PER_MOVE,
   type Input,
   type Output,
-} from "../../engine/domain.js";
-import type { AutomoveExecutionContext } from "../execution-context.js";
-import { inputArrayFen } from "../../engine/fen.js";
-import {
-  FOR_AUTOMOVE_START_INPUT_OPTIONS,
-  type MonsGame,
-} from "../../engine/game.js";
-import {
-  applyInputsForSearchWithEvents,
-  compareInputs,
-} from "../transitions.js";
+} from "../../engine/model/domain.js";
+import type { AutomoveExecutionContext } from "../core/execution-context.js";
+import { inputArrayFen } from "../../engine/codec/input.js";
+import { FOR_AUTOMOVE_START_INPUT_OPTIONS } from "../../engine/game/input-support.js";
+import type { MonsGame } from "../../engine/game/mons-game.js";
+import { applyInputsForSearchWithEvents } from "../transitions/simulation.js";
+import { compareInputs } from "../transitions/order.js";
 import type { AutomoveSuggestion } from "./types.js";
 
 /**
@@ -26,9 +22,7 @@ export function randomIndex(
   length: number,
 ): number {
   if (!Number.isSafeInteger(length) || length <= 0 || length > 0x1_0000_0000) {
-    throw new RangeError(
-      "random index requires a non-empty uint32-sized collection",
-    );
+    throw new RangeError("random index requires a non-empty uint32-sized collection");
   }
 
   const range = 0x1_0000_0000;
@@ -105,10 +99,7 @@ export function deterministicLegalFallbackInputs(game: MonsGame): Input[] {
             false,
             FOR_AUTOMOVE_START_INPUT_OPTIONS,
           )
-        : simulated.inspectInputGrammar(
-            inputs,
-            FOR_AUTOMOVE_START_INPUT_OPTIONS,
-          );
+        : simulated.inspectInputGrammar(inputs, FOR_AUTOMOVE_START_INPUT_OPTIONS);
     if (output.kind === "invalid-input") return false;
     if (output.kind === "events") {
       return (

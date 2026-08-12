@@ -4,8 +4,9 @@ import { parseArgs } from "node:util";
 import { createGunzip } from "node:zlib";
 
 import rulesManifest from "../../test-data/rules-regressions.manifest.json" with { type: "json" };
-import { MonsGame } from "../engine/game.js";
-import { outputFen, parseInputArrayFen } from "../engine/fen.js";
+import { parseInputArrayFen } from "../engine/codec/input.js";
+import { outputFen } from "../engine/codec/output-event.js";
+import { MonsGame } from "../engine/game/mons-game.js";
 import { forEachByteLine } from "./byte-lines.js";
 import {
   decodeUtf8Strict,
@@ -47,10 +48,7 @@ function replayCase(line: number, testCase: RuleTestCase): void {
   }
   const actualFenAfter = game.fen();
 
-  if (
-    actualOutputFen !== testCase.outputFen ||
-    actualFenAfter !== testCase.fenAfter
-  ) {
+  if (actualOutputFen !== testCase.outputFen || actualFenAfter !== testCase.fenAfter) {
     fail(
       `fixture line ${line} rules mismatch:\n` +
         `fenBefore:         ${testCase.fenBefore}\n` +
@@ -162,10 +160,7 @@ async function run(): Promise<void> {
       `uncompressed SHA-256 mismatch: expected ${EXPECTED_UNCOMPRESSED_SHA256}, got ${summary.sha256}`,
     );
   }
-  if (
-    count !== EXPECTED_CASE_COUNT ||
-    summary.lineCount !== EXPECTED_CASE_COUNT
-  ) {
+  if (count !== EXPECTED_CASE_COUNT || summary.lineCount !== EXPECTED_CASE_COUNT) {
     fail(
       `fixture count mismatch: expected ${EXPECTED_CASE_COUNT}, read ${summary.lineCount}`,
     );

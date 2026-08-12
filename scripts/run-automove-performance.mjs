@@ -11,7 +11,7 @@ import {
   parseCliOptions,
   positiveIntegerOption,
   preflightJsonReportDestination,
-  readStateBank,
+  readPerformanceStateBank,
   requiredOption,
   runValidatedSuggestion,
   selectModes,
@@ -20,6 +20,7 @@ import {
   validateStateBankVariants,
   writeJsonReport,
 } from "./automove-evidence-support.mjs";
+import { MAX_PERFORMANCE_REPEAT, runBundleExecutingCli } from "./evidence/options.mjs";
 
 const measurementOrder = Object.freeze([
   "baseline",
@@ -31,18 +32,29 @@ const measurementOrder = Object.freeze([
 const helpText = `Usage: node scripts/run-automove-performance.mjs \\
   --baseline <bundle.mjs> --candidate <bundle.mjs> \\
   --states <states.jsonl> --out <report.json> \\
+  [--state-manifest <manifest.json>] \\
   [--modes fast,normal,pro] [--repeat 5]
 
-Each repeat is one ABBA block and produces two samples per bundle and state.`;
+Each repeat is one ABBA block and produces two samples per bundle and state.
+--state-manifest is required except for immutable banks under
+test-data/automove-decisions/.`;
 
 export async function runPerformanceEvidence(configuration) {
   const baseline = await loadPublicBundle(configuration.baseline, "baseline");
-  const candidate = await loadPublicBundle(
-    configuration.candidate,
-    "candidate",
-  );
+  const candidate = await loadPublicBundle(configuration.candidate, "candidate");
   const modes = selectModes(configuration.modes);
-  const stateBank = readStateBank(configuration.states);
+  const stateBank = readPerformanceStateBank(
+    configuration.states,
+    configuration.stateManifest,
+  );
+  if (
+    stateBank.manifest !== undefined &&
+    stateBank.manifest.sourceBundleSha256 !== baseline.sha256
+  ) {
+    throw new Error(
+      "performance state-bank manifest source bundle does not match baseline bundle",
+    );
+  }
   validateStateBankVariants(stateBank, baseline, candidate);
   const records = [];
 
@@ -76,6 +88,12 @@ export async function runPerformanceEvidence(configuration) {
     candidateSha256: candidate.sha256,
     stateBank: stateBank.path,
     stateBankSha256: stateBank.sha256,
+    ...(stateBank.manifest === undefined
+      ? {}
+      : {
+          stateBankManifest: stateBank.manifest.path,
+          stateBankManifestSha256: stateBank.manifest.sha256,
+        }),
     config: {
       modes,
       repeat: configuration.repeat,
@@ -99,12 +117,7 @@ function measureState({ baseline, candidate, mode, repeat, state }) {
     for (const role of measurementOrder) {
       const bundle = role === "baseline" ? baseline : candidate;
       const validationBundle = role === "baseline" ? candidate : baseline;
-      const result = runValidatedSuggestion(
-        bundle,
-        validationBundle,
-        state.fen,
-        mode,
-      );
+      const result = runValidatedSuggestion(bundle, validationBundle, state.fen, mode);
       if (result.ok && typeof result.elapsedMs === "number") {
         samples[role].push(result.elapsedMs);
       }
@@ -141,9 +154,7 @@ function measureState({ baseline, candidate, mode, repeat, state }) {
 
 function summarizeRecords(mode, records) {
   const baselineSamples = records.flatMap((record) => record.samples.baseline);
-  const candidateSamples = records.flatMap(
-    (record) => record.samples.candidate,
-  );
+  const candidateSamples = records.flatMap((record) => record.samples.candidate);
   const baselineTiming = timingSummary(baselineSamples);
   const candidateTiming = timingSummary(candidateSamples);
   const baselineInvalids = mergeInvalidCounts(
@@ -174,6 +185,7 @@ export async function main(arguments_ = process.argv.slice(2)) {
     "baseline",
     "candidate",
     "states",
+    "state-manifest",
     "repeat",
     "modes",
     "out",
@@ -186,12 +198,11 @@ export async function main(arguments_ = process.argv.slice(2)) {
     baseline: requiredOption(options, "baseline"),
     candidate: requiredOption(options, "candidate"),
     states: requiredOption(options, "states"),
-    repeat: positiveIntegerOption(options, "repeat", 5, 100),
+    stateManifest: options.get("state-manifest"),
+    repeat: positiveIntegerOption(options, "repeat", 5, MAX_PERFORMANCE_REPEAT),
     modes: options.get("modes"),
   };
-  const outputPath = preflightJsonReportDestination(
-    requiredOption(options, "out"),
-  );
+  const outputPath = preflightJsonReportDestination(requiredOption(options, "out"));
   const report = await runPerformanceEvidence(configuration);
   writeJsonReport(outputPath, report);
   console.log(
@@ -200,8 +211,7 @@ export async function main(arguments_ = process.argv.slice(2)) {
       outputPath,
   );
   const invalidCalls =
-    report.summary.baseline.invalids.total +
-    report.summary.candidate.invalids.total;
+    report.summary.baseline.invalids.total + report.summary.candidate.invalids.total;
   if (invalidCalls > 0) {
     throw new Error(
       `automove performance contained ${invalidCalls} invalid calls; report written to ${outputPath}`,
@@ -213,7 +223,7 @@ const invokedPath = process.argv[1]
   ? pathToFileURL(path.resolve(process.argv[1])).href
   : null;
 if (invokedPath === import.meta.url) {
-  main().catch((error) => {
+  runBundleExecutingCli(main).catch((error) => {
     console.error(error instanceof Error ? error.message : String(error));
     process.exitCode = 1;
   });

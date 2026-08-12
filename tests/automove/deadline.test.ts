@@ -1,22 +1,19 @@
 import { beforeEach, describe, expect, it } from "vitest";
 
-import { AutomoveEngine } from "../../src/automove/automove-engine.js";
-import {
-  SearchSession,
-  type SearchControl,
-} from "../../src/automove/deadline.js";
+import { AutomoveEngine } from "../../src/automove/runtime/engine.js";
+import { SearchSession, type SearchControl } from "../../src/automove/core/deadline.js";
 import {
   AutomoveCacheScope,
-  createAutomoveExecutionContext,
   type BoundedAutomoveCache,
-} from "../../src/automove/execution-context.js";
-import { suggestMove } from "../../src/automove/runtime.js";
+} from "../../src/automove/core/cache-scope.js";
+import { createAutomoveExecutionContext } from "../../src/automove/core/execution-context.js";
+import { suggestMove } from "../../src/automove/runtime/suggestion.js";
 import {
   PRODUCTION_SELECTOR_BUDGET_MS,
   selectProductionInputsWithDeadline,
 } from "../../src/automove/runtime/deadline-selection.js";
-import { GameVariant } from "../../src/engine/config.js";
-import { MonsGame } from "../../src/engine/game.js";
+import { GameVariant } from "../../src/engine/board/config.js";
+import { MonsGame } from "../../src/engine/game/mons-game.js";
 
 let session: SearchSession;
 const TEST_RANDOM_SOURCE = Object.freeze({
@@ -258,9 +255,9 @@ describe("cooperative automove deadlines", () => {
 
   it("rejects negative and non-finite time budgets", () => {
     for (const invalid of [-1, Number.NaN, Number.POSITIVE_INFINITY]) {
-      expect(() =>
-        session.withDeadlineIfAbsent(invalid, () => undefined),
-      ).toThrow("deadline budget must be a finite nonnegative number");
+      expect(() => session.withDeadlineIfAbsent(invalid, () => undefined)).toThrow(
+        "deadline budget must be a finite nonnegative number",
+      );
       expect(() =>
         session.withUnrecordedDeadlineIfAbsent(invalid, () => undefined),
       ).toThrow("deadline budget must be a finite nonnegative number");
@@ -279,10 +276,7 @@ describe("cooperative automove deadlines", () => {
 
     realSession.withDeadlineIfAbsent(1, () => {
       const testGuardEnd = globalThis.performance.now() + 100;
-      while (
-        !realSession.checkpoint() &&
-        globalThis.performance.now() < testGuardEnd
-      ) {
+      while (!realSession.checkpoint() && globalThis.performance.now() < testGuardEnd) {
         // Exercise the production clock until the cooperative check expires.
       }
       expired = realSession.cancelled;
@@ -449,8 +443,7 @@ describe("production Pro fallback", () => {
     const sourceFen = game.fen();
     const engineCaches = new AutomoveCacheScope("engine");
     const session = new SearchSession({
-      clock: () =>
-        engineCaches.cacheCount > 0 ? PRODUCTION_SELECTOR_BUDGET_MS : 0,
+      clock: () => (engineCaches.cacheCount > 0 ? PRODUCTION_SELECTOR_BUDGET_MS : 0),
     });
     const context = createAutomoveExecutionContext(
       session,

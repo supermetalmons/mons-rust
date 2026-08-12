@@ -6,9 +6,9 @@ import completeGamesManifest from "../../test-data/complete-games/v1/manifest.js
 import {
   ALL_GAME_VARIANTS,
   type GameVariant as VariantName,
-} from "../engine/config.js";
-import { MonsGame } from "../engine/game.js";
-import { parseInputArrayFen } from "../engine/fen.js";
+} from "../engine/board/config.js";
+import { parseInputArrayFen } from "../engine/codec/input.js";
+import { MonsGame } from "../engine/game/mons-game.js";
 import { forEachByteLine } from "./byte-lines.js";
 import {
   decodeUtf8Strict,
@@ -73,9 +73,7 @@ function parseRecord(raw: string, line: number): CompleteGameRecord {
   const variantValue = parsed["gameVariant"];
   const turnsValue = parsed["turns"];
   if (typeof variantValue !== "string" || !isVariantName(variantValue)) {
-    fail(
-      `line ${line} has unknown gameVariant ${JSON.stringify(variantValue)}`,
-    );
+    fail(`line ${line} has unknown gameVariant ${JSON.stringify(variantValue)}`);
   }
   if (!Array.isArray(turnsValue) || turnsValue.length === 0) {
     fail(`line ${line} turns must be a non-empty array`);
@@ -218,10 +216,7 @@ async function run(): Promise<void> {
       gameCount += 1;
       variantCounts[record.gameVariant] += 1;
       turnCount += record.turns.length;
-      inputCount += record.turns.reduce(
-        (total, turn) => total + turn.length,
-        0,
-      );
+      inputCount += record.turns.reduce((total, turn) => total + turn.length, 0);
       if (!checkOnly) {
         replayGame(record, line);
       }

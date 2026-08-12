@@ -11,7 +11,7 @@ import {
   saturatingScoreAdd,
   saturatingScoreMultiply,
   saturatingScoreSubtract,
-} from "../../src/automove/score-math.js";
+} from "../../src/automove/core/score-math.js";
 
 describe("automove score math", () => {
   it("clamps and truncates calculated scores", () => {
@@ -31,12 +31,8 @@ describe("automove score math", () => {
   it("keeps nonterminal evaluations strictly inside terminal scores", () => {
     expect(clampHeuristicScore(Number.NaN)).toBe(0);
     expect(clampHeuristicScore(12.9)).toBe(12);
-    expect(clampHeuristicScore(Number.POSITIVE_INFINITY)).toBe(
-      MAX_HEURISTIC_SCORE,
-    );
-    expect(clampHeuristicScore(Number.NEGATIVE_INFINITY)).toBe(
-      MIN_HEURISTIC_SCORE,
-    );
+    expect(clampHeuristicScore(Number.POSITIVE_INFINITY)).toBe(MAX_HEURISTIC_SCORE);
+    expect(clampHeuristicScore(Number.NEGATIVE_INFINITY)).toBe(MIN_HEURISTIC_SCORE);
     expect(MAX_HEURISTIC_SCORE).toBeLessThan(TERMINAL_SEARCH_SCORE);
     expect(MIN_HEURISTIC_SCORE).toBeGreaterThan(-TERMINAL_SEARCH_SCORE);
   });

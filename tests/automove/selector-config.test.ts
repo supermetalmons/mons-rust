@@ -1,16 +1,12 @@
 import { describe, expect, it } from "vitest";
 
-import {
-  automoveConfigForGame,
-  patchAutomoveConfig,
-  validateAutomoveConfig,
-} from "../../src/automove/selector-config.js";
-import {
-  DEFAULT_SCORING_WEIGHTS,
-  defineScoringProfile,
-} from "../../src/automove/scoring.js";
-import { ALL_GAME_VARIANTS } from "../../src/engine/config.js";
-import { MonsGame } from "../../src/engine/game.js";
+import { automoveConfigForGame } from "../../src/automove/config/runtime.js";
+import { patchAutomoveConfig } from "../../src/automove/config/patch.js";
+import { validateAutomoveConfig } from "../../src/automove/config/validation.js";
+import { DEFAULT_SCORING_WEIGHTS } from "../../src/automove/scoring/presets.js";
+import { defineScoringProfile } from "../../src/automove/scoring/profile-validation.js";
+import { ALL_GAME_VARIANTS } from "../../src/engine/board/config.js";
+import { MonsGame } from "../../src/engine/game/mons-game.js";
 
 const SECTION_NAMES = Object.freeze([
   "budget",
@@ -41,9 +37,7 @@ describe("nested automove configuration", () => {
         expect(Object.isFrozen(config)).toBe(true);
         for (const sectionName of SECTION_NAMES) {
           expect(Object.isFrozen(config[sectionName])).toBe(true);
-          expect(Object.getPrototypeOf(config[sectionName])).toBe(
-            Object.prototype,
-          );
+          expect(Object.getPrototypeOf(config[sectionName])).toBe(Object.prototype);
         }
         expect(Object.isFrozen(config.evaluation.weights)).toBe(true);
         expect(Object.isFrozen(config.evaluation.weights.material)).toBe(true);
@@ -71,9 +65,7 @@ describe("nested automove configuration", () => {
     expect(patched.replyRisk).toBe(source.replyRisk);
     expect(patched.policy).toBe(source.policy);
     expect(Object.isFrozen(patched.search)).toBe(true);
-    expect(source.search.rootBranchLimit).not.toBe(
-      patched.search.rootBranchLimit,
-    );
+    expect(source.search.rootBranchLimit).not.toBe(patched.search.rootBranchLimit);
     expect(
       Reflect.set(patched.search, "rootBranchLimit", Number.MAX_SAFE_INTEGER),
     ).toBe(false);
@@ -88,9 +80,7 @@ describe("nested automove configuration", () => {
 
     expect(patched.evaluation).not.toBe(source.evaluation);
     expect(patched.evaluation.weights).toBe(CHANGED_WEIGHTS);
-    expect(patched.evaluation.weights.id).not.toBe(
-      source.evaluation.weights.id,
-    );
+    expect(patched.evaluation.weights.id).not.toBe(source.evaluation.weights.id);
   });
 
   it("snapshots mutable caller-owned scoring profiles", () => {
@@ -115,9 +105,7 @@ describe("nested automove configuration", () => {
     mutableWeights.material.activeMon += 100;
 
     expect(patched.evaluation.weights).not.toBe(mutableWeights);
-    expect(patched.evaluation.weights.material.activeMon).toBe(
-      capturedActiveMon,
-    );
+    expect(patched.evaluation.weights.material.activeMon).toBe(capturedActiveMon);
     expect(Object.isFrozen(patched.evaluation.weights)).toBe(true);
     expect(Object.isFrozen(patched.evaluation.weights.material)).toBe(true);
   });

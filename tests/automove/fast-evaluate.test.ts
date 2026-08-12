@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { tryLoadPosition } from "../../src/automove/fast/bridge.js";
+import { tryLoadPosition } from "../../src/automove/packed/bridge.js";
 import {
   CONS_BOMB,
   CONS_BOTH,
@@ -17,15 +17,15 @@ import {
   makeManaCell,
   makeMonCell,
   manaScoreValue,
-} from "../../src/automove/fast/board.js";
+} from "../../src/automove/packed/board.js";
 import {
   createEvalTables,
   evaluatePosition,
   evaluateWithTables,
   type EvalWeights,
-} from "../../src/automove/fast/evaluate.js";
-import { FastPosition } from "../../src/automove/fast/position.js";
-import { DEFAULT_GAME_VARIANT } from "../../src/engine/config.js";
+} from "../../src/automove/packed/evaluation.js";
+import { FastPosition } from "../../src/automove/packed/state.js";
+import { DEFAULT_GAME_VARIANT } from "../../src/engine/board/config.js";
 import {
   Color,
   Consumable,
@@ -39,13 +39,13 @@ import {
   manaItem,
   monItem,
   regularMana,
-} from "../../src/engine/domain.js";
+} from "../../src/engine/model/domain.js";
 import {
   BOARD_CELLS,
   BOARD_SIZE,
   location,
   locationIndex,
-} from "../../src/engine/geometry.js";
+} from "../../src/engine/board/geometry.js";
 import {
   expectFastPositionInvariants,
   gameWith,
@@ -128,12 +128,7 @@ function weights(overrides: Partial<EvalWeights>): EvalWeights {
   return { ...ZERO_WEIGHTS, ...overrides };
 }
 
-function mon(
-  kind: number,
-  color: number,
-  cooldown = 0,
-  consumable = 0,
-): number {
+function mon(kind: number, color: number, cooldown = 0, consumable = 0): number {
   return makeMonCell(kind, color, cooldown, 0, consumable);
 }
 
@@ -157,12 +152,8 @@ function expectFaintedDrainerIgnored(
   ]);
   const withoutWhiteValue = evaluatePosition(withoutWhite, controlWeights);
 
-  expect(evaluatePosition(withFaintedWhite, controlWeights)).toBe(
-    withoutWhiteValue,
-  );
-  expect(evaluatePosition(withAwakeWhite, controlWeights)).not.toBe(
-    withoutWhiteValue,
-  );
+  expect(evaluatePosition(withFaintedWhite, controlWeights)).toBe(withoutWhiteValue);
+  expect(evaluatePosition(withAwakeWhite, controlWeights)).not.toBe(withoutWhiteValue);
 }
 
 describe("fast position evaluation", () => {
@@ -178,19 +169,13 @@ describe("fast position evaluation", () => {
       for (const player of players) {
         const playerId = colorId(player);
         expect(manaScore(mana, player)).toBe(expectedScores[playerId]);
-        expect(manaScoreValue(packedMana, playerId)).toBe(
-          expectedScores[playerId],
-        );
+        expect(manaScoreValue(packedMana, playerId)).toBe(expectedScores[playerId]);
       }
     }
   });
 
   it("ignores fainted drainers in loose-mana control", () => {
-    expectFaintedDrainerIgnored(
-      MANA_WHITE,
-      [9, 5],
-      weights({ manaDrainerControl: 1 }),
-    );
+    expectFaintedDrainerIgnored(MANA_WHITE, [9, 5], weights({ manaDrainerControl: 1 }));
     expectFaintedDrainerIgnored(
       MANA_SUPER,
       [5, 5],
@@ -202,15 +187,8 @@ describe("fast position evaluation", () => {
     "does not treat a $name on its base as an immediate action threat",
     ({ kind, base, actionOrigin, target }) => {
       const threatWeights = weights({ drainerThreatImmediate: 1 });
-      const targetCell: CellPlacement = [
-        target[0],
-        target[1],
-        mon(KIND_DRAINER, 0),
-      ];
-      const onBase = makePosition([
-        targetCell,
-        [base[0], base[1], mon(kind, 1)],
-      ]);
+      const targetCell: CellPlacement = [target[0], target[1], mon(KIND_DRAINER, 0)];
+      const onBase = makePosition([targetCell, [base[0], base[1], mon(kind, 1)]]);
       const atActionOrigin = makePosition([
         targetCell,
         [actionOrigin[0], actionOrigin[1], mon(kind, 1)],
@@ -227,9 +205,7 @@ describe("fast position evaluation", () => {
       [2, 5, mon(KIND_DRAINER, 0)],
     ]);
 
-    expect(
-      evaluatePosition(position, weights({ drainerThreatImmediate: 1 })),
-    ).toBe(-1);
+    expect(evaluatePosition(position, weights({ drainerThreatImmediate: 1 }))).toBe(-1);
   });
 
   it("lets a Demon vacate its own attack midpoint while approaching an origin", () => {
@@ -252,9 +228,7 @@ describe("fast position evaluation", () => {
       [5, 5, mon(KIND_DEMON, 1)],
     ]);
 
-    expect(evaluatePosition(position, weights({ drainerThreatWalk: 5 }))).toBe(
-      -4,
-    );
+    expect(evaluatePosition(position, weights({ drainerThreatWalk: 5 }))).toBe(-4);
   });
 
   it.each(ATTACK_CASES)(
@@ -363,11 +337,8 @@ describe("fast position evaluation", () => {
     ).toBe(-13);
 
     expect(
-      game.processInput(
-        [locationInput(carrierAt), locationInput(pool)],
-        false,
-        false,
-      ).kind,
+      game.processInput([locationInput(carrierAt), locationInput(pool)], false, false)
+        .kind,
     ).toBe("events");
     expect(game.blackScore).toBe(5);
   });
@@ -426,9 +397,7 @@ describe("fast position evaluation", () => {
     const nearestPool = weights({ manaToNearestPool: 800 });
 
     // (10, 1) is one step from the white pool at (10, 0) and ten from either black pool.
-    const blackManaNearWhitePool = makePosition([
-      [10, 1, makeManaCell(MANA_BLACK)],
-    ]);
+    const blackManaNearWhitePool = makePosition([[10, 1, makeManaCell(MANA_BLACK)]]);
     expect(evaluatePosition(blackManaNearWhitePool, nearestPool)).toBe(-400);
 
     const ownPool = weights({ manaToOwnerPool: 800 });

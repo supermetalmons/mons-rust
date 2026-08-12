@@ -1,16 +1,17 @@
-import { spawnSync, type SpawnSyncReturns } from "node:child_process";
+import { spawn, spawnSync, type SpawnSyncReturns } from "node:child_process";
 import { createHash } from "node:crypto";
+import { once } from "node:events";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
+import { pathToFileURL } from "node:url";
 
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
+
+import { writePerformanceStateBankFixture } from "./performance-state-bank.fixture.js";
 
 const repositoryRoot = path.resolve(import.meta.dirname, "../..");
-const strengthScript = path.join(
-  repositoryRoot,
-  "scripts/run-automove-strength.mjs",
-);
+const strengthScript = path.join(repositoryRoot, "scripts/run-automove-strength.mjs");
 const performanceScript = path.join(
   repositoryRoot,
   "scripts/run-automove-performance.mjs",
@@ -239,9 +240,10 @@ describe("automove evidence runners", () => {
         cutoffs: 1,
       },
     });
-    expect(report.games.map((game: { result: string }) => game.result)).toEqual(
-      ["cutoff", "cutoff"],
-    );
+    expect(report.games.map((game: { result: string }) => game.result)).toEqual([
+      "cutoff",
+      "cutoff",
+    ]);
     expect(report.pairedUnits[0]).toMatchObject({
       outcome: "inconclusive",
       candidatePoints: null,
@@ -302,13 +304,11 @@ describe("automove evidence runners", () => {
     expect(report.stateBank).toBe(stateBank);
     expect(report.stateBankSha256).toBe(fileSha256(stateBank));
     expect(
-      report.rows.map(
-        (row: { mode: string; stateId: string; variant?: string }) => [
-          row.mode,
-          row.stateId,
-          row.variant ?? null,
-        ],
-      ),
+      report.rows.map((row: { mode: string; stateId: string; variant?: string }) => [
+        row.mode,
+        row.stateId,
+        row.variant ?? null,
+      ]),
     ).toEqual([
       ["fast", "a-state", "Classic"],
       ["fast", "m-invalid", "UntrustedVariantLabel"],
@@ -446,9 +446,7 @@ describe("automove evidence runners", () => {
     ]);
 
     expect(result.status).toBe(1);
-    expect(result.stderr).toContain(
-      "state-bank state already-finished is terminal",
-    );
+    expect(result.stderr).toContain("state-bank state already-finished is terminal");
     expect(fs.existsSync(output)).toBe(false);
   });
 
@@ -499,17 +497,8 @@ describe("automove evidence runners", () => {
     const root = temporaryDirectory();
     const baseline = writeBundle(root, "baseline.mjs", "B");
     const candidate = writeBundle(root, "candidate.mjs", "C");
-    const initialState = JSON.stringify({
-      variant: "Classic",
-      ply: 0,
-      candidateColor: null,
-    });
     const stateBank = path.join(root, "states.jsonl");
-    fs.writeFileSync(
-      stateBank,
-      `${JSON.stringify({ id: "z-state", fen: initialState })}\n` +
-        `${JSON.stringify({ id: "a-state", fen: initialState })}\n`,
-    );
+    const stateManifest = writeStateBankManifest(stateBank, baseline);
     const output = path.join(root, "performance.json");
     const result = run(performanceScript, [
       "--baseline",
@@ -518,6 +507,8 @@ describe("automove evidence runners", () => {
       candidate,
       "--states",
       stateBank,
+      "--state-manifest",
+      stateManifest,
       "--repeat",
       "1",
       "--modes",
@@ -529,24 +520,24 @@ describe("automove evidence runners", () => {
     expect(result.status, result.stderr).toBe(0);
     const report = readJson(output);
     expect(report.stateBankSha256).toBe(fileSha256(stateBank));
+    expect(report.stateBankManifest).toBe(stateManifest);
+    expect(report.stateBankManifestSha256).toBe(fileSha256(stateManifest));
     expect(report.config).toEqual({
       modes: ["fast", "normal"],
       repeat: 1,
       order: "ABBA",
       samplesPerBundlePerState: 2,
     });
-    expect(report.states).toBe(2);
+    expect(report.states).toBe(64);
+    const stateIds = fs
+      .readFileSync(stateBank, "utf8")
+      .trimEnd()
+      .split("\n")
+      .map((line) => (JSON.parse(line) as { id: string }).id)
+      .sort();
     expect(
-      report.rows.map((row: { mode: string; id: string }) => [
-        row.mode,
-        row.id,
-      ]),
-    ).toEqual([
-      ["fast", "a-state"],
-      ["fast", "z-state"],
-      ["normal", "a-state"],
-      ["normal", "z-state"],
-    ]);
+      report.rows.map((row: { mode: string; id: string }) => [row.mode, row.id]),
+    ).toEqual(["fast", "normal"].flatMap((mode) => stateIds.map((id) => [mode, id])));
     for (const row of report.rows) {
       expect(row.callsPerBundle).toBe(2);
       expect(row.baseline).toMatchObject({
@@ -567,28 +558,243 @@ describe("automove evidence runners", () => {
       });
     }
     expect(report.summary).toMatchObject({
-      states: 2,
-      rows: 4,
-      callsPerBundle: 8,
-      baseline: { count: 8, invalids: { total: 0 } },
-      candidate: { count: 8, invalids: { total: 0 } },
+      states: 64,
+      rows: 128,
+      callsPerBundle: 256,
+      baseline: { count: 256, invalids: { total: 0 } },
+      candidate: { count: 256, invalids: { total: 0 } },
     });
   });
+
+  it("requires a matching commit manifest for non-protected performance banks", () => {
+    const root = temporaryDirectory();
+    const baseline = writeBundle(root, "baseline.mjs", "B");
+    const candidate = writeBundle(root, "candidate.mjs", "C");
+    const stateBank = path.join(root, "states.jsonl");
+    fs.writeFileSync(
+      stateBank,
+      `${JSON.stringify({
+        id: "initial",
+        fen: JSON.stringify({
+          variant: "Classic",
+          ply: 0,
+          candidateColor: null,
+        }),
+      })}\n`,
+    );
+
+    const missingOutput = path.join(root, "missing-manifest.json");
+    const missing = run(performanceScript, [
+      "--baseline",
+      baseline,
+      "--candidate",
+      candidate,
+      "--states",
+      stateBank,
+      "--modes",
+      "fast",
+      "--repeat",
+      "1",
+      "--out",
+      missingOutput,
+    ]);
+    expect(missing.status).toBe(1);
+    expect(missing.stderr).toContain("--state-manifest is required");
+    expect(fs.existsSync(missingOutput)).toBe(false);
+
+    const stateManifest = writeStateBankManifest(stateBank, baseline);
+    fs.writeFileSync(stateManifest, "{}\n");
+    const mismatchedOutput = path.join(root, "mismatched-manifest.json");
+    const mismatched = run(performanceScript, [
+      "--baseline",
+      baseline,
+      "--candidate",
+      candidate,
+      "--states",
+      stateBank,
+      "--state-manifest",
+      stateManifest,
+      "--modes",
+      "fast",
+      "--repeat",
+      "1",
+      "--out",
+      mismatchedOutput,
+    ]);
+    expect(mismatched.status).toBe(1);
+    expect(mismatched.stderr).toContain(
+      "performance state-bank manifest does not match state bank",
+    );
+    expect(fs.existsSync(mismatchedOutput)).toBe(false);
+
+    const wrongSourceManifest = writeStateBankManifest(stateBank, candidate);
+    const wrongSourceOutput = path.join(root, "wrong-source-manifest.json");
+    const wrongSource = run(performanceScript, [
+      "--baseline",
+      baseline,
+      "--candidate",
+      candidate,
+      "--states",
+      stateBank,
+      "--state-manifest",
+      wrongSourceManifest,
+      "--modes",
+      "fast",
+      "--repeat",
+      "1",
+      "--out",
+      wrongSourceOutput,
+    ]);
+    expect(wrongSource.status).toBe(1);
+    expect(wrongSource.stderr).toContain(
+      "manifest source bundle does not match baseline bundle",
+    );
+    expect(fs.existsSync(wrongSourceOutput)).toBe(false);
+  });
+
+  it("accepts an immutable automove decision bank without a manifest", () => {
+    const root = temporaryDirectory();
+    const baseline = writeBundle(root, "baseline.mjs", "B");
+    const candidate = writeBundle(root, "candidate.mjs", "C");
+    const stateBank = path.join(
+      repositoryRoot,
+      "test-data/automove-decisions/v6/decisions.jsonl",
+    );
+    const output = path.join(root, "protected-bank.json");
+    const result = run(performanceScript, [
+      "--baseline",
+      baseline,
+      "--candidate",
+      candidate,
+      "--states",
+      stateBank,
+      "--modes",
+      "fast",
+      "--repeat",
+      "1",
+      "--out",
+      output,
+    ]);
+
+    expect(result.status).toBe(1);
+    expect(result.stderr).toContain("invalid calls; report written");
+    expect(result.stderr).not.toContain("state-manifest");
+    expect(readJson(output).stateBank).toBe(stateBank);
+  });
+
+  it("recognizes protected banks by opened-file identity", () => {
+    const root = temporaryDirectory();
+    const baseline = writeBundle(root, "baseline.mjs", "B");
+    const candidate = writeBundle(root, "candidate.mjs", "C");
+    const protectedBank = path.join(
+      repositoryRoot,
+      "test-data/automove-decisions/v6/decisions.jsonl",
+    );
+    const alias = path.join(root, "protected-alias.jsonl");
+    fs.symlinkSync(protectedBank, alias);
+    const output = path.join(root, "protected-alias-report.json");
+    const result = run(performanceScript, [
+      "--baseline",
+      baseline,
+      "--candidate",
+      candidate,
+      "--states",
+      alias,
+      "--modes",
+      "fast",
+      "--repeat",
+      "1",
+      "--out",
+      output,
+    ]);
+    expect(result.status).toBe(1);
+    expect(result.stderr).toContain("invalid calls; report written");
+    expect(result.stderr).not.toContain("state-manifest");
+  });
+
+  it.runIf(process.platform !== "win32")(
+    "rejects a FIFO bank before a path can be retargeted as protected",
+    async () => {
+      const root = temporaryDirectory();
+      const fifo = path.join(root, "states.fifo");
+      const alias = path.join(root, "states.jsonl");
+      const protectedBank = path.join(
+        repositoryRoot,
+        "test-data/automove-decisions/v6/decisions.jsonl",
+      );
+      const makeFifo = spawnSync("mkfifo", [fifo], { encoding: "utf8" });
+      expect(makeFifo.status, makeFifo.stderr).toBe(0);
+      fs.symlinkSync(fifo, alias);
+      const output = path.join(root, "fifo-report.json");
+      const writerReady = path.join(root, "writer-ready");
+      const baseline = writeBundle(root, "baseline.mjs", "B");
+      const candidate = writeBundle(root, "candidate.mjs", "C");
+      const writer = spawn(
+        process.execPath,
+        [
+          "--input-type=module",
+          "--eval",
+          [
+            'import { closeSync, openSync, symlinkSync, unlinkSync, writeFileSync } from "node:fs";',
+            `writeFileSync(${JSON.stringify(writerReady)}, "");`,
+            `const descriptor = openSync(${JSON.stringify(fifo)}, "w");`,
+            `unlinkSync(${JSON.stringify(alias)});`,
+            `symlinkSync(${JSON.stringify(protectedBank)}, ${JSON.stringify(alias)});`,
+            `try { writeFileSync(descriptor, ${JSON.stringify(`${JSON.stringify({ id: "evil", fen: "evil" })}\n`)}); } catch {}`,
+            "closeSync(descriptor);",
+          ].join("\n"),
+        ],
+        { stdio: "ignore" },
+      );
+      await vi.waitFor(() => expect(fs.existsSync(writerReady)).toBe(true), {
+        timeout: 2_000,
+      });
+      await new Promise((resolve) => setTimeout(resolve, 50));
+      const result = spawnSync(
+        process.execPath,
+        [
+          performanceScript,
+          "--baseline",
+          baseline,
+          "--candidate",
+          candidate,
+          "--states",
+          alias,
+          "--modes",
+          "fast",
+          "--repeat",
+          "1",
+          "--out",
+          output,
+        ],
+        {
+          cwd: repositoryRoot,
+          encoding: "utf8",
+          timeout: 5_000,
+          killSignal: "SIGKILL",
+        },
+      );
+      if (writer.exitCode === null) {
+        await Promise.race([
+          once(writer, "exit"),
+          new Promise((resolve) => setTimeout(resolve, 2_000)),
+        ]);
+      }
+      if (writer.exitCode === null) writer.kill("SIGKILL");
+      expect(result.error).toBeUndefined();
+      expect(result.status).toBe(1);
+      expect(result.stderr).toContain("not a regular file");
+      expect(fs.realpathSync(alias)).toBe(protectedBank);
+      expect(fs.existsSync(output)).toBe(false);
+    },
+  );
 
   it("fails closed without timing a fast invalid candidate", () => {
     const root = temporaryDirectory();
     const baseline = writeBundle(root, "baseline.mjs", "B");
     const candidate = writeBundle(root, "fast-invalid.mjs", "none");
-    const initialState = JSON.stringify({
-      variant: "Classic",
-      ply: 0,
-      candidateColor: null,
-    });
     const stateBank = path.join(root, "states.jsonl");
-    fs.writeFileSync(
-      stateBank,
-      `${JSON.stringify({ id: "initial", fen: initialState })}\n`,
-    );
+    const stateManifest = writeStateBankManifest(stateBank, baseline);
     const output = path.join(root, "fast-invalid-performance.json");
     const result = run(performanceScript, [
       "--baseline",
@@ -597,6 +803,8 @@ describe("automove evidence runners", () => {
       candidate,
       "--states",
       stateBank,
+      "--state-manifest",
+      stateManifest,
       "--repeat",
       "1",
       "--modes",
@@ -620,8 +828,8 @@ describe("automove evidence runners", () => {
       candidateBaselineRatio: null,
     });
     expect(report.summary).toMatchObject({
-      baseline: { count: 2, invalids: { total: 0 } },
-      candidate: { count: 0, invalids: { total: 2, noSuggestion: 2 } },
+      baseline: { count: 128, invalids: { total: 0 } },
+      candidate: { count: 0, invalids: { total: 128, noSuggestion: 128 } },
       candidateBaselineRatio: null,
     });
   });
@@ -629,16 +837,8 @@ describe("automove evidence runners", () => {
   it("classifies selector, payload, and preview failures without aborting", () => {
     const root = temporaryDirectory();
     const baseline = writeBundle(root, "baseline.mjs", "B");
-    const initialState = JSON.stringify({
-      variant: "Classic",
-      ply: 0,
-      candidateColor: null,
-    });
     const stateBank = path.join(root, "states.jsonl");
-    fs.writeFileSync(
-      stateBank,
-      `${JSON.stringify({ id: "initial", fen: initialState })}\n`,
-    );
+    const stateManifest = writeStateBankManifest(stateBank, baseline);
 
     for (const invalidCase of [
       {
@@ -680,6 +880,8 @@ describe("automove evidence runners", () => {
         candidate,
         "--states",
         stateBank,
+        "--state-manifest",
+        stateManifest,
         "--repeat",
         "1",
         "--modes",
@@ -691,53 +893,264 @@ describe("automove evidence runners", () => {
       expect(result.status, result.stderr).toBe(1);
       expect(result.stderr).toContain("invalid calls; report written");
       expect(readJson(output).summary.candidate.invalids).toMatchObject({
-        total: 2,
-        ...invalidCase.counts,
+        total: 128,
+        selectorError: invalidCase.counts.selectorError * 64,
+        sourceMutation: invalidCase.counts.sourceMutation * 64,
+        illegalReplay: invalidCase.counts.illegalReplay * 64,
       });
       if (invalidCase.strategy === "mutating-preview-throw") {
         expect(readJson(output).summary.baseline.invalids).toMatchObject({
-          total: 2,
-          sourceMutation: 2,
+          total: 128,
+          sourceMutation: 128,
         });
       }
     }
-  });
+  }, 15_000);
 
-  it("fails when a bundle changes while it is being loaded", () => {
+  it("fails when a bundle changes while it is being loaded", async () => {
     const root = temporaryDirectory();
     const baseline = writeBundle(root, "baseline.mjs", "B");
     const candidate = writeBundle(root, "candidate.mjs", "C");
     const candidateSource = fs.readFileSync(candidate, "utf8");
+    const marker = "candidate-load-started";
     fs.writeFileSync(
       candidate,
-      `import { appendFileSync } from "node:fs";
-import { fileURLToPath } from "node:url";
-
-const selfUrl = new URL(import.meta.url);
-selfUrl.search = "";
-appendFileSync(fileURLToPath(selfUrl), "\\n");
+      `console.log(${JSON.stringify(marker)});
+const pauseUntil = performance.now() + 300;
+while (performance.now() < pauseUntil) {}
 
 ${candidateSource}`,
     );
     const output = path.join(root, "changed-bundle.json");
-    const result = run(performanceScript, [
+    const child = spawn(
+      process.execPath,
+      [
+        performanceScript,
+        "--baseline",
+        baseline,
+        "--candidate",
+        candidate,
+        "--states",
+        path.join(root, "unused.jsonl"),
+        "--repeat",
+        "1",
+        "--modes",
+        "fast",
+        "--out",
+        output,
+      ],
+      { cwd: repositoryRoot, stdio: ["ignore", "pipe", "pipe"] },
+    );
+    child.stdout.setEncoding("utf8");
+    child.stderr.setEncoding("utf8");
+    let stdout = "";
+    let stderr = "";
+    let changed = false;
+    child.stdout.on("data", (chunk: string) => {
+      stdout += chunk;
+      if (!changed && stdout.includes(marker)) {
+        fs.appendFileSync(candidate, "\n");
+        changed = true;
+      }
+    });
+    child.stderr.on("data", (chunk: string) => {
+      stderr += chunk;
+    });
+    const timeout = setTimeout(() => child.kill("SIGKILL"), 5_000);
+    const [status] = (await once(child, "exit")) as [number | null];
+    clearTimeout(timeout);
+
+    expect(changed).toBe(true);
+    expect(status).toBe(1);
+    expect(stderr).toContain("candidate bundle changed while loading");
+    expect(fs.existsSync(output)).toBe(false);
+  });
+
+  it("rejects bundles that delegate behavior to mutable local imports", () => {
+    const root = temporaryDirectory();
+    const implementation = writeBundle(root, "implementation.mjs", "B");
+    const entry = path.join(root, "entry.mjs");
+    const entryBytes = 'export { Game, GameVariant } from "./implementation.mjs";\n';
+    fs.writeFileSync(entry, entryBytes);
+    const output = path.join(root, "local-import.json");
+    const result = run(strengthScript, [
       "--baseline",
-      baseline,
+      entry,
       "--candidate",
-      candidate,
-      "--states",
-      path.join(root, "unused.jsonl"),
-      "--repeat",
-      "1",
+      implementation,
       "--modes",
       "fast",
+      "--variants",
+      "Classic",
+      "--max-plies",
+      "1",
+      "--out",
+      output,
+    ]);
+    expect(result.status).toBe(1);
+    expect(result.stderr).toContain("not self-contained: ./implementation.mjs");
+    expect(fs.readFileSync(entry, "utf8")).toBe(entryBytes);
+    expect(fs.existsSync(output)).toBe(false);
+  });
+
+  it("blocks computed string-code loaders before they can import unhashed code", () => {
+    const root = temporaryDirectory();
+    const implementation = writeBundle(root, "implementation.mjs", "B");
+    const implementationUrl = pathToFileURL(implementation).href;
+    const importExpression = `import(${JSON.stringify(implementationUrl)})`;
+    const loaders = [
+      [
+        "computed-function",
+        `const capability = ["Fun", "ction"].join("");
+const compile = globalThis[capability];
+const load = compile(${JSON.stringify(`return ${importExpression}`)});
+const dependency = await load();`,
+      ],
+      [
+        "computed-constructor",
+        `const capability = ["con", "structor"].join("");
+const compile = (() => {})[capability];
+const load = compile(${JSON.stringify(`return ${importExpression}`)});
+const dependency = await load();`,
+      ],
+      [
+        "computed-eval",
+        `const capability = String.fromCharCode(101, 118, 97, 108);
+const dependency = await (0, globalThis[capability])(${JSON.stringify(importExpression)});`,
+      ],
+    ] as const;
+
+    for (const [name, loader] of loaders) {
+      const entry = path.join(root, `${name}.mjs`);
+      const output = path.join(root, `${name}.json`);
+      fs.writeFileSync(
+        entry,
+        `${loader}
+export const Game = dependency.Game;
+export const GameVariant = dependency.GameVariant;
+`,
+      );
+      const result = run(strengthScript, [
+        "--baseline",
+        entry,
+        "--candidate",
+        implementation,
+        "--modes",
+        "fast",
+        "--variants",
+        "Classic",
+        "--max-plies",
+        "1",
+        "--out",
+        output,
+      ]);
+
+      expect(result.status).toBe(1);
+      expect(result.stderr).toContain(
+        "Code generation from strings disallowed for this context",
+      );
+      expect(fs.existsSync(output)).toBe(false);
+    }
+  });
+
+  it("blocks native module access before it can require unhashed code", () => {
+    const root = temporaryDirectory();
+    const candidate = writeBundle(root, "candidate.mjs", "B");
+    const implementation = path.join(root, "implementation.cjs");
+    const marker = path.join(root, "external-code-ran");
+    const entry = path.join(root, "native-loader.mjs");
+    const output = path.join(root, "native-loader.json");
+    fs.writeFileSync(
+      implementation,
+      `require("node:fs").writeFileSync(${JSON.stringify(marker)}, "loaded");
+module.exports = { Game: class Game {}, GameVariant: { Classic: "Classic" } };
+`,
+    );
+    fs.writeFileSync(
+      entry,
+      `const moduleName = ["node", "module"].join(":");
+const nativeModule = process.getBuiltinModule(moduleName);
+const dependency = nativeModule.createRequire(${JSON.stringify(entry)})(${JSON.stringify(implementation)});
+export const Game = dependency.Game;
+export const GameVariant = dependency.GameVariant;
+`,
+    );
+
+    const result = run(strengthScript, [
+      "--baseline",
+      entry,
+      "--candidate",
+      candidate,
+      "--modes",
+      "fast",
+      "--variants",
+      "Classic",
+      "--max-plies",
+      "1",
       "--out",
       output,
     ]);
 
     expect(result.status).toBe(1);
-    expect(result.stderr).toContain("candidate bundle changed while loading");
+    expect(result.stderr).toContain("process is not defined");
+    expect(fs.existsSync(marker)).toBe(false);
     expect(fs.existsSync(output)).toBe(false);
+  });
+
+  it("fails closed when bundle loading is called without the runtime guard", () => {
+    const root = temporaryDirectory();
+    const bundle = writeBundle(root, "bundle.mjs", "B");
+    const optionsModule = pathToFileURL(
+      path.join(repositoryRoot, "scripts/evidence/options.mjs"),
+    ).href;
+    const result = spawnSync(
+      process.execPath,
+      [
+        "--experimental-vm-modules",
+        "--input-type=module",
+        "--eval",
+        `import { DISALLOW_STRING_CODE_GENERATION_FLAG, loadPublicBundle } from ${JSON.stringify(optionsModule)}; process.execArgv.push(DISALLOW_STRING_CODE_GENERATION_FLAG); await loadPublicBundle(${JSON.stringify(bundle)}, "probe");`,
+      ],
+      { cwd: repositoryRoot, encoding: "utf8" },
+    );
+
+    expect(result.status).toBe(1);
+    expect(result.stderr).toContain(
+      "probe bundle execution requires --disallow-code-generation-from-strings",
+    );
+  });
+
+  it("recognizes the runtime guard when NODE_OPTIONS enables it", () => {
+    const root = temporaryDirectory();
+    const bundle = writeBundle(root, "bundle.mjs", "B");
+    const optionsModule = pathToFileURL(
+      path.join(repositoryRoot, "scripts/evidence/options.mjs"),
+    ).href;
+    const result = spawnSync(
+      process.execPath,
+      [
+        "--input-type=module",
+        "--eval",
+        `import { loadPublicBundle } from ${JSON.stringify(optionsModule)}; const bundle = await loadPublicBundle(${JSON.stringify(bundle)}, "probe"); console.log(bundle.sha256);`,
+      ],
+      {
+        cwd: repositoryRoot,
+        encoding: "utf8",
+        env: {
+          ...process.env,
+          NODE_OPTIONS: [
+            process.env["NODE_OPTIONS"],
+            "--experimental-vm-modules",
+            "--disallow-code-generation-from-strings",
+          ]
+            .filter(Boolean)
+            .join(" "),
+        },
+      },
+    );
+
+    expect(result.status, result.stderr).toBe(0);
+    expect(result.stdout.trim()).toBe(bytesSha256(fs.readFileSync(bundle)));
   });
 
   it("rejects numeric work limits that are not safe integers", () => {
@@ -745,17 +1158,7 @@ ${candidateSource}`,
     const baseline = writeBundle(root, "baseline.mjs", "B");
     const candidate = writeBundle(root, "candidate.mjs", "C");
     const stateBank = path.join(root, "states.jsonl");
-    fs.writeFileSync(
-      stateBank,
-      `${JSON.stringify({
-        id: "initial",
-        fen: JSON.stringify({
-          variant: "Classic",
-          ply: 0,
-          candidateColor: null,
-        }),
-      })}\n`,
-    );
+    const stateManifest = writeStateBankManifest(stateBank, baseline);
 
     const performanceOutput = path.join(root, "unsafe-repeat.json");
     const performanceResult = run(performanceScript, [
@@ -765,6 +1168,8 @@ ${candidateSource}`,
       candidate,
       "--states",
       stateBank,
+      "--state-manifest",
+      stateManifest,
       "--repeat",
       "9007199254740993",
       "--modes",
@@ -803,17 +1208,7 @@ ${candidateSource}`,
     const baseline = writeBundle(root, "baseline.mjs", "B");
     const candidate = writeBundle(root, "candidate.mjs", "C");
     const stateBank = path.join(root, "states.jsonl");
-    fs.writeFileSync(
-      stateBank,
-      `${JSON.stringify({
-        id: "initial",
-        fen: JSON.stringify({
-          variant: "Classic",
-          ply: 0,
-          candidateColor: null,
-        }),
-      })}\n`,
-    );
+    const stateManifest = writeStateBankManifest(stateBank, baseline);
 
     const boundaryPerformanceOutput = path.join(root, "boundary-repeat.json");
     const boundaryPerformance = run(performanceScript, [
@@ -823,6 +1218,8 @@ ${candidateSource}`,
       candidate,
       "--states",
       stateBank,
+      "--state-manifest",
+      stateManifest,
       "--repeat",
       "100",
       "--modes",
@@ -849,9 +1246,7 @@ ${candidateSource}`,
       excessivePerformanceOutput,
     ]);
     expect(excessivePerformance.status).toBe(1);
-    expect(excessivePerformance.stderr).toContain(
-      "--repeat must be at most 100",
-    );
+    expect(excessivePerformance.stderr).toContain("--repeat must be at most 100");
     expect(fs.existsSync(excessivePerformanceOutput)).toBe(false);
 
     const boundaryStrengthOutput = path.join(root, "boundary-max-plies.json");
@@ -888,9 +1283,7 @@ ${candidateSource}`,
       excessiveStrengthOutput,
     ]);
     expect(excessiveStrength.status).toBe(1);
-    expect(excessiveStrength.stderr).toContain(
-      "--max-plies must be at most 1024",
-    );
+    expect(excessiveStrength.stderr).toContain("--max-plies must be at most 1024");
     expect(fs.existsSync(excessiveStrengthOutput)).toBe(false);
   });
 
@@ -999,9 +1392,7 @@ ${candidateSource}`,
         destination,
       ]);
       expect(result.status).toBe(1);
-      expect(result.stderr).toContain(
-        "outside target/ or the OS temporary directory",
-      );
+      expect(result.stderr).toContain("outside target/ or the OS temporary directory");
     }
 
     expect(fs.readFileSync(configDestination)).toEqual(configBefore);
@@ -1026,11 +1417,7 @@ ${candidateSource}`,
     expect(fs.existsSync(sourceDestination)).toBe(false);
     const linkedTestData = path.join(root, "linked-test-data");
     const linkedScripts = path.join(root, "linked-scripts");
-    fs.symlinkSync(
-      path.join(repositoryRoot, "test-data"),
-      linkedTestData,
-      "dir",
-    );
+    fs.symlinkSync(path.join(repositoryRoot, "test-data"), linkedTestData, "dir");
     fs.symlinkSync(path.join(repositoryRoot, "scripts"), linkedScripts, "dir");
 
     for (const [output, message] of [
@@ -1089,9 +1476,7 @@ ${candidateSource}`,
     ]);
 
     expect(result.status).toBe(1);
-    expect(result.stderr).toContain(
-      "refusing to overwrite existing evidence report",
-    );
+    expect(result.stderr).toContain("refusing to overwrite existing evidence report");
     expect(fs.readFileSync(output)).toEqual(existing);
   });
 
@@ -1318,6 +1703,15 @@ function readJson(filePath: string) {
 
 function fileSha256(filePath: string): string {
   return bytesSha256(fs.readFileSync(filePath));
+}
+
+function writeStateBankManifest(stateBank: string, bundle: string): string {
+  const name = path.basename(stateBank, path.extname(stateBank));
+  return writePerformanceStateBankFixture(
+    path.dirname(stateBank),
+    name,
+    fileSha256(bundle),
+  ).manifest;
 }
 
 function bytesSha256(bytes: NodeJS.ArrayBufferView): string {

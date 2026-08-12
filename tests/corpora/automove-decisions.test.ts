@@ -70,9 +70,7 @@ const EXPECTED_CHANGED_IDS = Object.freeze({
   pro: [],
 } satisfies Readonly<Record<Preference, readonly string[]>>);
 
-function archivedSuggestionKind(
-  suggestion: ReturnType<Game["suggestMove"]>,
-): number {
+function archivedSuggestionKind(suggestion: ReturnType<Game["suggestMove"]>): number {
   return suggestion === undefined ? 0 : 3;
 }
 
@@ -109,9 +107,7 @@ function sha256(value: string | Uint8Array): string {
 
 describe("automove decision corpus", () => {
   beforeAll(() => {
-    vi.spyOn(globalThis.performance, "now").mockReturnValue(
-      manifest.fixedClockNowMs,
-    );
+    vi.spyOn(globalThis.performance, "now").mockReturnValue(manifest.fixedClockNowMs);
   });
 
   afterAll(() => {
@@ -155,17 +151,10 @@ describe("automove decision corpus", () => {
     expect(new Set(ids).size).toBe(states.length);
     expect(sha256(`${ids.join("\n")}\n`)).toBe(manifest.orderedIdsSha256);
     expect(initialStates).toHaveLength(manifest.selection.initialVariantStates);
-    expect(initialStates.map((state) => state.variant)).toEqual(
-      manifest.variantOrder,
-    );
-    expect(retainedStates).toHaveLength(
-      manifest.selection.retainedRegressionStates,
-    );
+    expect(initialStates.map((state) => state.variant)).toEqual(manifest.variantOrder);
+    expect(retainedStates).toHaveLength(manifest.selection.retainedRegressionStates);
     expect(
-      states.reduce(
-        (count, state) => count + Object.keys(state.decisions).length,
-        0,
-      ),
+      states.reduce((count, state) => count + Object.keys(state.decisions).length, 0),
     ).toBe(manifest.decisionCount);
     expect(
       states.every(
@@ -193,9 +182,7 @@ describe("automove decision corpus", () => {
       })),
     );
 
-    const previousById = new Map(
-      previousStates.map((state) => [state.id, state]),
-    );
+    const previousById = new Map(previousStates.map((state) => [state.id, state]));
     const changedIds = Object.fromEntries(
       PREFERENCES.map((preference) => [
         preference,
@@ -251,9 +238,7 @@ describe("automove decision corpus", () => {
             events: suggestion.events,
           });
         }
-        expect(game.toFen(), `${state.id} ${preference}: source mutation`).toBe(
-          before,
-        );
+        expect(game.toFen(), `${state.id} ${preference}: source mutation`).toBe(before);
         expect(game.toFen(), `${state.id} ${preference}: source state`).toBe(
           expected.sourceFenAfterSmartAutomove,
         );

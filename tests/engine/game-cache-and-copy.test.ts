@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 
-import { MutableBoard } from "../../src/engine/board.js";
-import { GameVariant } from "../../src/engine/config.js";
+import { MutableBoard } from "../../src/engine/board/storage.js";
+import { GameVariant } from "../../src/engine/board/config.js";
 import {
   Color,
   Consumable,
@@ -20,24 +20,24 @@ import {
   type Item,
   type NextInput,
   type Output,
-} from "../../src/engine/domain.js";
+} from "../../src/engine/model/domain.js";
 import {
   gameFen,
   parseGameFen,
   type GameFenState,
-} from "../../src/engine/fen.js";
-import { MonsGame } from "../../src/engine/game.js";
+} from "../../src/engine/codec/game-board.js";
+import { MonsGame } from "../../src/engine/game/mons-game.js";
 import {
   BOARD_CELLS,
   location,
   locationIndex,
   type Location,
-} from "../../src/engine/geometry.js";
+} from "../../src/engine/board/geometry.js";
 import {
   CACHE_MISS,
   RulesQueryCache,
   type InputStageResult,
-} from "../../src/engine/query-cache.js";
+} from "../../src/engine/game/query-cache.js";
 
 function replaceItems(
   game: MonsGame,
@@ -298,15 +298,12 @@ describe("RulesQueryCache structural copies", () => {
     originalOptionLocation.i = 99;
     expect(Reflect.set(mutableMana, "color", Color.Black)).toBe(true);
     expect(Reflect.set(originalEvent, "to", { i: 99, j: 99 })).toBe(true);
-    expect(Reflect.set(originalOption, "input", { kind: "takeback" })).toBe(
-      true,
-    );
+    expect(Reflect.set(originalOption, "input", { kind: "takeback" })).toBe(true);
 
     const lookups = [
       (): InputStageResult | typeof CACHE_MISS =>
         cache.lookupSecondStage("second-stage"),
-      (): InputStageResult | typeof CACHE_MISS =>
-        cache.lookupThirdStage("third-stage"),
+      (): InputStageResult | typeof CACHE_MISS => cache.lookupThirdStage("third-stage"),
     ];
     for (const lookup of lookups) {
       const firstHit = lookup();
@@ -361,9 +358,9 @@ describe("MonsGame staged-input caches", () => {
       "full second-input query",
     );
     expect(full.length).toBeGreaterThan(expectedLimited.length);
-    expect(
-      full.filter((option) => option.kind === NextInputKind.DemonAction),
-    ).toEqual([expectedAction]);
+    expect(full.filter((option) => option.kind === NextInputKind.DemonAction)).toEqual([
+      expectedAction,
+    ]);
   });
 
   it("reuses the complete ordered second-input set for target validation", () => {
@@ -405,10 +402,7 @@ describe("MonsGame staged-input caches", () => {
     const cold = game.fork();
     cold.invalidateProcessInputCache();
 
-    mutableEvents(
-      warm.processInput(chain, true, false),
-      "warmed third-stage query",
-    );
+    mutableEvents(warm.processInput(chain, true, false), "warmed third-stage query");
 
     const warmOutput = warm.processInput(chain, false, false);
     const coldOutput = cold.processInput(chain, false, false);
@@ -463,10 +457,7 @@ describe("MonsGame staged-input caches", () => {
     const before = game.fen();
     expect(
       game.processInput(
-        [
-          ...scenario.chain,
-          { kind: "modifier", modifier: Modifier.SelectPotion },
-        ],
+        [...scenario.chain, { kind: "modifier", modifier: Modifier.SelectPotion }],
         false,
         false,
       ),
@@ -561,12 +552,8 @@ describe("MonsGame serialized state copying", () => {
     expect(copy.isMovesVerified).toBe(true);
     expect(copy.takebackFens).toEqual(source.takebackFens);
     expect(copy.takebackFens).not.toBe(source.takebackFens);
-    expect(copy.verboseTrackingEntities).toEqual(
-      source.verboseTrackingEntities,
-    );
-    expect(copy.verboseTrackingEntities).not.toBe(
-      source.verboseTrackingEntities,
-    );
+    expect(copy.verboseTrackingEntities).toEqual(source.verboseTrackingEntities);
+    expect(copy.verboseTrackingEntities).not.toBe(source.verboseTrackingEntities);
     expect(copy.verboseTrackingEntities[0]?.events).not.toBe(
       source.verboseTrackingEntities[0]?.events,
     );
@@ -633,21 +620,15 @@ describe("MonsGame board ownership", () => {
     expect(entriesForkCache.occupiedEntries).toBe(entriesCache.occupiedEntries);
     expect(entriesForkCache.categoryDerived).toBeUndefined();
 
-    expect(entriesFirst.allMonsLocations(Color.White).length).toBeGreaterThan(
-      0,
-    );
+    expect(entriesFirst.allMonsLocations(Color.White).length).toBeGreaterThan(0);
     const fullyWarmCache = boardCacheSnapshot(entriesFirst);
     expect(fullyWarmCache.occupiedEntries).toBe(entriesCache.occupiedEntries);
     expect(fullyWarmCache.categoryDerived).toBeDefined();
 
     const fullyWarmFork = entriesFirst.fork();
     const fullyWarmForkCache = boardCacheSnapshot(fullyWarmFork);
-    expect(fullyWarmForkCache.occupiedEntries).toBe(
-      fullyWarmCache.occupiedEntries,
-    );
-    expect(fullyWarmForkCache.categoryDerived).toBe(
-      fullyWarmCache.categoryDerived,
-    );
+    expect(fullyWarmForkCache.occupiedEntries).toBe(fullyWarmCache.occupiedEntries);
+    expect(fullyWarmForkCache.categoryDerived).toBe(fullyWarmCache.categoryDerived);
 
     entriesFirst.set(location(5, 5), manaItem(regularMana(Color.White)));
     expect(boardCacheSnapshot(entriesFirst)).toMatchObject({
@@ -686,23 +667,11 @@ describe("MonsGame board ownership", () => {
       GameVariant.Classic,
       new Array<Item | undefined>(BOARD_CELLS).fill(undefined),
     );
-    source.set(
-      location(1, 1),
-      monItem(createMon(MonKind.Angel, invalidColor, 0)),
-    );
-    source.set(
-      location(1, 2),
-      monItem(createMon(MonKind.Mystic, invalidColor, 2)),
-    );
+    source.set(location(1, 1), monItem(createMon(MonKind.Angel, invalidColor, 0)));
+    source.set(location(1, 2), monItem(createMon(MonKind.Mystic, invalidColor, 2)));
     source.set(location(1, 3), manaItem(regularMana(invalidColor)));
-    source.set(
-      location(2, 1),
-      monItem(createMon(MonKind.Angel, Color.Black, 0)),
-    );
-    source.set(
-      location(2, 2),
-      monItem(createMon(MonKind.Mystic, Color.Black, 2)),
-    );
+    source.set(location(2, 1), monItem(createMon(MonKind.Angel, Color.Black, 0)));
+    source.set(location(2, 2), monItem(createMon(MonKind.Mystic, Color.Black, 2)));
     source.set(location(2, 3), manaItem(regularMana(Color.Black)));
     const view = source.readonlyView();
 
@@ -716,9 +685,7 @@ describe("MonsGame board ownership", () => {
       location(2, 1),
       location(2, 2),
     ]);
-    expect(view.allFreeRegularManaLocations(Color.Black)).toEqual([
-      location(2, 3),
-    ]);
+    expect(view.allFreeRegularManaLocations(Color.Black)).toEqual([location(2, 3)]);
     expect(view.faintedMonsLocations(Color.Black)).toEqual([location(2, 2)]);
     expect(view.findMana(Color.Black)).toEqual(location(2, 3));
     expect(view.findAwakeAngel(Color.Black)).toEqual(location(2, 1));
@@ -727,10 +694,7 @@ describe("MonsGame board ownership", () => {
   it("returns detached coordinates from cold and warm derived queries", () => {
     const source = new MutableBoard(GameVariant.Classic);
     const view = source.readonlyView();
-    source.set(
-      location(10, 3),
-      monItem(createMon(MonKind.Mystic, Color.White, 2)),
-    );
+    source.set(location(10, 3), monItem(createMon(MonKind.Mystic, Color.White, 2)));
 
     const expectDetachedArray = (query: () => Location[]): void => {
       const cold = query();
@@ -753,9 +717,7 @@ describe("MonsGame board ownership", () => {
     expectDetachedArray(() => view.allFreeRegularManaLocations(Color.White));
     expectDetachedArray(() => view.faintedMonsLocations(Color.White));
 
-    const expectDetachedSingle = (
-      query: () => Location | undefined,
-    ): Location => {
+    const expectDetachedSingle = (query: () => Location | undefined): Location => {
       const cold = query();
       const warm = query();
       expect(cold).toBeDefined();
@@ -771,12 +733,8 @@ describe("MonsGame board ownership", () => {
     };
 
     const whiteMana = expectDetachedSingle(() => view.findMana(Color.White));
-    const whiteAngel = expectDetachedSingle(() =>
-      view.findAwakeAngel(Color.White),
-    );
-    const blackAngel = expectDetachedSingle(() =>
-      view.findAwakeAngel(Color.Black),
-    );
+    const whiteAngel = expectDetachedSingle(() => view.findAwakeAngel(Color.White));
+    const blackAngel = expectDetachedSingle(() => view.findAwakeAngel(Color.Black));
 
     const fork = view.fork();
     const forkMana = fork.findMana(Color.White);
@@ -861,9 +819,9 @@ describe("MonsGame board ownership", () => {
     expect(Object.isFrozen(stored)).toBe(true);
     expect(stored?.kind === "mon" && Object.isFrozen(stored.mon)).toBe(true);
     expect(Reflect.set(mutableMon, "cooldown", 2)).toBe(true);
-    expect(
-      stored?.kind === "mon" && Reflect.set(stored.mon, "cooldown", 2),
-    ).toBe(false);
+    expect(stored?.kind === "mon" && Reflect.set(stored.mon, "cooldown", 2)).toBe(
+      false,
+    );
     expect(game.fen()).toBe(fenBefore);
     expect(game.board.get(at)).toEqual(
       monItem(createMon(MonKind.Drainer, Color.White, 0)),

@@ -2,40 +2,37 @@ import { readFileSync } from "node:fs";
 
 import { describe, expect, it, vi } from "vitest";
 
-import { AutomoveEngine } from "../../src/automove/automove-engine.js";
-import { AUTOMOVE_SELECTOR_BUDGET_MS } from "../../src/automove/deadline.js";
+import { AutomoveEngine } from "../../src/automove/runtime/engine.js";
+import { AUTOMOVE_SELECTOR_BUDGET_MS } from "../../src/automove/core/deadline.js";
 import { PRODUCTION_SELECTOR_BUDGET_MS } from "../../src/automove/runtime/deadline-selection.js";
-import { suggestMove } from "../../src/automove/runtime.js";
+import { suggestMove } from "../../src/automove/runtime/suggestion.js";
 import { randomAutomove } from "../../src/automove/runtime/input-selection.js";
-import { enumerateLegalTransitions } from "../../src/automove/transitions.js";
-import {
-  moveToInputs,
-  tryLoadPosition,
-} from "../../src/automove/fast/bridge.js";
-import { MAX_MOVES, generateMoves } from "../../src/automove/fast/moves.js";
+import { enumerateLegalTransitions } from "../../src/automove/transitions/enumerate.js";
+import { moveToInputs, tryLoadPosition } from "../../src/automove/packed/bridge.js";
+import { MAX_MOVES, generateMoves } from "../../src/automove/packed/moves.js";
 import {
   FAST_MOVE_UNREPRESENTABLE,
   FastPosition,
   applyFastMove,
-} from "../../src/automove/fast/position.js";
+} from "../../src/automove/packed/state.js";
 import {
   PACKED_SELECTION_PROFILES,
   selectPackedFastSelection,
   selectProFastSelection,
-} from "../../src/automove/fast/index.js";
+} from "../../src/automove/packed/index.js";
 import {
   DEFAULT_WEIGHTS,
   normalizeEvalWeights,
-} from "../../src/automove/fast/evaluate.js";
+} from "../../src/automove/packed/evaluation.js";
 import {
   FastSearcher,
   MAX_SEARCH_DEPTH,
   normalizeSearchLimits,
-} from "../../src/automove/fast/search.js";
-import { ALL_GAME_VARIANTS, GameVariant } from "../../src/engine/config.js";
-import { inputArrayFen, parseInputArrayFen } from "../../src/engine/fen.js";
-import { MonsGame } from "../../src/engine/game.js";
-import { BOARD_CELLS } from "../../src/engine/geometry.js";
+} from "../../src/automove/packed/search.js";
+import { ALL_GAME_VARIANTS, GameVariant } from "../../src/engine/board/config.js";
+import { inputArrayFen, parseInputArrayFen } from "../../src/engine/codec/input.js";
+import { MonsGame } from "../../src/engine/game/mons-game.js";
+import { BOARD_CELLS } from "../../src/engine/board/geometry.js";
 import { expectFastPositionInvariants } from "./fast.test-helper.js";
 
 type DecisionState = {
@@ -44,10 +41,7 @@ type DecisionState = {
 };
 
 const V4_DECISION_STATES: readonly DecisionState[] = readFileSync(
-  new URL(
-    "../../test-data/automove-decisions/v4/decisions.jsonl",
-    import.meta.url,
-  ),
+  new URL("../../test-data/automove-decisions/v4/decisions.jsonl", import.meta.url),
   "utf8",
 )
   .trim()
@@ -131,21 +125,16 @@ function compareCanonicalPosition(
 
   const reference: string[] = [];
   engine.run((execution) => {
-    for (const transition of enumerateLegalTransitions(
-      execution,
-      game,
-      100_000,
-    )) {
+    for (const transition of enumerateLegalTransitions(execution, game, 100_000)) {
       reference.push(inputArrayFen(transition.inputs));
     }
     return undefined;
   });
 
   const generatedInputs = generated.map(([inputFen]) => inputFen);
-  expect(
-    new Set(generatedInputs).size,
-    `${label}: duplicate generated moves`,
-  ).toBe(generatedInputs.length);
+  expect(new Set(generatedInputs).size, `${label}: duplicate generated moves`).toBe(
+    generatedInputs.length,
+  );
   expect(new Set(reference).size, `${label}: duplicate canonical moves`).toBe(
     reference.length,
   );
@@ -155,8 +144,7 @@ function compareCanonicalPosition(
   for (const [inputFen, move] of generated) {
     applied.copyFrom(packed);
     expectFastPositionInvariants(applied, `${label} ${inputFen}: before`);
-    const representable =
-      applyFastMove(applied, move) !== FAST_MOVE_UNREPRESENTABLE;
+    const representable = applyFastMove(applied, move) !== FAST_MOVE_UNREPRESENTABLE;
     const inputs = parseInputArrayFen(inputFen);
     expect(inputs).toBeDefined();
     if (inputs === undefined) continue;
@@ -191,8 +179,7 @@ describe("packed-state automove search", () => {
     expect(Object.isFrozen(PACKED_SELECTION_PROFILES)).toBe(true);
     expect(
       Object.values(PACKED_SELECTION_PROFILES).every(
-        (profile) =>
-          Object.isFrozen(profile) && Object.isFrozen(profile.limits),
+        (profile) => Object.isFrozen(profile) && Object.isFrozen(profile.limits),
       ),
     ).toBe(true);
     let clockReads = 0;
@@ -228,15 +215,9 @@ describe("packed-state automove search", () => {
           maxNodes: 2_000_000,
         },
       ]);
-      expect(search.mock.calls[0]?.[0]).toBe(
-        PACKED_SELECTION_PROFILES.fast.limits,
-      );
-      expect(search.mock.calls[1]?.[0]).toBe(
-        PACKED_SELECTION_PROFILES.normal.limits,
-      );
-      expect(search.mock.calls[2]?.[0]).toBe(
-        PACKED_SELECTION_PROFILES.pro.limits,
-      );
+      expect(search.mock.calls[0]?.[0]).toBe(PACKED_SELECTION_PROFILES.fast.limits);
+      expect(search.mock.calls[1]?.[0]).toBe(PACKED_SELECTION_PROFILES.normal.limits);
+      expect(search.mock.calls[2]?.[0]).toBe(PACKED_SELECTION_PROFILES.pro.limits);
       expect(
         search.mock.results.map((result) =>
           result.type === "return" ? result.value.nodes : undefined,
@@ -257,9 +238,7 @@ describe("packed-state automove search", () => {
       for (const mode of ["fast", "normal"] as const) {
         const game = new MonsGame(true, GameVariant.Classic);
         expect(
-          engine.run((execution) =>
-            selectPackedFastSelection(execution, game, mode),
-          ),
+          engine.run((execution) => selectPackedFastSelection(execution, game, mode)),
           mode,
         ).toEqual({ kind: "unsupported", fallbackInputs: [] });
       }
@@ -271,13 +250,9 @@ describe("packed-state automove search", () => {
       expect(pro.kind).toBe("supported");
       if (pro.kind === "supported") {
         expect(pro.inputs.length).toBeGreaterThan(0);
-        expect(game.fork().processInput(pro.inputs, false, false).kind).toBe(
-          "events",
-        );
+        expect(game.fork().processInput(pro.inputs, false, false).kind).toBe("events");
       }
-      expect(search.mock.calls.map(([limits]) => limits.maxNodes)).toEqual([
-        2_000_000,
-      ]);
+      expect(search.mock.calls.map(([limits]) => limits.maxNodes)).toEqual([2_000_000]);
     } finally {
       search.mockRestore();
       vi.unstubAllGlobals();
@@ -402,8 +377,8 @@ describe("packed-state automove search", () => {
     try {
       for (const mode of ["fast", "normal", "pro"] as const) {
         const game = new MonsGame(true, GameVariant.Classic);
-        const selection = new AutomoveEngine({ clock: () => 0 }).run(
-          (execution) => selectPackedFastSelection(execution, game, mode),
+        const selection = new AutomoveEngine({ clock: () => 0 }).run((execution) =>
+          selectPackedFastSelection(execution, game, mode),
         );
         expect(selection, mode).toEqual({
           kind: "unsupported",
@@ -413,17 +388,16 @@ describe("packed-state automove search", () => {
       for (const mode of ["fast", "normal"] as const) {
         const game = new MonsGame(true, GameVariant.Classic);
         const sourceFen = game.fen();
-        const suggestion = new AutomoveEngine({ clock: () => 0 }).run(
-          (execution) => suggestMove(execution, game, mode),
+        const suggestion = new AutomoveEngine({ clock: () => 0 }).run((execution) =>
+          suggestMove(execution, game, mode),
         );
         expect(suggestion.output.kind, mode).toBe("events");
         const inputs = parseInputArrayFen(suggestion.inputFen);
         expect(inputs, mode).toBeDefined();
         if (inputs !== undefined) {
-          expect(
-            game.fork().processInput(inputs, false, false).kind,
-            mode,
-          ).toBe("events");
+          expect(game.fork().processInput(inputs, false, false).kind, mode).toBe(
+            "events",
+          );
         }
         expect(game.fen(), mode).toBe(sourceFen);
       }
@@ -432,11 +406,9 @@ describe("packed-state automove search", () => {
     }
 
     const failure = new RangeError("synthetic search invariant");
-    const search = vi
-      .spyOn(FastSearcher.prototype, "search")
-      .mockImplementation(() => {
-        throw failure;
-      });
+    const search = vi.spyOn(FastSearcher.prototype, "search").mockImplementation(() => {
+      throw failure;
+    });
     try {
       const game = new MonsGame(true, GameVariant.Classic);
       expect(() =>
@@ -476,9 +448,7 @@ describe("packed-state automove search", () => {
 
         const inputFen = engine.run((execution) => {
           const suggestion = randomAutomove(execution, game.fork());
-          return suggestion.output.kind === "events"
-            ? suggestion.inputFen
-            : undefined;
+          return suggestion.output.kind === "events" ? suggestion.inputFen : undefined;
         });
         if (inputFen === undefined) break;
         const inputs = parseInputArrayFen(inputFen);
@@ -552,10 +522,7 @@ describe("packed-state automove search", () => {
 
     const searcher = new FastSearcher();
     loadSearchRoot(searcher, game);
-    const outcome = searcher.search(
-      { maxDepth: 8, maxNodes: 120_000 },
-      () => false,
-    );
+    const outcome = searcher.search({ maxDepth: 8, maxNodes: 120_000 }, () => false);
 
     expect(outcome).toEqual({
       move: 16_725_528,
@@ -580,10 +547,7 @@ describe("packed-state automove search", () => {
     const winningColor = game.activeColor;
     const searcher = new FastSearcher();
     loadSearchRoot(searcher, game);
-    const outcome = searcher.search(
-      { maxDepth: 8, maxNodes: 120_000 },
-      () => false,
-    );
+    const outcome = searcher.search({ maxDepth: 8, maxNodes: 120_000 }, () => false);
 
     expect(outcome).toEqual({
       move: 1_204,
@@ -593,9 +557,9 @@ describe("packed-state automove search", () => {
       supported: true,
     });
     const replay = game.fork();
-    expect(
-      replay.processInput(moveToInputs(outcome.move), false, false).kind,
-    ).toBe("events");
+    expect(replay.processInput(moveToInputs(outcome.move), false, false).kind).toBe(
+      "events",
+    );
     expect(replay.winnerColor()).toBe(winningColor);
   });
 
@@ -603,30 +567,24 @@ describe("packed-state automove search", () => {
     const game = new MonsGame(true, GameVariant.Classic);
     const cappedSearcher = new FastSearcher();
     loadSearchRoot(cappedSearcher, game);
-    const capped = cappedSearcher.search(
-      { maxDepth: 40, maxNodes: 1 },
-      () => false,
-    );
+    const capped = cappedSearcher.search({ maxDepth: 40, maxNodes: 1 }, () => false);
 
     expect(capped.nodes).toBe(1);
     expect(capped.depth).toBe(0);
     expect(capped.move).not.toBe(0);
-    expect(
-      game.fork().processInput(moveToInputs(capped.move), false, false).kind,
-    ).toBe("events");
+    expect(game.fork().processInput(moveToInputs(capped.move), false, false).kind).toBe(
+      "events",
+    );
 
     const sampledSearcher = new FastSearcher();
     loadSearchRoot(sampledSearcher, game);
     sampledSearcher.search({ maxDepth: 2, maxNodes: 10_000 }, () => false);
     loadSearchRoot(sampledSearcher, game);
     let timeoutChecks = 0;
-    const sampled = sampledSearcher.search(
-      { maxDepth: 40, maxNodes: 10_000 },
-      () => {
-        timeoutChecks += 1;
-        return true;
-      },
-    );
+    const sampled = sampledSearcher.search({ maxDepth: 40, maxNodes: 10_000 }, () => {
+      timeoutChecks += 1;
+      return true;
+    });
 
     expect(timeoutChecks).toBe(1);
     expect(sampled.nodes).toBe(512);
@@ -739,8 +697,7 @@ describe("packed-state automove search", () => {
     vi.stubGlobal("Int32Array", TrackingInt32Array);
     try {
       expect(
-        fullSearcher.search({ maxDepth: 2, maxNodes: 100_000 }, () => false)
-          .depth,
+        fullSearcher.search({ maxDepth: 2, maxNodes: 100_000 }, () => false).depth,
       ).toBe(2);
     } finally {
       vi.unstubAllGlobals();
@@ -758,13 +715,10 @@ describe("packed-state automove search", () => {
     vi.stubGlobal("Int32Array", TimedInt32Array);
     let timedDepth = -1;
     try {
-      timedDepth = timedSearcher.search(
-        { maxDepth: 2, maxNodes: 100_000 },
-        () => {
-          timeoutChecks += 1;
-          return timeoutChecks === 3;
-        },
-      ).depth;
+      timedDepth = timedSearcher.search({ maxDepth: 2, maxNodes: 100_000 }, () => {
+        timeoutChecks += 1;
+        return timeoutChecks === 3;
+      }).depth;
     } finally {
       vi.unstubAllGlobals();
     }
@@ -805,10 +759,7 @@ describe("packed-state automove search", () => {
     vi.stubGlobal("Int32Array", ThrowingInt32Array);
     try {
       expect(() =>
-        throwingSearcher.search(
-          { maxDepth: 2, maxNodes: 100_000 },
-          () => false,
-        ),
+        throwingSearcher.search({ maxDepth: 2, maxNodes: 100_000 }, () => false),
       ).toThrow(failure);
     } finally {
       vi.unstubAllGlobals();
@@ -848,9 +799,9 @@ describe("packed-state automove search", () => {
     expect(coarse.kind).toBe("supported");
     if (coarse.kind === "supported") {
       expect(coarse.inputs.length).toBeGreaterThan(0);
-      expect(
-        coarseGame.fork().processInput(coarse.inputs, false, false).kind,
-      ).toBe("events");
+      expect(coarseGame.fork().processInput(coarse.inputs, false, false).kind).toBe(
+        "events",
+      );
     }
     expect(coarseReads).toBeGreaterThanOrEqual(600);
 
@@ -862,9 +813,7 @@ describe("packed-state automove search", () => {
         return 0;
       },
     });
-    const frozen = engine.run((execution) =>
-      selectProFastSelection(execution, game),
-    );
+    const frozen = engine.run((execution) => selectProFastSelection(execution, game));
     expect(frozen.kind).toBe("supported");
     if (frozen.kind === "supported") {
       expect(frozen.inputs.length).toBeGreaterThan(0);
@@ -903,8 +852,7 @@ describe("packed-state automove search", () => {
     expect(outerSelection.kind).toBe("supported");
     if (nestedSelection?.kind === "supported") {
       expect(
-        nestedGame.fork().processInput(nestedSelection.inputs, false, false)
-          .kind,
+        nestedGame.fork().processInput(nestedSelection.inputs, false, false).kind,
       ).toBe("events");
     }
     if (outerSelection.kind === "supported") {
@@ -925,9 +873,9 @@ describe("packed-state automove search", () => {
     expect(selection.kind).toBe("unsupported");
     if (selection.kind !== "unsupported") return;
     expect(inputArrayFen(selection.fallbackInputs)).toBe("l5,5;l5,3");
-    expect(
-      game.fork().processInput(selection.fallbackInputs, false, false).kind,
-    ).toBe("events");
+    expect(game.fork().processInput(selection.fallbackInputs, false, false).kind).toBe(
+      "events",
+    );
     expect(game.fen()).toBe(sourceFen);
   });
 
@@ -941,12 +889,14 @@ describe("packed-state automove search", () => {
     const sourceFen = game.fen();
     const engine = new AutomoveEngine({ clock: () => 0 });
 
-    expect(
-      engine.run((execution) => selectProFastSelection(execution, game)),
-    ).toEqual({ kind: "supported", inputs: [] });
-    expect(
-      engine.run((execution) => suggestMove(execution, game, "pro")),
-    ).toEqual({ output: { kind: "invalid-input" }, inputFen: "" });
+    expect(engine.run((execution) => selectProFastSelection(execution, game))).toEqual({
+      kind: "supported",
+      inputs: [],
+    });
+    expect(engine.run((execution) => suggestMove(execution, game, "pro"))).toEqual({
+      output: { kind: "invalid-input" },
+      inputFen: "",
+    });
     expect(game.fen()).toBe(sourceFen);
   });
 });

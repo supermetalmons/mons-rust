@@ -14,7 +14,7 @@ import {
   hash64ShiftRight,
   hash64Xor,
   type Hash64,
-} from "../../src/automove/hash64.js";
+} from "../../src/automove/core/hash64.js";
 
 const HASH_BITS = 64n;
 const HASH_MASK = (1n << HASH_BITS) - 1n;
@@ -67,9 +67,7 @@ describe("Hash64 arithmetic", () => {
           ? source
           : ((source << distance) | (source >> BigInt(64 - shift))) & HASH_MASK;
       expect(hash64RotateLeft(value, bits)).toEqual(asHash64(rotated));
-      expect(hash64ShiftRight(value, bits)).toEqual(
-        asHash64(source >> distance),
-      );
+      expect(hash64ShiftRight(value, bits)).toEqual(asHash64(source >> distance));
     }
   });
 
@@ -80,9 +78,7 @@ describe("Hash64 arithmetic", () => {
     );
 
     for (const value of [0, 0x1_0000_0001, Number.MAX_SAFE_INTEGER]) {
-      expect(hash64FromNonnegativeInteger(value)).toEqual(
-        asHash64(BigInt(value)),
-      );
+      expect(hash64FromNonnegativeInteger(value)).toEqual(asHash64(BigInt(value)));
     }
     for (const invalid of [-1, Number.MIN_SAFE_INTEGER, 1.5, Infinity]) {
       expect(() => hash64FromNonnegativeInteger(invalid)).toThrow(
@@ -120,19 +116,13 @@ describe("Hash64 collections", () => {
     table.set(primary, "negative-zero", 8, undefined, -0);
 
     expect(table.get(primary, Number.NaN, undefined, Number.NaN)).toBe("nan");
-    expect(table.get(primary, 7, undefined, "qualified")).toBe(
-      "without-secondary",
-    );
-    expect(table.get(primary, 7, HASH64_ZERO, "qualified")).toBe(
-      "with-zero-secondary",
-    );
+    expect(table.get(primary, 7, undefined, "qualified")).toBe("without-secondary");
+    expect(table.get(primary, 7, HASH64_ZERO, "qualified")).toBe("with-zero-secondary");
     expect(table.get(primary, 8, undefined, 0)).toBe("negative-zero");
 
     table.set(primary, "updated", Number.NaN, undefined, Number.NaN);
     expect(table.size).toBe(4);
-    expect(table.get(primary, Number.NaN, undefined, Number.NaN)).toBe(
-      "updated",
-    );
+    expect(table.get(primary, Number.NaN, undefined, Number.NaN)).toBe("updated");
   });
 
   it("clears the whole table before inserting beyond capacity", () => {

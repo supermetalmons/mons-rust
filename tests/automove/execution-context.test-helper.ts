@@ -1,12 +1,12 @@
 import {
   SearchSession,
   type MonotonicClock,
-} from "../../src/automove/deadline.js";
+} from "../../src/automove/core/deadline.js";
+import { AutomoveCacheScope } from "../../src/automove/core/cache-scope.js";
 import {
-  AutomoveCacheScope,
   createAutomoveExecutionContext,
   type AutomoveExecutionContext,
-} from "../../src/automove/execution-context.js";
+} from "../../src/automove/core/execution-context.js";
 
 const TEST_RANDOM_SOURCE = Object.freeze({
   nextUint32: () => 0,

@@ -23,6 +23,7 @@ import {
   validateStateBankVariants,
   writeJsonReport,
 } from "./automove-evidence-support.mjs";
+import { runBundleExecutingCli } from "./evidence/options.mjs";
 
 const helpText = `Usage: node scripts/run-automove-strength.mjs \\
   --baseline <bundle.mjs> --candidate <bundle.mjs> --out <report.json> \\
@@ -32,22 +33,14 @@ const helpText = `Usage: node scripts/run-automove-strength.mjs \\
 Runs one mirrored color-swapped pair for every selected variant or state.`;
 
 export async function runStrengthEvidence(configuration) {
-  if (
-    configuration.states !== undefined &&
-    configuration.variants !== undefined
-  ) {
+  if (configuration.states !== undefined && configuration.variants !== undefined) {
     throw new Error("--states and --variants are mutually exclusive");
   }
   const baseline = await loadPublicBundle(configuration.baseline, "baseline");
-  const candidate = await loadPublicBundle(
-    configuration.candidate,
-    "candidate",
-  );
+  const candidate = await loadPublicBundle(configuration.candidate, "candidate");
   const modes = selectModes(configuration.modes);
   const stateBank =
-    configuration.states === undefined
-      ? null
-      : readStateBank(configuration.states);
+    configuration.states === undefined ? null : readStateBank(configuration.states);
   const variants =
     stateBank === null
       ? selectVariants(configuration.variants, baseline, candidate)
@@ -204,10 +197,7 @@ function playStrengthGame({
       };
       break;
     }
-    if (
-      expectedVariant !== undefined &&
-      sharedState.variant !== expectedVariant
-    ) {
+    if (expectedVariant !== undefined && sharedState.variant !== expectedVariant) {
       invalid = {
         reason: "illegal-replay",
         ply: plies + 1,
@@ -222,16 +212,10 @@ function playStrengthGame({
       winner = sharedState.winner;
       break;
     }
-    const actor =
-      sharedState.activeColor === candidateColor ? "candidate" : "baseline";
+    const actor = sharedState.activeColor === candidateColor ? "candidate" : "baseline";
     const actorBundle = actor === "candidate" ? candidate : baseline;
     const validationBundle = actor === "candidate" ? baseline : candidate;
-    const suggestion = runValidatedSuggestion(
-      actorBundle,
-      validationBundle,
-      fen,
-      mode,
-    );
+    const suggestion = runValidatedSuggestion(actorBundle, validationBundle, fen, mode);
     if (suggestion.ok && typeof suggestion.elapsedMs === "number") {
       samples[sharedState.activeColor].push(suggestion.elapsedMs);
       samples[actor].push(suggestion.elapsedMs);
@@ -325,13 +309,10 @@ function summarizeGames(dimensions, records, pairedUnits) {
     wins: pairedUnits.filter((unit) => unit.outcome === "win").length,
     draws: pairedUnits.filter((unit) => unit.outcome === "draw").length,
     losses: pairedUnits.filter((unit) => unit.outcome === "loss").length,
-    inconclusive: pairedUnits.filter((unit) => unit.outcome === "inconclusive")
+    inconclusive: pairedUnits.filter((unit) => unit.outcome === "inconclusive").length,
+    invalids: pairedUnits.filter((unit) => unit.inconclusiveReason === "invalid")
       .length,
-    invalids: pairedUnits.filter(
-      (unit) => unit.inconclusiveReason === "invalid",
-    ).length,
-    cutoffs: pairedUnits.filter((unit) => unit.inconclusiveReason === "cutoff")
-      .length,
+    cutoffs: pairedUnits.filter((unit) => unit.inconclusiveReason === "cutoff").length,
   };
   const samples = records.reduce(
     (combined, record) => {
@@ -420,9 +401,7 @@ export async function main(arguments_ = process.argv.slice(2)) {
     states: options.get("states"),
     maxPlies: positiveIntegerOption(options, "max-plies", 256, 1024),
   };
-  const outputPath = preflightJsonReportDestination(
-    requiredOption(options, "out"),
-  );
+  const outputPath = preflightJsonReportDestination(requiredOption(options, "out"));
   const report = await runStrengthEvidence(configuration);
   writeJsonReport(outputPath, report);
   console.log(
@@ -449,7 +428,7 @@ const invokedPath = process.argv[1]
   ? pathToFileURL(path.resolve(process.argv[1])).href
   : null;
 if (invokedPath === import.meta.url) {
-  main().catch((error) => {
+  runBundleExecutingCli(main).catch((error) => {
     console.error(error instanceof Error ? error.message : String(error));
     process.exitCode = 1;
   });

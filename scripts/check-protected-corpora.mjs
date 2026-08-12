@@ -101,16 +101,12 @@ for (const [relativePath, expectedHash] of Object.entries(protectedFiles)) {
   const bytes = await readFile(resolve(repositoryRoot, relativePath));
   const actualHash = createHash("sha256").update(bytes).digest("hex");
   if (actualHash !== expectedHash) {
-    failures.push(
-      `${relativePath}: expected ${expectedHash}, got ${actualHash}`,
-    );
+    failures.push(`${relativePath}: expected ${expectedHash}, got ${actualHash}`);
   }
 }
 
 if (failures.length > 0) {
-  throw new Error(
-    `Protected corpus integrity check failed:\n${failures.join("\n")}`,
-  );
+  throw new Error(`Protected corpus integrity check failed:\n${failures.join("\n")}`);
 }
 
 console.log(

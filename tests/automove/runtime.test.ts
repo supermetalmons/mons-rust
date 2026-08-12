@@ -1,12 +1,10 @@
 import { describe, expect, it, vi } from "vitest";
 
-import { AutomoveEngine } from "../../src/automove/automove-engine.js";
-import { selectPackedFastSelection } from "../../src/automove/fast/index.js";
-import { FastSearcher } from "../../src/automove/fast/search.js";
-import {
-  suggestMove,
-  type AutomoveSuggestion,
-} from "../../src/automove/runtime.js";
+import { AutomoveEngine } from "../../src/automove/runtime/engine.js";
+import { selectPackedFastSelection } from "../../src/automove/packed/index.js";
+import { FastSearcher } from "../../src/automove/packed/search.js";
+import { suggestMove } from "../../src/automove/runtime/suggestion.js";
+import type { AutomoveSuggestion } from "../../src/automove/runtime/types.js";
 import {
   deterministicLegalFallbackInputs,
   randomAutomove,
@@ -15,13 +13,13 @@ import {
 import {
   PRODUCTION_FALLBACK_GUARDS,
   PRODUCTION_PRESELECTION_GUARDS,
-} from "../../src/automove/runtime/production-policy.js";
+} from "../../src/automove/runtime/production-policy/guards.js";
 import { selectSearchInputs } from "../../src/automove/runtime/search-selection.js";
-import { automoveConfigForGame } from "../../src/automove/selector-config.js";
-import { GameVariant } from "../../src/engine/config.js";
-import { MAX_INPUTS_PER_MOVE } from "../../src/engine/domain.js";
-import { inputArrayFen, parseInputArrayFen } from "../../src/engine/fen.js";
-import { MonsGame } from "../../src/engine/game.js";
+import { automoveConfigForGame } from "../../src/automove/config/runtime.js";
+import { GameVariant } from "../../src/engine/board/config.js";
+import { MAX_INPUTS_PER_MOVE } from "../../src/engine/model/domain.js";
+import { inputArrayFen, parseInputArrayFen } from "../../src/engine/codec/input.js";
+import { MonsGame } from "../../src/engine/game/mons-game.js";
 
 type StrategicPreference = Parameters<typeof suggestMove>[2];
 
@@ -83,12 +81,8 @@ describe("production automove runtime", () => {
     const engine = new AutomoveEngine({ clock: () => 0 });
     const search = vi.spyOn(FastSearcher.prototype, "search");
     try {
-      expect(expectSourcePureSuggestion("fast", engine).output.kind).toBe(
-        "events",
-      );
-      expect(expectSourcePureSuggestion("normal", engine).output.kind).toBe(
-        "events",
-      );
+      expect(expectSourcePureSuggestion("fast", engine).output.kind).toBe("events");
+      expect(expectSourcePureSuggestion("normal", engine).output.kind).toBe("events");
       expect(search.mock.calls.map(([limits]) => limits.maxNodes)).toEqual([
         30_000, 150_000,
       ]);
@@ -161,15 +155,12 @@ describe("production automove runtime", () => {
 
         expect(suggestion.inputFen, preference).toBe(inputArrayFen(canonical));
         expect(suggestion.output.kind, preference).toBe("events");
-        expect(
-          game.fork().processInput(canonical, false, false),
-          preference,
-        ).toEqual(suggestion.output);
+        expect(game.fork().processInput(canonical, false, false), preference).toEqual(
+          suggestion.output,
+        );
         expect(game.fen(), preference).toBe(sourceFen);
         expect(game.takebackFens, preference).toEqual(sourceHistory);
-        expect(game.verboseTrackingEntities, preference).toEqual(
-          sourceTracking,
-        );
+        expect(game.verboseTrackingEntities, preference).toEqual(sourceTracking);
       }
       expect(search).not.toHaveBeenCalled();
     } finally {
@@ -269,16 +260,12 @@ describe("production automove runtime", () => {
     const openingManaMove = parseInputArrayFen("l7,4;l6,4");
     expect(openingManaMove).toBeDefined();
     if (openingManaMove === undefined) return;
-    expect(game.processInput(openingManaMove, false, false).kind).toBe(
-      "events",
-    );
+    expect(game.processInput(openingManaMove, false, false).kind).toBe("events");
     expect(game.turnNumber).toBe(Number.MAX_SAFE_INTEGER);
 
     const fallback = deterministicLegalFallbackInputs(game);
     expect(inputArrayFen(fallback)).toBe("l0,3;l0,2");
-    expect(game.fork().processInput(fallback, false, false).kind).toBe(
-      "events",
-    );
+    expect(game.fork().processInput(fallback, false, false).kind).toBe("events");
   });
 
   it("keeps every generated input chain within the engine codec limit", () => {

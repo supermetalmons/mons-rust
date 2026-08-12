@@ -1,10 +1,10 @@
 import { describe, expect, it, vi } from "vitest";
 
-import { BOARD_SIZE } from "../../src/engine/config.js";
-import { GameVariant } from "../../src/engine/config.js";
-import { Color, type Input } from "../../src/engine/domain.js";
-import { MonsGame } from "../../src/engine/game.js";
-import { MIN_SCORE } from "../../src/automove/score-math.js";
+import { BOARD_SIZE } from "../../src/engine/board/geometry.js";
+import { GameVariant } from "../../src/engine/board/config.js";
+import { Color, type Input } from "../../src/engine/model/domain.js";
+import { MonsGame } from "../../src/engine/game/mons-game.js";
+import { MIN_SCORE } from "../../src/automove/core/score-math.js";
 import {
   compareRankedRootIndices,
   compareTacticalRootCandidates,
@@ -12,15 +12,17 @@ import {
   prioritizeRootInputs,
   rootProgressStepsBetter,
   rootScorePathStepsBetter,
-  type RootFocusCandidate,
-  type RootFocusConfig,
-  type RootFocusMoveClassFlags,
-} from "../../src/automove/root-focus.js";
+} from "../../src/automove/root/focus.js";
+import type {
+  RootFocusCandidate,
+  RootFocusConfig,
+  RootFocusMoveClassFlags,
+} from "../../src/automove/root/focus-model.js";
+import { automoveConfigForGame } from "../../src/automove/config/runtime.js";
 import {
-  automoveConfigForGame,
   patchAutomoveConfig,
   type AutomoveConfigPatch,
-} from "../../src/automove/selector-config.js";
+} from "../../src/automove/config/patch.js";
 
 type TestCandidate = RootFocusCandidate & {
   readonly id: string;
@@ -88,10 +90,7 @@ function candidate(
 }
 
 function config(patch: AutomoveConfigPatch = {}): RootFocusConfig {
-  const base = automoveConfigForGame(
-    new MonsGame(false, GameVariant.Classic),
-    "pro",
-  );
+  const base = automoveConfigForGame(new MonsGame(false, GameVariant.Classic), "pro");
   return patchAutomoveConfig(base, {
     budget: { depth: 4, maxVisitedNodes: 1_000, ...patch.budget },
     search: {
@@ -166,13 +165,10 @@ describe("root focus ordering", () => {
       candidate("c", 2),
       candidate("d", 3),
     ];
-    const input = (index: number): readonly Input[] =>
-      roots[index]?.inputs ?? [];
+    const input = (index: number): readonly Input[] => roots[index]?.inputs ?? [];
 
     expect(
-      ids(
-        prioritizeRootInputs(roots, [input(2), input(1), input(2)], input(3)),
-      ),
+      ids(prioritizeRootInputs(roots, [input(2), input(1), input(2)], input(3))),
     ).toEqual(["d", "c", "b", "a"]);
   });
 });

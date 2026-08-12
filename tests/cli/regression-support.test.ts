@@ -43,9 +43,7 @@ describe("canonical rules records", () => {
       parseCanonicalRuleTestCase(
         '{"fenBefore":"before","fenAfter":"after","inputFen":"l1,2","outputFen":"i"}',
       ),
-    ).toThrow(
-      'fixture keys must be ["fenAfter","fenBefore","inputFen","outputFen"]',
-    );
+    ).toThrow('fixture keys must be ["fenAfter","fenBefore","inputFen","outputFen"]');
     expect(() =>
       parseCanonicalRuleTestCase(
         '{"fenAfter":"after","fenBefore":"before","inputFen":1,"outputFen":"i"}',
@@ -88,9 +86,9 @@ describe("terminal event membership", () => {
   });
 
   it("returns the established diagnostics for missing or extra terminals", () => {
-    expect(
-      terminalEventMembershipError([{ kind: "game-over" }], undefined),
-    ).toBe("a non-final input emitted a turn-terminal event");
+    expect(terminalEventMembershipError([{ kind: "game-over" }], undefined)).toBe(
+      "a non-final input emitted a turn-terminal event",
+    );
     expect(
       terminalEventMembershipError(
         [{ kind: "next-turn" }, { kind: "next-turn" }],

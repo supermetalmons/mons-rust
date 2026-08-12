@@ -1,17 +1,16 @@
 import { describe, expect, it } from "vitest";
 
+import { defaultColorSummary } from "../../src/automove/exact/types.js";
+import { clearExactStateAnalysisCache } from "../../src/automove/exact/cache.js";
+import { exactBoardHash, exactSearchStateHash } from "../../src/automove/exact/hash.js";
+import { exactOwnDrainerSafetyScoreWithHash } from "../../src/automove/exact/drainer-safety.js";
 import {
-  clearExactStateAnalysisCache,
-  defaultColorSummary,
-  exactBoardHash,
-  exactOwnDrainerSafetyScoreWithHash,
   exactOpportunityContext,
-  exactSearchStateHash,
-  exactStrategicAnalysis,
   exactTurnSummary,
-} from "../../src/automove/exact.js";
-import { applyInputsForSearchWithEvents } from "../../src/automove/transitions.js";
-import { GameVariant } from "../../src/engine/config.js";
+} from "../../src/automove/exact/turn-opportunity.js";
+import { exactStrategicAnalysis } from "../../src/automove/exact/strategic.js";
+import { applyInputsForSearchWithEvents } from "../../src/automove/transitions/simulation.js";
+import { GameVariant } from "../../src/engine/board/config.js";
 import {
   Color,
   Consumable,
@@ -23,8 +22,8 @@ import {
   regularMana,
   type Input,
   type Item,
-} from "../../src/engine/domain.js";
-import { MonsGame } from "../../src/engine/game.js";
+} from "../../src/engine/model/domain.js";
+import { MonsGame } from "../../src/engine/game/mons-game.js";
 import { createTestAutomoveExecutionContext } from "./execution-context.test-helper.js";
 
 const OPENING_MOVE: readonly Input[] = [
@@ -77,10 +76,7 @@ describe("exact analysis execution state", () => {
     const drainerBase = awake.board.base(whiteDrainer);
     const cooling = awake.copy();
     const coolingBoard = cooling.board.fork();
-    coolingBoard.set(
-      drainerBase,
-      monItem(createMon(MonKind.Drainer, Color.White, 1)),
-    );
+    coolingBoard.set(drainerBase, monItem(createMon(MonKind.Drainer, Color.White, 1)));
     cooling.replaceBoardItems(coolingBoard.entries());
 
     const safety = (

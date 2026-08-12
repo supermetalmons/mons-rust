@@ -1,12 +1,9 @@
-import { AutomoveEngine } from "../automove/automove-engine.js";
-import { suggestMove as suggestAutomove } from "../automove/runtime.js";
-import type { Input as EngineInput } from "../engine/domain.js";
-import {
-  eventArrayFen,
-  inputArrayFen,
-  parseInputArrayFen,
-} from "../engine/fen.js";
-import { MonsGame } from "../engine/game.js";
+import { AutomoveEngine } from "../automove/runtime/engine.js";
+import { suggestMove as suggestAutomove } from "../automove/runtime/suggestion.js";
+import type { Input as EngineInput } from "../engine/model/domain.js";
+import { inputArrayFen, parseInputArrayFen } from "../engine/codec/input.js";
+import { eventArrayFen } from "../engine/codec/output-event.js";
+import { MonsGame } from "../engine/game/mons-game.js";
 import {
   availableMoveCountsFromEngine,
   fromEngineEvent,
@@ -146,16 +143,10 @@ export class Game {
       inputs.length === 1 && inputs[0]?.kind === "takeback"
         ? this.#engine.copy()
         : this.#engine.fork();
-    return fromEngineOutput(
-      simulation.processInput(inputs, false, false),
-      inputFen,
-    );
+    return fromEngineOutput(simulation.processInput(inputs, false, false), inputFen);
   }
 
-  #playEngineInputs(
-    inputs: readonly EngineInput[],
-    inputFen: string,
-  ): PlayResult {
+  #playEngineInputs(inputs: readonly EngineInput[], inputFen: string): PlayResult {
     const result = fromEngineOutput(
       this.#engine.processInput(inputs, false, false),
       inputFen,
@@ -169,9 +160,7 @@ export class Game {
   }
 
   public squareAt(position: Position): Square {
-    return fromEngineSquare(
-      this.#engine.board.squareAt(toEnginePosition(position)),
-    );
+    return fromEngineSquare(this.#engine.board.squareAt(toEnginePosition(position)));
   }
 
   public contentPositions(): readonly Position[] {
@@ -221,15 +210,12 @@ export class Game {
       return undefined;
     }
     const restoredTakebackFens =
-      restoredTakebackIndex < 0
-        ? []
-        : takebackFens.slice(0, restoredTakebackIndex + 1);
+      restoredTakebackIndex < 0 ? [] : takebackFens.slice(0, restoredTakebackIndex + 1);
     if (
       restoredTakebackFens.some((fen) => {
         const historyGame = MonsGame.fromFen(fen, false);
         return (
-          historyGame?.fen() !== fen ||
-          historyGame.variant() !== restored.variant()
+          historyGame?.fen() !== fen || historyGame.variant() !== restored.variant()
         );
       })
     ) {
@@ -246,15 +232,8 @@ export class Game {
 
   public verifyHistory(history: MoveHistory): boolean {
     const verification = new MonsGame(true, this.#engine.variant());
-    const replay = replayInterleavedMoves(
-      verification,
-      history.white,
-      history.black,
-    );
-    if (
-      replay.status !== "complete" ||
-      verification.fen() !== this.#engine.fen()
-    ) {
+    const replay = replayInterleavedMoves(verification, history.white, history.black);
+    if (replay.status !== "complete" || verification.fen() !== this.#engine.fen()) {
       return false;
     }
 
@@ -274,13 +253,9 @@ export class Game {
     return availableMoveCountsFromEngine(this.#engine.availableMoveKinds());
   }
 
-  public suggestMove(
-    preference: StrategicPreference,
-  ): MoveSuggestion | undefined {
+  public suggestMove(preference: StrategicPreference): MoveSuggestion | undefined {
     if (!isAutomovePreference(preference)) {
-      throw new TypeError(
-        `unsupported automove preference: ${String(preference)}`,
-      );
+      throw new TypeError(`unsupported automove preference: ${String(preference)}`);
     }
     const suggestion = this.#automoveEngine.run((execution) =>
       suggestAutomove(execution, this.#engine, preference),

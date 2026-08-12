@@ -1,26 +1,26 @@
 import { describe, expect, it, vi } from "vitest";
 
-import { GameVariant } from "../../src/engine/config.js";
-import { Color, inputChainsEqual } from "../../src/engine/domain.js";
-import { parseGameFen } from "../../src/engine/fen.js";
-import { MonsGame } from "../../src/engine/game.js";
-import type { ReplyRiskHooks } from "../../src/automove/reply-risk.js";
-import { rankRootCandidates } from "../../src/automove/root-candidates.js";
-import { rootFamily } from "../../src/automove/root-family.js";
-import type { EvaluatedRoot } from "../../src/automove/search.js";
+import { GameVariant } from "../../src/engine/board/config.js";
+import { Color, inputChainsEqual } from "../../src/engine/model/domain.js";
+import { parseGameFen } from "../../src/engine/codec/game-board.js";
+import { MonsGame } from "../../src/engine/game/mons-game.js";
+import type { ReplyRiskHooks } from "../../src/automove/policy/reply-risk/types.js";
+import { rankRootCandidates } from "../../src/automove/root/candidates.js";
+import { rootFamily } from "../../src/automove/root/family.js";
+import type { EvaluatedRoot } from "../../src/automove/root/types.js";
 import {
   automoveConfigForGame,
-  patchAutomoveConfig,
   withProductionPlanner,
-} from "../../src/automove/selector-config.js";
-import { acceptTurnEngineHeadAfterSearch } from "../../src/automove/production-selector.js";
-import type { AutomoveConfig } from "../../src/automove/selector-types.js";
+} from "../../src/automove/config/runtime.js";
+import { patchAutomoveConfig } from "../../src/automove/config/patch.js";
+import { acceptTurnEngineHeadAfterSearch } from "../../src/automove/policy/production/head-acceptance.js";
+import type { AutomoveConfig } from "../../src/automove/config/types.js";
 import {
   EMPTY_TURN_UTILITY,
   TurnPlanFamily,
   createTurnUtility,
   type TurnPlan,
-} from "../../src/automove/turn-engine.js";
+} from "../../src/automove/turn/model.js";
 import { createTestAutomoveExecutionContext } from "./execution-context.test-helper.js";
 
 type RootPair = {
@@ -168,8 +168,7 @@ function spiritFixture(
     throw new Error("initial game must have a parseable FEN");
   }
   const game = MonsGame.newSimulationState({ ...state, turnNumber });
-  const { config, hooks, evaluateTurnEngineRootUtility } =
-    productionConfig(game);
+  const { config, hooks, evaluateTurnEngineRootUtility } = productionConfig(game);
   const pair = neutralRootPair(game, config);
   const candidate: EvaluatedRoot = {
     ...pair.candidate,
@@ -209,8 +208,7 @@ function expectSpiritDecisionWithoutMutation(
   const sourceFen = game.fen();
   const candidateFen = candidate.game.fen();
   const selectedFen = selected.game.fen();
-  const fork =
-    expectedForkCount === undefined ? undefined : vi.spyOn(game, "fork");
+  const fork = expectedForkCount === undefined ? undefined : vi.spyOn(game, "fork");
 
   expect(
     acceptTurnEngineHeadAfterSearch(
@@ -283,9 +281,7 @@ describe("turn-engine head acceptance", () => {
     const pair = rootPair(game, config);
     const sourceFen = game.fen();
     const candidateFens = [pair.candidate.game.fen(), pair.selected.game.fen()];
-    expect(inputChainsEqual(pair.candidate.inputs, pair.selected.inputs)).toBe(
-      false,
-    );
+    expect(inputChainsEqual(pair.candidate.inputs, pair.selected.inputs)).toBe(false);
 
     const accepted = acceptTurnEngineHeadAfterSearch(
       createTestAutomoveExecutionContext(),
