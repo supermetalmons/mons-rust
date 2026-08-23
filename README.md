@@ -32,7 +32,7 @@ can vary with runtime, JIT, cache, and garbage-collection timing. Suggestions
 remain legal and do not mutate the source game. Environments without `WeakRef`
 use the canonical Fast and Normal selectors instead of the packed search path.
 
-Published JavaScript targets ES2020 and uses Web-standard `performance` and
+Published JavaScript targets ES2022 and uses Web-standard `performance` and
 `crypto` globals. Node.js 22.13 through 22.x, or Node.js 24 or newer, is
 required for Node consumers and repository tooling.
 

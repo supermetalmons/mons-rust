@@ -6,11 +6,19 @@ import { describe, expect, it } from "vitest";
 
 const repositoryRoot = path.resolve(import.meta.dirname, "../..");
 const sourceRoot = path.join(repositoryRoot, "src");
-const maximumSourceLines = 47_224;
+const maximumSourceLines = 47_231;
 const preferredMaximumModuleLines = 600;
 const maximumModuleLines = 800;
 
 const largeModuleReasons = new Map<string, string>([
+  [
+    "automove/packed/evaluation.ts",
+    "One allocation-free pass over the packed position, where every term reads accumulators the same loops already build.",
+  ],
+  [
+    "automove/packed/moves.ts",
+    "One allocation-free generator pass per move family, sharing the packed move buffer and its ordering keys.",
+  ],
   [
     "automove/packed/search.ts",
     "Allocation-neutral packed PVS and negamax with shared timeout and node accounting.",

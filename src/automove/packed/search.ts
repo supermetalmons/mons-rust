@@ -4,58 +4,44 @@ import {
   MANA_MOVES_PER_TURN,
   MONS_MOVES_PER_TURN,
 } from "../../engine/board/config.js";
-import {
-  COLOR_COUNT,
-  KIND_DRAINER,
-  OCC_CONS,
-  OCC_MANA,
-  POOL_DISTANCE,
-  Z_SCALAR_HI,
-  Z_SCALAR_LO,
-  cellMana,
-  cellMonKind,
-  cellOccupancy,
-  at,
-  i32,
-  manaScoreValue,
-  squareIsPool,
-  u16,
-  u8,
-} from "./board.js";
+import { COLOR_COUNT, Z_SCALAR_HI, Z_SCALAR_LO, at, i32, u8 } from "./board.js";
+import { WIN_VALUE, evaluateWithTables } from "./evaluation.js";
 import {
   DEFAULT_EVAL_TABLES,
   DEFAULT_WEIGHTS,
-  WIN_VALUE,
-  createEvalTables,
-  evaluateWithTables,
-  normalizeEvalWeights,
+  memoizedEvalTables,
+  memoizedNormalizedEvalWeights,
   type EvalTables,
   type EvalWeights,
-} from "./evaluation.js";
+} from "./evaluation-weights.js";
 import { MAX_MOVES, generateMoves } from "./moves.js";
 import {
   FastPosition,
-  MOVE_BOMB,
-  MOVE_DEMON,
-  MOVE_MANA,
-  MOVE_MON,
-  MOVE_MYSTIC,
-  MOVE_SPIRIT,
   FAST_MOVE_UNREPRESENTABLE,
+  MOVE_MON,
   applyFastMove,
-  moveAux,
   moveFrom,
   moveTo,
   moveType,
   positionWinner,
 } from "./state.js";
+import {
+  DEFAULT_TUNING,
+  MAX_NONTERMINAL_SCORE,
+  MAX_PLY,
+  memoizedSearchLimits,
+  type NormalizedSearchTuning,
+  type SearchLimits,
+} from "./search-tuning.js";
 import { TranspositionTable } from "./transposition.js";
 
-const MAX_PLY = 48;
+const EVAL_CACHE_BITS = 16;
+const EVAL_CACHE_ENTRIES = 1 << EVAL_CACHE_BITS;
+const EVAL_CACHE_MASK = EVAL_CACHE_ENTRIES - 1;
+const EVAL_CACHE_EPOCH_LIMIT = 1 << 30;
 const FLAG_EXACT = 0;
 const FLAG_LOWER = 1;
 const FLAG_UPPER = 2;
-const FLAG_MOVE_ONLY = 3;
 const INFO_SELECTIVE = 1 << 30;
 const TABLE_GENERATION_MASK = 0x3f_ffff;
 const TIMEOUT_CHECK_MASK = 511;
@@ -64,9 +50,7 @@ const KEY_TT = 1 << 28;
 const KEY_KILLER_A = 1 << 24;
 const KEY_KILLER_B = 1 << 23;
 const INFINITY_SCORE = WIN_VALUE * 2;
-const MAX_NONTERMINAL_SCORE = WIN_VALUE - MAX_PLY - 1;
 const NO_TIMEOUT = (): boolean => false;
-export const MAX_SEARCH_DEPTH = MAX_PLY - 2;
 const ACTIVE_STATES = COLOR_COUNT;
 const MONS_MOVE_STATES = MONS_MOVES_PER_TURN + 1;
 const MANA_MOVE_STATES = MANA_MOVES_PER_TURN + 1;
@@ -91,39 +75,17 @@ if (
   );
 }
 
-type SearchTuning = {
-  readonly lateMoveReduction: boolean;
-  readonly lateMoveIndex: number;
-  readonly lateMoveDeepIndex: number;
-  readonly moveCountPruning: boolean;
-  readonly moveCountDepth: number;
-  readonly moveCountBase: number;
-  readonly moveCountFactor: number;
-  readonly futilityMargin: number;
-};
-
-const DEFAULT_TUNING: SearchTuning = Object.freeze({
-  lateMoveReduction: true,
-  lateMoveIndex: 3,
-  lateMoveDeepIndex: 8,
-  moveCountPruning: true,
-  moveCountDepth: 3,
-  moveCountBase: 4,
-  moveCountFactor: 5,
-  futilityMargin: 900,
-});
-
-export type SearchLimits = {
-  readonly maxDepth: number;
-  readonly maxNodes: number;
-  readonly tuning?: SearchTuning;
-};
-
-type NormalizedSearchLimits = {
-  readonly maxDepth: number;
-  readonly maxNodes: number;
-  readonly tuning: SearchTuning;
-};
+function sameSquares(
+  previous: ArrayLike<number> | undefined,
+  current: ArrayLike<number>,
+): boolean {
+  if (previous === current) return true;
+  if (previous?.length !== current.length) return false;
+  for (let index = 0; index < current.length; index += 1) {
+    if (u8(previous, index) !== u8(current, index)) return false;
+  }
+  return true;
+}
 
 type SearchOutcome = {
   readonly move: number;
@@ -139,82 +101,6 @@ type RootSearchOutcome = {
   readonly selective: boolean;
 };
 
-export function normalizeSearchLimits(limits: unknown): NormalizedSearchLimits {
-  if (typeof limits !== "object" || limits === null || Array.isArray(limits)) {
-    throw new TypeError("fast search limits must be an object");
-  }
-  const values = limits as Readonly<Record<string, unknown>>;
-  const maxDepth = values["maxDepth"];
-  if (
-    !Number.isSafeInteger(maxDepth) ||
-    (maxDepth as number) < 0 ||
-    (maxDepth as number) > MAX_SEARCH_DEPTH
-  ) {
-    throw new RangeError(
-      `maxDepth must be a safe integer from 0 through ${MAX_SEARCH_DEPTH}`,
-    );
-  }
-  const maxNodes = values["maxNodes"];
-  if (!Number.isSafeInteger(maxNodes) || (maxNodes as number) < 0) {
-    throw new RangeError("maxNodes must be a nonnegative safe integer");
-  }
-  const tuning = values["tuning"];
-  return Object.freeze({
-    maxDepth: maxDepth as number,
-    maxNodes: maxNodes as number,
-    tuning: tuning === undefined ? DEFAULT_TUNING : normalizeSearchTuning(tuning),
-  });
-}
-
-function normalizeSearchTuning(tuning: unknown): SearchTuning {
-  if (typeof tuning !== "object" || tuning === null || Array.isArray(tuning)) {
-    throw new TypeError("fast search tuning must be an object");
-  }
-  const values = tuning as Readonly<Record<string, unknown>>;
-  return Object.freeze({
-    lateMoveReduction: normalizedTuningBoolean(values, "lateMoveReduction"),
-    lateMoveIndex: normalizedTuningInteger(values, "lateMoveIndex", MAX_MOVES),
-    lateMoveDeepIndex: normalizedTuningInteger(values, "lateMoveDeepIndex", MAX_MOVES),
-    moveCountPruning: normalizedTuningBoolean(values, "moveCountPruning"),
-    moveCountDepth: normalizedTuningInteger(values, "moveCountDepth", MAX_SEARCH_DEPTH),
-    moveCountBase: normalizedTuningInteger(values, "moveCountBase", MAX_MOVES),
-    moveCountFactor: normalizedTuningInteger(values, "moveCountFactor", MAX_MOVES),
-    futilityMargin: normalizedTuningInteger(
-      values,
-      "futilityMargin",
-      MAX_NONTERMINAL_SCORE,
-    ),
-  });
-}
-
-function normalizedTuningBoolean(
-  tuning: Readonly<Record<string, unknown>>,
-  key: keyof SearchTuning,
-): boolean {
-  const value = tuning[key];
-  if (typeof value !== "boolean") {
-    throw new TypeError(`tuning.${key} must be a boolean`);
-  }
-  return value;
-}
-
-function normalizedTuningInteger(
-  tuning: Readonly<Record<string, unknown>>,
-  key: keyof SearchTuning,
-  maximum: number,
-): number {
-  const value = tuning[key];
-  if (typeof value !== "number") {
-    throw new TypeError(`tuning.${key} must be a number`);
-  }
-  if (!Number.isSafeInteger(value) || value < 0 || value > maximum) {
-    throw new RangeError(
-      `tuning.${key} must be a safe integer from 0 through ${maximum}`,
-    );
-  }
-  return value;
-}
-
 export class FastSearcher {
   readonly #positions: FastPosition[] = [];
   readonly #moves: Int32Array[] = [];
@@ -222,8 +108,18 @@ export class FastSearcher {
   readonly #table: TranspositionTable;
   readonly #killers = new Int32Array(MAX_PLY * 2);
   readonly #history = new Int32Array(COLOR_COUNT * BOARD_CELLS * BOARD_CELLS);
+  readonly #moveAtPly = new Int32Array(MAX_PLY + 1);
+  readonly #evalKeyLo = new Int32Array(EVAL_CACHE_ENTRIES);
+  readonly #evalKeyHi = new Int32Array(EVAL_CACHE_ENTRIES);
+  readonly #evalEpochs = new Int32Array(EVAL_CACHE_ENTRIES);
+  readonly #evalValues = new Float64Array(EVAL_CACHE_ENTRIES);
+  #evalEpoch = 0;
+  #evalCacheWeights: EvalWeights | undefined;
+  #evalCacheThreat = 0;
+  #evalCacheSquares: ArrayLike<number> | undefined;
   #tables: EvalTables = DEFAULT_EVAL_TABLES;
-  #tuning: SearchTuning = DEFAULT_TUNING;
+  #tuning: NormalizedSearchTuning = DEFAULT_TUNING;
+  #windowThreat = 0;
   #nodes = 0;
   #nodeLimit = 0;
   #stopped = false;
@@ -253,8 +149,8 @@ export class FastSearcher {
     checkTimeout: () => boolean,
     weights: EvalWeights = DEFAULT_WEIGHTS,
   ): SearchOutcome {
-    const normalizedLimits = normalizeSearchLimits(limits);
-    const normalizedWeights = normalizeEvalWeights(weights);
+    const normalizedLimits = memoizedSearchLimits(limits);
+    const normalizedWeights = memoizedNormalizedEvalWeights(weights);
     this.#unsupported = false;
     this.#selectiveEpoch = 0;
     if (positionWinner(this.root) !== -1) {
@@ -267,8 +163,28 @@ export class FastSearcher {
       };
     }
 
-    this.#tables = createEvalTables(normalizedWeights);
-    this.#tuning = normalizedLimits.tuning;
+    this.#tables = memoizedEvalTables(normalizedWeights);
+    const tuning = normalizedLimits.tuning;
+    this.#tuning = tuning;
+    this.#windowThreat = tuning.winsNextTurnThreat;
+    // Cached evaluations stay valid across searches: the cache key covers the whole
+    // position, so entries only go stale when the weights, the tuning's evaluation
+    // term, or the variant's static square layout change.
+    const squaresChanged = !sameSquares(this.#evalCacheSquares, this.root.squares);
+    if (
+      normalizedWeights !== this.#evalCacheWeights ||
+      tuning.winsNextTurnThreat !== this.#evalCacheThreat ||
+      squaresChanged
+    ) {
+      this.#evalCacheWeights = normalizedWeights;
+      this.#evalCacheThreat = tuning.winsNextTurnThreat;
+      this.#evalCacheSquares = this.root.squares;
+      if (this.#evalEpoch >= EVAL_CACHE_EPOCH_LIMIT) {
+        this.#evalEpoch = 0;
+        this.#evalEpochs.fill(0);
+      }
+      this.#evalEpoch += 1;
+    }
     this.#nodes = 0;
     this.#nodeLimit = normalizedLimits.maxNodes;
     this.#stopped = false;
@@ -292,7 +208,34 @@ export class FastSearcher {
           }
           this.#advanceTableGeneration();
         }
-        const outcome = this.#searchRoot(depth, bestMove);
+        let alphaStart = -INFINITY_SCORE;
+        let betaStart = INFINITY_SCORE;
+        if (
+          tuning.aspirationDelta > 0 &&
+          completedDepth > 0 &&
+          depth >= tuning.aspirationMinDepth
+        ) {
+          alphaStart = bestScore - tuning.aspirationDelta;
+          betaStart = bestScore + tuning.aspirationDelta;
+        }
+        let outcome = this.#searchRoot(depth, bestMove, alphaStart, betaStart);
+        let widenings = 0;
+        while (
+          !this.#isStopped() &&
+          outcome.move !== 0 &&
+          (outcome.score <= alphaStart || outcome.score >= betaStart) &&
+          (alphaStart > -INFINITY_SCORE || betaStart < INFINITY_SCORE)
+        ) {
+          widenings += 1;
+          const widened = tuning.aspirationDelta * (1 << widenings);
+          if (outcome.score <= alphaStart) {
+            alphaStart = widenings >= 2 ? -INFINITY_SCORE : outcome.score - widened;
+          }
+          if (outcome.score >= betaStart) {
+            betaStart = widenings >= 2 ? INFINITY_SCORE : outcome.score + widened;
+          }
+          outcome = this.#searchRoot(depth, outcome.move, alphaStart, betaStart);
+        }
         if (outcome.move === 0) break;
         if (this.#isStopped()) {
           if (completedDepth === 0) {
@@ -317,6 +260,7 @@ export class FastSearcher {
       this.#table.deactivate();
       this.#tables = DEFAULT_EVAL_TABLES;
       this.#tuning = DEFAULT_TUNING;
+      this.#windowThreat = 0;
       this.#checkTimeout = NO_TIMEOUT;
     }
   }
@@ -326,10 +270,15 @@ export class FastSearcher {
     if (this.#table.generation > TABLE_GENERATION_MASK) this.#table.clear();
   }
 
-  #searchRoot(depth: number, previousBest: number): RootSearchOutcome {
+  #searchRoot(
+    depth: number,
+    previousBest: number,
+    alphaStart: number,
+    betaStart: number,
+  ): RootSearchOutcome {
     const position = at(this.#positions, 0);
     const buffer = at(this.#moves, 0);
-    const count = generateMoves(position, buffer);
+    const count = generateMoves(position, buffer, at(this.#orderKeys, 0));
     if (count === 0) {
       return {
         move: 0,
@@ -340,7 +289,7 @@ export class FastSearcher {
     this.#orderMoves(position, buffer, count, 0, previousBest);
     const rootKeys = at(this.#orderKeys, 0);
 
-    let alpha = -INFINITY_SCORE;
+    let alpha = alphaStart;
     let bestMove = 0;
     let bestScore = -INFINITY_SCORE;
     let bestSelective = false;
@@ -351,14 +300,14 @@ export class FastSearcher {
       let selectiveEpoch = this.#selectiveEpoch;
       let selective: boolean;
       if (index === 0) {
-        score = this.#child(position, move, 0, depth - 1, alpha, INFINITY_SCORE);
+        score = this.#child(position, move, 0, depth - 1, alpha, betaStart);
         selective = this.#selectiveEpoch !== selectiveEpoch;
       } else {
         score = this.#child(position, move, 0, depth - 1, alpha, alpha + 1);
         selective = this.#selectiveEpoch !== selectiveEpoch;
         if (score > alpha && !this.#isStopped()) {
           selectiveEpoch = this.#selectiveEpoch;
-          score = this.#child(position, move, 0, depth - 1, alpha, INFINITY_SCORE);
+          score = this.#child(position, move, 0, depth - 1, alpha, betaStart);
           selective = this.#selectiveEpoch !== selectiveEpoch;
         }
       }
@@ -369,6 +318,7 @@ export class FastSearcher {
         bestSelective = selective;
         if (score > alpha) alpha = score;
       }
+      if (alpha >= betaStart) break;
     }
     if (bestMove === 0) {
       bestMove = i32(buffer, 0);
@@ -392,6 +342,7 @@ export class FastSearcher {
   ): number {
     const child = at(this.#positions, ply + 1);
     child.copyFrom(parent);
+    this.#moveAtPly[ply] = move;
     const winner = applyFastMove(child, move);
     if (winner === FAST_MOVE_UNREPRESENTABLE) {
       this.#unsupported = true;
@@ -442,13 +393,16 @@ export class FastSearcher {
       }
     }
 
+    const tuning = this.#tuning;
     const buffer = at(this.#moves, ply);
-    const count = generateMoves(position, buffer);
-    if (count === 0) return this.#staticScore(position);
+    let count = generateMoves(position, buffer, at(this.#orderKeys, ply));
+    if (count === 0) return this.#staticScore(position, keyLo, keyHi);
+    if (ply > 0) {
+      count = this.#filterCommutingMonMoves(position, buffer, count, ply);
+    }
     this.#orderMoves(position, buffer, count, ply, ttMove);
     const keys = at(this.#orderKeys, ply);
 
-    const tuning = this.#tuning;
     let moveLimit = count;
     if (tuning.moveCountPruning && depth <= tuning.moveCountDepth) {
       const allowed = tuning.moveCountBase + tuning.moveCountFactor * depth;
@@ -473,7 +427,8 @@ export class FastSearcher {
         if (!pruned && futilityEnabled) {
           if (!futilityKnown) {
             futile =
-              this.#evaluateStatic(position) + tuning.futilityMargin * depth <=
+              this.#evaluateStatic(position, keyLo, keyHi) +
+                tuning.futilityMargin * depth <=
               alphaInput;
             futilityKnown = true;
           }
@@ -527,14 +482,16 @@ export class FastSearcher {
     if (bestMove === 0) return this.#staticScore(position);
 
     const subtreeSelective = this.#selectiveEpoch !== selectiveEpoch;
-    const flag = selectivelyPruned
-      ? FLAG_MOVE_ONLY
-      : bestScore >= beta
+    // A selectively pruned node proves only what its searched moves scored: a value above
+    // alpha is a lower bound (the pruned moves could raise it further) and a fail-low is
+    // stored as the upper bound the pruning itself assumed, so such an entry is never exact.
+    const flag =
+      bestScore >= beta || (selectivelyPruned && bestScore > alphaInput)
         ? FLAG_LOWER
         : bestScore <= alphaInput
           ? FLAG_UPPER
           : FLAG_EXACT;
-    const entryDepth = selectivelyPruned ? 0 : depth;
+    const entryDepth = depth;
     if (bestScore < WIN_VALUE - MAX_PLY && bestScore > -WIN_VALUE + MAX_PLY) {
       const storedDepth = (slotInfo >> 2) & 63;
       if (!slotMatches || entryDepth >= storedDepth) {
@@ -555,6 +512,47 @@ export class FastSearcher {
     return bestScore;
   }
 
+  // Mon sub-moves on four distinct squares commute exactly, so every permutation of a
+  // commuting chain reaches the same position; keeping only the ascending order removes
+  // the duplicates at the source while every set of moves stays reachable.
+  #filterCommutingMonMoves(
+    position: FastPosition,
+    buffer: Int32Array,
+    count: number,
+    ply: number,
+  ): number {
+    const previous = i32(this.#moveAtPly, ply - 1);
+    if (
+      moveType(previous) !== MOVE_MON ||
+      at(this.#positions, ply - 1).active !== position.active
+    ) {
+      return count;
+    }
+    const previousFrom = moveFrom(previous);
+    const previousTo = moveTo(previous);
+    const keys = at(this.#orderKeys, ply);
+    let write = 0;
+    for (let read = 0; read < count; read += 1) {
+      const move = i32(buffer, read);
+      if (moveType(move) === MOVE_MON && move < previous) {
+        const from = moveFrom(move);
+        const to = moveTo(move);
+        if (
+          from !== previousFrom &&
+          from !== previousTo &&
+          to !== previousFrom &&
+          to !== previousTo
+        ) {
+          continue;
+        }
+      }
+      buffer[write] = move;
+      keys[write] = i32(keys, read);
+      write += 1;
+    }
+    return write === 0 ? count : write;
+  }
+
   #isStopped(): boolean {
     return this.#stopped;
   }
@@ -573,17 +571,46 @@ export class FastSearcher {
     return true;
   }
 
-  #evaluateStatic(position: FastPosition): number {
-    const value = evaluateWithTables(position, this.#tables);
+  #evaluateStatic(
+    position: FastPosition,
+    precomputedKeyLo?: number,
+    precomputedKeyHi?: number,
+  ): number {
+    let keyLo = precomputedKeyLo;
+    let keyHi = precomputedKeyHi;
+    if (keyLo === undefined || keyHi === undefined) {
+      const scalar = scalarIndex(position);
+      keyLo = stateKeyLo(position, scalar);
+      keyHi = stateKeyHi(position, scalar);
+    }
+    const slot = (keyLo ^ (keyHi * 3)) & EVAL_CACHE_MASK;
+    let value: number;
+    if (
+      i32(this.#evalEpochs, slot) === this.#evalEpoch &&
+      i32(this.#evalKeyLo, slot) === keyLo &&
+      i32(this.#evalKeyHi, slot) === keyHi
+    ) {
+      value = this.#evalValues[slot] ?? 0;
+    } else {
+      value = evaluateWithTables(position, this.#tables, this.#windowThreat);
+      this.#evalKeyLo[slot] = keyLo;
+      this.#evalKeyHi[slot] = keyHi;
+      this.#evalValues[slot] = value;
+      this.#evalEpochs[slot] = this.#evalEpoch;
+    }
     const score = position.active === 0 ? value : -value;
     if (score > MAX_NONTERMINAL_SCORE) return MAX_NONTERMINAL_SCORE;
     if (score < -MAX_NONTERMINAL_SCORE) return -MAX_NONTERMINAL_SCORE;
     return score;
   }
 
-  #staticScore(position: FastPosition): number {
+  #staticScore(
+    position: FastPosition,
+    precomputedKeyLo?: number,
+    precomputedKeyHi?: number,
+  ): number {
     if (!this.#beginWorkUnit()) return 0;
-    return this.#evaluateStatic(position);
+    return this.#evaluateStatic(position, precomputedKeyLo, precomputedKeyHi);
   }
 
   #recordCutoff(
@@ -620,7 +647,7 @@ export class FastSearcher {
     const historyBase = position.active * BOARD_CELLS * BOARD_CELLS;
     for (let index = 0; index < count; index += 1) {
       const move = i32(buffer, index);
-      let key = moveHeuristic(position, move);
+      let key = i32(keys, index);
       if (move === ttMove) key += KEY_TT;
       else if (move === killerA) key += KEY_KILLER_A;
       else if (move === killerB) key += KEY_KILLER_B;
@@ -656,64 +683,6 @@ export class FastSearcher {
     buffer[bestSlot] = move;
     keys[bestSlot] = i32(keys, index);
     keys[index] = bestKey;
-  }
-}
-
-function moveHeuristic(position: FastPosition, move: number): number {
-  const type = moveType(move);
-  const from = moveFrom(move);
-  const to = moveTo(move);
-  switch (type) {
-    case MOVE_MON: {
-      const start = u16(position.cells, from);
-      const carried = cellMana(start);
-      let key = 0;
-      if (carried !== 0 && squareIsPool(u8(position.squares, to))) {
-        key += (1 << 21) + manaScoreValue(carried, position.active) * (1 << 18);
-      }
-      const target = u16(position.cells, to);
-      if (target !== 0) {
-        const occupancy = cellOccupancy(target);
-        if (occupancy === OCC_MANA) {
-          key += (1 << 16) + manaScoreValue(cellMana(target), position.active) * 512;
-        } else if (occupancy === OCC_CONS) {
-          key += 1 << 14;
-        }
-      }
-      if (carried !== 0) {
-        const before = u8(POOL_DISTANCE, from);
-        const after = u8(POOL_DISTANCE, to);
-        key += (before - after) * 2048 + 4096;
-      } else if (cellMonKind(start) === KIND_DRAINER) {
-        key += 1024;
-      }
-      return key;
-    }
-    case MOVE_MANA:
-      return squareIsPool(u8(position.squares, to)) ? (1 << 21) + (1 << 18) : 16;
-    case MOVE_MYSTIC:
-    case MOVE_DEMON:
-    case MOVE_BOMB: {
-      const target = u16(position.cells, to);
-      let key = 1 << 17;
-      if (cellMana(target) !== 0) key += 1 << 20;
-      if (cellMonKind(target) === KIND_DRAINER) key += 1 << 19;
-      return key;
-    }
-    case MOVE_SPIRIT: {
-      const target = u16(position.cells, to);
-      const aux = moveAux(move);
-      let key = 1 << 13;
-      const mana = cellMana(target);
-      if (mana !== 0 && squareIsPool(u8(position.squares, aux))) {
-        key += (1 << 21) + manaScoreValue(mana, position.active) * (1 << 18);
-      } else if (cellOccupancy(target) === OCC_MANA) {
-        key += 1 << 15;
-      }
-      return key;
-    }
-    default:
-      throw new RangeError(`unsupported fast move type: ${type}`);
   }
 }
 

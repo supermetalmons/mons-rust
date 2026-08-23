@@ -84,13 +84,13 @@ describe("production automove runtime", () => {
       expect(expectSourcePureSuggestion("fast", engine).output.kind).toBe("events");
       expect(expectSourcePureSuggestion("normal", engine).output.kind).toBe("events");
       expect(search.mock.calls.map(([limits]) => limits.maxNodes)).toEqual([
-        30_000, 150_000,
+        38_400, 184_000,
       ]);
       expect(
         search.mock.results.map((result) =>
           result.type === "return" ? result.value.nodes : undefined,
         ),
-      ).toEqual([30_000, 150_000]);
+      ).toEqual([38_400, 184_000]);
     } finally {
       search.mockRestore();
     }

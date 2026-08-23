@@ -17,18 +17,28 @@ import {
 } from "../../src/automove/packed/state.js";
 import {
   PACKED_SELECTION_PROFILES,
+  FAST_SEARCH_TUNING,
+  PRO_SEARCH_TUNING,
+  STRATEGIC_SEARCH_TUNING,
   selectPackedFastSelection,
   selectProFastSelection,
 } from "../../src/automove/packed/index.js";
 import {
   DEFAULT_WEIGHTS,
+  createEvalTables,
   normalizeEvalWeights,
-} from "../../src/automove/packed/evaluation.js";
+} from "../../src/automove/packed/evaluation-weights.js";
 import {
-  FastSearcher,
+  FAST_WORKSPACE_ALLOCATION_FAILED,
+  isFastWorkspaceAllocationFailure,
+} from "../../src/automove/packed/allocation.js";
+import { FastSearcher } from "../../src/automove/packed/search.js";
+import {
+  DEFAULT_TUNING,
+  MAX_NONTERMINAL_SCORE,
   MAX_SEARCH_DEPTH,
   normalizeSearchLimits,
-} from "../../src/automove/packed/search.js";
+} from "../../src/automove/packed/search-tuning.js";
 import { ALL_GAME_VARIANTS, GameVariant } from "../../src/engine/board/config.js";
 import { inputArrayFen, parseInputArrayFen } from "../../src/engine/codec/input.js";
 import { MonsGame } from "../../src/engine/game/mons-game.js";
@@ -165,18 +175,78 @@ function compareCanonicalPosition(
 
 describe("packed-state automove search", () => {
   it("uses the audited mode budgets and fixed-clock node ceilings", () => {
+    expect(STRATEGIC_SEARCH_TUNING).toEqual({
+      lateMoveReduction: true,
+      lateMoveIndex: 2,
+      lateMoveDeepIndex: 6,
+      moveCountPruning: true,
+      moveCountDepth: 3,
+      moveCountBase: 7,
+      moveCountFactor: 7,
+      futilityMargin: 900,
+      aspirationDelta: 600,
+      aspirationMinDepth: 2,
+      winsNextTurnThreat: 0,
+    });
+    expect(FAST_SEARCH_TUNING).toEqual({
+      lateMoveReduction: true,
+      lateMoveIndex: 2,
+      lateMoveDeepIndex: 6,
+      moveCountPruning: true,
+      moveCountDepth: 3,
+      moveCountBase: 7,
+      moveCountFactor: 7,
+      futilityMargin: 900,
+      aspirationDelta: 600,
+      aspirationMinDepth: 2,
+      winsNextTurnThreat: 2500,
+    });
+    expect(PRO_SEARCH_TUNING).toEqual({
+      lateMoveReduction: true,
+      lateMoveIndex: 3,
+      lateMoveDeepIndex: 8,
+      moveCountPruning: true,
+      moveCountDepth: 3,
+      moveCountBase: 4,
+      moveCountFactor: 5,
+      futilityMargin: 900,
+      aspirationDelta: 0,
+      aspirationMinDepth: 3,
+      winsNextTurnThreat: 0,
+    });
     expect(PACKED_SELECTION_PROFILES).toEqual({
-      fast: { budgetMs: 16, limits: { maxDepth: 40, maxNodes: 30_000 } },
-      normal: { budgetMs: 75, limits: { maxDepth: 40, maxNodes: 150_000 } },
+      fast: {
+        budgetMs: 16,
+        limits: {
+          maxDepth: 40,
+          maxNodes: 38_400,
+          tuning: FAST_SEARCH_TUNING,
+        },
+      },
+      normal: {
+        budgetMs: 75,
+        limits: {
+          maxDepth: 40,
+          maxNodes: 184_000,
+          tuning: STRATEGIC_SEARCH_TUNING,
+        },
+      },
       pro: {
         budgetMs: 460,
         limits: {
           maxDepth: 40,
           maxNodes: 2_000_000,
+          tuning: PRO_SEARCH_TUNING,
         },
       },
     });
+    expect(PACKED_SELECTION_PROFILES.fast.limits.tuning).toBe(FAST_SEARCH_TUNING);
+    expect(PACKED_SELECTION_PROFILES.normal.limits.tuning).toBe(
+      STRATEGIC_SEARCH_TUNING,
+    );
+    expect(PACKED_SELECTION_PROFILES.pro.limits.tuning).toBe(PRO_SEARCH_TUNING);
     expect(Object.isFrozen(PACKED_SELECTION_PROFILES)).toBe(true);
+    expect(Object.isFrozen(STRATEGIC_SEARCH_TUNING)).toBe(true);
     expect(
       Object.values(PACKED_SELECTION_PROFILES).every(
         (profile) => Object.isFrozen(profile) && Object.isFrozen(profile.limits),
@@ -205,15 +275,12 @@ describe("packed-state automove search", () => {
         ).toBe("events");
       }
       expect(search.mock.calls.map(([limits]) => limits.maxNodes)).toEqual([
-        30_000, 150_000, 2_000_000,
+        38_400, 184_000, 2_000_000,
       ]);
       expect(search.mock.calls.map(([limits]) => limits)).toEqual([
-        { maxDepth: 40, maxNodes: 30_000 },
-        { maxDepth: 40, maxNodes: 150_000 },
-        {
-          maxDepth: 40,
-          maxNodes: 2_000_000,
-        },
+        { maxDepth: 40, maxNodes: 38_400, tuning: FAST_SEARCH_TUNING },
+        { maxDepth: 40, maxNodes: 184_000, tuning: STRATEGIC_SEARCH_TUNING },
+        { maxDepth: 40, maxNodes: 2_000_000, tuning: PRO_SEARCH_TUNING },
       ]);
       expect(search.mock.calls[0]?.[0]).toBe(PACKED_SELECTION_PROFILES.fast.limits);
       expect(search.mock.calls[1]?.[0]).toBe(PACKED_SELECTION_PROFILES.normal.limits);
@@ -222,7 +289,7 @@ describe("packed-state automove search", () => {
         search.mock.results.map((result) =>
           result.type === "return" ? result.value.nodes : undefined,
         ),
-      ).toEqual([30_000, 150_000, 2_000_000]);
+      ).toEqual([38_400, 184_000, 2_000_000]);
     } finally {
       search.mockRestore();
     }
@@ -375,6 +442,26 @@ describe("packed-state automove search", () => {
     } as unknown as Float64ArrayConstructor;
     vi.stubGlobal("Float64Array", FailingFloat64Array);
     try {
+      expect(() =>
+        createEvalTables(normalizeEvalWeights({ ...DEFAULT_WEIGHTS })),
+      ).toThrow(FAST_WORKSPACE_ALLOCATION_FAILED);
+      let branded: unknown;
+      try {
+        createEvalTables(normalizeEvalWeights({ ...DEFAULT_WEIGHTS }));
+      } catch (error) {
+        branded = error;
+      }
+      expect(isFastWorkspaceAllocationFailure(branded)).toBe(true);
+    } finally {
+      vi.unstubAllGlobals();
+    }
+
+    const allocation = vi
+      .spyOn(FastSearcher.prototype, "search")
+      .mockImplementation(() => {
+        throw FAST_WORKSPACE_ALLOCATION_FAILED;
+      });
+    try {
       for (const mode of ["fast", "normal", "pro"] as const) {
         const game = new MonsGame(true, GameVariant.Classic);
         const selection = new AutomoveEngine({ clock: () => 0 }).run((execution) =>
@@ -402,7 +489,7 @@ describe("packed-state automove search", () => {
         expect(game.fen(), mode).toBe(sourceFen);
       }
     } finally {
-      vi.unstubAllGlobals();
+      allocation.mockRestore();
     }
 
     const failure = new RangeError("synthetic search invariant");
@@ -501,13 +588,16 @@ describe("packed-state automove search", () => {
           moveCountBase: 4,
           moveCountFactor: 5,
           futilityMargin: 900,
+          aspirationDelta: 0,
+          aspirationMinDepth: 3,
+          winsNextTurnThreat: 0,
         },
       },
       () => false,
     );
 
     expect(outcome.depth).toBe(4);
-    expect(outcome.score).toBe(2229);
+    expect(outcome.score).toBe(2007);
     expect(outcome.supported).toBe(true);
     expect(inputArrayFen(moveToInputs(outcome.move))).toBe("l0,4;l1,4");
   });
@@ -526,8 +616,8 @@ describe("packed-state automove search", () => {
 
     expect(outcome).toEqual({
       move: 16_725_528,
-      score: 999_996,
-      depth: 5,
+      score: 999_997,
+      depth: 6,
       nodes: 120_000,
       supported: true,
     });
@@ -898,5 +988,142 @@ describe("packed-state automove search", () => {
       inputFen: "",
     });
     expect(game.fen()).toBe(sourceFen);
+  });
+});
+
+describe("packed search tuning levers", () => {
+  const LEVER_FEN =
+    "0 0 b 0 0 3 0 0 2 n03y0xs0xn06/n06d0xa0xe0xn02/n11/n04xxmn01xxmn04/n04xxmxxmxxmn04/xxQn04xxUn04xxQ/n04xxMxxMxxMn04/n04xxMn01xxMn04/n03E0xn07/n04A0xn01D0xn04/n06S0xY0xn03 5";
+  const BASE_LIMITS = { maxDepth: 4, maxNodes: 1_000_000 };
+  const BASE_TUNING = {
+    lateMoveReduction: true,
+    lateMoveIndex: 3,
+    lateMoveDeepIndex: 8,
+    moveCountPruning: true,
+    moveCountDepth: 3,
+    moveCountBase: 4,
+    moveCountFactor: 5,
+    futilityMargin: 900,
+    aspirationDelta: 0,
+    aspirationMinDepth: 3,
+    winsNextTurnThreat: 0,
+  };
+
+  function leverGame(): MonsGame {
+    const game = MonsGame.fromFen(LEVER_FEN, true);
+    if (game === undefined) throw new Error("lever fen must parse");
+    return game;
+  }
+
+  function searchWith(searcher: FastSearcher, game: MonsGame, limits: object) {
+    loadSearchRoot(searcher, game);
+    return searcher.search(
+      limits as Parameters<FastSearcher["search"]>[0],
+      () => false,
+      DEFAULT_WEIGHTS,
+    );
+  }
+
+  it("treats an oversized aspiration window as a full-width search", () => {
+    const game = leverGame();
+    const plain = searchWith(new FastSearcher(), game, BASE_LIMITS);
+    const huge = searchWith(new FastSearcher(), game, {
+      ...BASE_LIMITS,
+      tuning: {
+        ...BASE_TUNING,
+        aspirationDelta: MAX_NONTERMINAL_SCORE,
+        aspirationMinDepth: 2,
+      },
+    });
+    expect(huge).toEqual(plain);
+  });
+
+  it("converges aspiration re-searches to the full-width score", () => {
+    const game = leverGame();
+    // Futility pruning tests the static evaluation against the window's own alpha, so an
+    // aspiration search and a full-width search do not prune the same nodes and their scores
+    // are not required to agree. Without that lever the two must return the same value.
+    const exact = { ...STRATEGIC_SEARCH_TUNING, futilityMargin: 0 };
+    const plain = searchWith(new FastSearcher(), game, {
+      ...BASE_LIMITS,
+      tuning: { ...exact, aspirationDelta: 0 },
+    });
+    const aspired = searchWith(new FastSearcher(), game, {
+      ...BASE_LIMITS,
+      tuning: exact,
+    });
+    expect(aspired.score).toBe(plain.score);
+    expect(aspired.depth).toBe(plain.depth);
+
+    // With the shipped tuning the surviving invariant is the decision, not the score.
+    const tuned = {
+      ...BASE_LIMITS,
+      tuning: { ...STRATEGIC_SEARCH_TUNING },
+    };
+    const shipped = searchWith(new FastSearcher(), game, tuned);
+    const shippedPlain = searchWith(new FastSearcher(), game, {
+      ...BASE_LIMITS,
+      tuning: { ...STRATEGIC_SEARCH_TUNING, aspirationDelta: 0 },
+    });
+    expect(shipped.move).toBe(shippedPlain.move);
+    expect(shipped.depth).toBe(shippedPlain.depth);
+    expect(shipped.supported).toBe(true);
+    expect(
+      game.fork().processInput(moveToInputs(shipped.move), false, false).kind,
+    ).toBe("events");
+    const repeat = searchWith(new FastSearcher(), game, tuned);
+    expect(repeat).toEqual(shipped);
+  });
+
+  it("keeps aspiration searches deterministic under node ceilings", () => {
+    const game = leverGame();
+    for (const budget of [6_000, 12_000, 30_000, 150_000]) {
+      const limits = {
+        maxDepth: 40,
+        maxNodes: budget,
+        tuning: { ...STRATEGIC_SEARCH_TUNING },
+      };
+      const first = searchWith(new FastSearcher(), game, limits);
+      const second = searchWith(new FastSearcher(), game, limits);
+      expect(second).toEqual(first);
+      expect(first.supported).toBe(true);
+      expect(first.nodes).toBeLessThanOrEqual(budget);
+      expect(
+        game.fork().processInput(moveToInputs(first.move), false, false).kind,
+      ).toBe("events");
+    }
+  });
+
+  it("defaults and validates profile-varying tuning keys", () => {
+    const normalized = normalizeSearchLimits({
+      maxDepth: 4,
+      maxNodes: 100,
+      tuning: BASE_TUNING,
+    });
+    expect(normalized.tuning).toEqual(DEFAULT_TUNING);
+    expect(normalizeSearchLimits({ maxDepth: 4, maxNodes: 100 }).tuning).toBe(
+      DEFAULT_TUNING,
+    );
+    expect(() =>
+      normalizeSearchLimits({
+        maxDepth: 4,
+        maxNodes: 100,
+        tuning: { ...BASE_TUNING, aspirationDelta: true },
+      }),
+    ).toThrow(TypeError);
+    expect(() =>
+      normalizeSearchLimits({
+        maxDepth: 4,
+        maxNodes: 100,
+        tuning: { ...BASE_TUNING, aspirationDelta: -1 },
+      }),
+    ).toThrow(RangeError);
+    expect(() =>
+      normalizeSearchLimits({
+        maxDepth: 4,
+        maxNodes: 100,
+        tuning: { ...BASE_TUNING, aspirationMinDepth: 99 },
+      }),
+    ).toThrow(RangeError);
   });
 });

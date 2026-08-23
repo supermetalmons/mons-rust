@@ -5,7 +5,6 @@ import type { AutomoveExecutionContext } from "../core/execution-context.js";
 import { selectPackedFastSelection, selectProFastSelection } from "../packed/index.js";
 import { smartSearchBestInputs } from "../policy/production/selector.js";
 import { automoveConfigForGame, withProductionPlanner } from "../config/runtime.js";
-import type { AutomoveConfig } from "../config/types.js";
 import { deterministicLegalFallbackInputs } from "./input-selection.js";
 import { selectProductionPolicyInputs } from "./production-policy.js";
 import {
@@ -17,31 +16,28 @@ const FAST_PREFERENCE_BANK_BUDGET_MS = 200;
 const PRODUCTION_START_RESERVE_MS = 100;
 export const PRODUCTION_SELECTOR_BUDGET_MS = 550;
 
+// The canonical configuration and the deterministic fallback are only needed when the packed
+// search declines or times out, so neither is built on the path that answers every call.
 export function selectStrategicSearchInputsWithDeadline(
   execution: AutomoveExecutionContext,
   game: MonsGame,
-  config: AutomoveConfig,
+  preference: "fast" | "normal",
 ): Input[] {
   return execution.session.withDeadlineIfAbsent(AUTOMOVE_SELECTOR_BUDGET_MS, () => {
-    const fallback = deterministicLegalFallbackInputs(game);
-    if (execution.session.checkpoint()) return fallback;
-    const preference = config.budget.preference;
-    if (preference !== "fast" && preference !== "normal") {
-      return selectCanonicalStrategicInputs(execution, game, config, fallback);
-    }
+    if (execution.session.checkpoint()) return deterministicLegalFallbackInputs(game);
     const packedSelection = selectPackedFastSelection(execution, game, preference);
     if (packedSelection.kind === "supported") {
       return packedSelection.inputs.length === 0 || execution.session.checkpoint()
-        ? fallback
+        ? deterministicLegalFallbackInputs(game)
         : packedSelection.inputs;
     }
     return selectCanonicalStrategicInputs(
       execution,
       game,
-      config,
+      preference,
       packedSelection.fallbackInputs.length > 0
         ? packedSelection.fallbackInputs
-        : fallback,
+        : deterministicLegalFallbackInputs(game),
     );
   });
 }
@@ -49,11 +45,15 @@ export function selectStrategicSearchInputsWithDeadline(
 function selectCanonicalStrategicInputs(
   execution: AutomoveExecutionContext,
   game: MonsGame,
-  config: AutomoveConfig,
+  preference: "fast" | "normal",
   timeoutInputs: Input[],
 ): Input[] {
   if (execution.session.checkpoint()) return timeoutInputs;
-  const selected = selectSearchInputs(execution, game, config);
+  const selected = selectSearchInputs(
+    execution,
+    game,
+    automoveConfigForGame(game, preference),
+  );
   return selected.length === 0 || execution.session.checkpoint()
     ? timeoutInputs
     : selected;

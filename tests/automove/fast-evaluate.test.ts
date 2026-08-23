@@ -19,11 +19,13 @@ import {
   manaScoreValue,
 } from "../../src/automove/packed/board.js";
 import {
-  createEvalTables,
   evaluatePosition,
   evaluateWithTables,
-  type EvalWeights,
 } from "../../src/automove/packed/evaluation.js";
+import {
+  createEvalTables,
+  type EvalWeights,
+} from "../../src/automove/packed/evaluation-weights.js";
 import { FastPosition } from "../../src/automove/packed/state.js";
 import { DEFAULT_GAME_VARIANT } from "../../src/engine/board/config.js";
 import {
@@ -84,6 +86,28 @@ const ZERO_WEIGHTS = {
   drainerThreatWalk: 0,
   carrierThreatFactor: 0,
   manaToNearestPool: 0,
+  manaStepQueue1: 0,
+  manaStepQueue2: 0,
+  manaStepQueue3: 0,
+  manaStepQueue4: 0,
+  manaStepQueue5: 0,
+  manaStepWinThreat: 0,
+  drainerTripTurn1: 0,
+  drainerTripTurn2: 0,
+  drainerTripTurn3: 0,
+  drainerTripTurn4: 0,
+  supermanaCarrier: 0,
+  scoreShape10: 0,
+  scoreShape20: 0,
+  scoreShape21: 0,
+  scoreShape30: 0,
+  scoreShape31: 0,
+  scoreShape32: 0,
+  tripGradient: 0,
+  raceHalfTurn: 0,
+  threatMoverScaleSpare: 100,
+  threatMoverScaleFew: 100,
+  tripTwoPointScale: 100,
 } satisfies EvalWeights;
 
 type Coordinates = readonly [row: number, column: number];
@@ -110,7 +134,16 @@ function boardIndex([row, column]: Coordinates): number {
   return row * BOARD_SIZE + column;
 }
 
-function makePosition(placements: readonly CellPlacement[]): FastPosition {
+function makePosition(
+  placements: readonly CellPlacement[],
+  overrides: Partial<{
+    whiteScore: number;
+    blackScore: number;
+    active: number;
+    monsMoves: number;
+    manaMoves: number;
+  }> = {},
+): FastPosition {
   const position = new FastPosition();
   const cells = new Uint16Array(BOARD_CELLS);
   for (const [row, column, cell] of placements) {
@@ -119,6 +152,7 @@ function makePosition(placements: readonly CellPlacement[]): FastPosition {
   resetFastPosition(position, {
     cells,
     squares: fastSquaresForVariant(DEFAULT_GAME_VARIANT),
+    ...overrides,
   });
   expectFastPositionInvariants(position);
   return position;
@@ -455,6 +489,303 @@ describe("fast position evaluation", () => {
 
     expect(() =>
       evaluatePosition(position, weights({ manaToNearestPool: 3_000_000_000 })),
+    ).toThrow(RangeError);
+  });
+
+  it("prices the free mana step as a queue position with a cliff near the pool", () => {
+    const queue = weights({
+      manaStepQueue1: 3_600,
+      manaStepQueue2: 2_500,
+      manaStepQueue3: 1_050,
+      manaStepQueue4: 800,
+      manaStepQueue5: 800,
+    });
+
+    // Column c on row 10 is exactly c steps from the white pool at (10, 0).
+    const expected = [3_600, 3_600, 2_500, 1_050, 800, 800];
+    for (let distance = 1; distance <= 5; distance += 1) {
+      const position = makePosition([[10, distance, makeManaCell(MANA_WHITE)]]);
+      expect(evaluatePosition(position, queue), `distance ${distance}`).toBe(
+        expected[distance] ?? 0,
+      );
+    }
+
+    const black = makePosition([[10, 1, makeManaCell(MANA_BLACK)]]);
+    expect(evaluatePosition(black, queue)).toBe(-3_600);
+    const supermana = makePosition([[10, 1, makeManaCell(MANA_SUPER)]]);
+    expect(evaluatePosition(supermana, queue)).toBe(0);
+
+    const combined = weights({ manaStepQueue2: 2_500, manaToNearestPool: 800 });
+    expect(
+      evaluatePosition(makePosition([[10, 2, makeManaCell(MANA_WHITE)]]), combined),
+    ).toBe(2_500 + Math.trunc(800 / 3));
+  });
+
+  it("buckets the fused drainer trip by the turns it still needs", () => {
+    const trip = weights({
+      drainerTripTurn1: 4_200,
+      drainerTripTurn2: 2_200,
+      drainerTripTurn3: 1_000,
+      drainerTripTurn4: 400,
+    });
+
+    // Pick-up distance plus the mana's pool distance, against the mover's remaining steps.
+    const withinTurn = makePosition([
+      [10, 4, mon(KIND_DRAINER, 0)],
+      [10, 1, makeManaCell(MANA_WHITE)],
+    ]);
+    expect(evaluatePosition(withinTurn, trip)).toBe(4_200);
+
+    const oneTurnShort = makePosition([
+      [5, 5, mon(KIND_DRAINER, 0)],
+      [10, 1, makeManaCell(MANA_WHITE)],
+    ]);
+    expect(evaluatePosition(oneTurnShort, trip)).toBe(2_200);
+
+    const spentMoves = makePosition(
+      [
+        [10, 4, mon(KIND_DRAINER, 0)],
+        [10, 1, makeManaCell(MANA_WHITE)],
+      ],
+      { monsMoves: 4 },
+    );
+    expect(evaluatePosition(spentMoves, trip)).toBe(2_200);
+
+    const carrying = makePosition([
+      [10, 2, makeMonCell(KIND_DRAINER, 0, 0, MANA_WHITE, 0)],
+    ]);
+    expect(evaluatePosition(carrying, trip)).toBe(4_200);
+  });
+
+  it("grades the fused drainer trip inside a turn bucket by its remaining steps", () => {
+    const gradient = weights({ tripGradient: 100 });
+
+    // Three steps to the mana plus one from the mana to the pool.
+    const trip = makePosition([
+      [10, 4, mon(KIND_DRAINER, 0)],
+      [10, 1, makeManaCell(MANA_WHITE)],
+    ]);
+    expect(evaluatePosition(trip, gradient)).toBe(-400);
+
+    const closer = makePosition([
+      [10, 2, mon(KIND_DRAINER, 0)],
+      [10, 1, makeManaCell(MANA_WHITE)],
+    ]);
+    expect(evaluatePosition(closer, gradient)).toBe(-200);
+
+    // With no mana to fetch the trip is unreachable, and the gradient saturates.
+    const noMana = makePosition([[10, 4, mon(KIND_DRAINER, 0)]]);
+    expect(evaluatePosition(noMana, gradient)).toBe(-1200);
+  });
+
+  it("prices the tempo lead in half turns once one side is close to the target", () => {
+    const race = weights({ scoreUnit: 12_000, raceHalfTurn: 100 });
+    const carrier: CellPlacement = [
+      10,
+      2,
+      makeMonCell(KIND_DRAINER, 0, 0, MANA_WHITE, 0),
+    ];
+
+    // White delivers next turn, Black has no channel at all, and White is to move: the lead
+    // saturates the table.
+    const late = makePosition([carrier], { whiteScore: 3 });
+    expect(evaluatePosition(late, race)).toBe(3 * 12_000 + 600);
+
+    // The same board with the target still four points away is not yet a race.
+    const early = makePosition([carrier]);
+    expect(evaluatePosition(early, race)).toBe(0);
+
+    // The point that opens the band has to stay worth more than the correction it switches on.
+    expect(() =>
+      createEvalTables(weights({ scoreUnit: 12_000, raceHalfTurn: 2_100 })),
+    ).toThrow(RangeError);
+  });
+
+  it("discounts a threat the threatened side can still answer", () => {
+    const threat = weights({
+      drainerThreatImmediate: 1_000,
+      threatMoverScaleSpare: 25,
+    });
+    const placements: readonly CellPlacement[] = [
+      [2, 5, mon(KIND_DRAINER, 0)],
+      [4, 3, mon(KIND_MYSTIC, 1)],
+    ];
+
+    // White holds sub-moves, so the attack has to survive White's own turn first.
+    expect(evaluatePosition(makePosition(placements), threat)).toBe(-250);
+    expect(evaluatePosition(makePosition(placements, { monsMoves: 5 }), threat)).toBe(
+      -1_000,
+    );
+    expect(evaluatePosition(makePosition(placements, { active: 1 }), threat)).toBe(
+      -1_000,
+    );
+  });
+
+  it("weighs a two-point trip against the shortest one", () => {
+    const trip = {
+      drainerTripTurn1: 4_200,
+      drainerTripTurn2: 2_200,
+      tripGradient: 100,
+    };
+    // Own mana four fused steps away against the other side's mana six away: the near item is
+    // worth one point, the far one two.
+    const placements: readonly CellPlacement[] = [
+      [10, 4, mon(KIND_DRAINER, 0)],
+      [10, 1, makeManaCell(MANA_WHITE)],
+      [10, 7, makeManaCell(MANA_BLACK)],
+    ];
+    const position = makePosition(placements);
+
+    // At the neutral scale both plans are priced by the same table, so the shorter one wins.
+    expect(
+      evaluatePosition(position, weights({ ...trip, tripTwoPointScale: 100 })),
+    ).toBe(4_200 - 400);
+
+    // Scaled up, the two-point trip is worth its extra two steps and the turn they cost.
+    expect(
+      evaluatePosition(position, weights({ ...trip, tripTwoPointScale: 290 })),
+    ).toBe(Math.trunc((2_200 * 290) / 100) - 600);
+  });
+
+  it("marks a side that needs one point and owns mana within mana-step reach", () => {
+    const threat = weights({ manaStepWinThreat: 8_000 });
+    const placements: readonly CellPlacement[] = [[10, 2, makeManaCell(MANA_WHITE)]];
+
+    expect(evaluatePosition(makePosition(placements, { whiteScore: 4 }), threat)).toBe(
+      8_000,
+    );
+    expect(evaluatePosition(makePosition(placements, { whiteScore: 3 }), threat)).toBe(
+      0,
+    );
+    expect(
+      evaluatePosition(
+        makePosition([[10, 3, makeManaCell(MANA_WHITE)]], { whiteScore: 4 }),
+        threat,
+      ),
+    ).toBe(0);
+    expect(
+      evaluatePosition(
+        makePosition([[10, 2, makeManaCell(MANA_BLACK)]], { blackScore: 4 }),
+        threat,
+      ),
+    ).toBe(-8_000);
+  });
+
+  it("separates the carried supermana from an enemy regular mana of equal point value", () => {
+    const carrier = weights({ supermanaCarrier: 1_200 });
+
+    expect(
+      evaluatePosition(
+        makePosition([[5, 5, makeMonCell(KIND_DRAINER, 0, 0, MANA_SUPER, 0)]]),
+        carrier,
+      ),
+    ).toBe(1_200);
+    expect(
+      evaluatePosition(
+        makePosition([[5, 5, makeMonCell(KIND_DRAINER, 0, 0, MANA_BLACK, 0)]]),
+        carrier,
+      ),
+    ).toBe(0);
+    expect(
+      evaluatePosition(
+        makePosition([[5, 5, makeMonCell(KIND_DRAINER, 1, 0, MANA_SUPER, 0)]]),
+        carrier,
+      ),
+    ).toBe(-1_200);
+  });
+
+  it("builds the drainer trip table from turn buckets", () => {
+    const tables = createEvalTables(
+      weights({
+        drainerTripTurn1: 4_200,
+        drainerTripTurn2: 2_200,
+        drainerTripTurn3: 1_000,
+        drainerTripTurn4: 400,
+      }),
+    );
+    const expected = [4_200, 2_200, 1_000, 400];
+    for (let excess = 0; excess < tables.drainerTrip.length; excess += 1) {
+      const turns = 1 + Math.ceil(excess / 5);
+      expect(tables.drainerTrip[excess], `excess ${excess}`).toBe(
+        expected[Math.min(turns, 4) - 1],
+      );
+    }
+  });
+
+  it("prices a lead by the score pair, antisymmetrically", () => {
+    const shape = weights({
+      scoreUnit: 12_000,
+      scoreShape10: -6_824,
+      scoreShape20: -6_978,
+      scoreShape21: -3_085,
+      scoreShape30: -8_259,
+      scoreShape31: -4_275,
+      scoreShape32: -1_052,
+    });
+    const empty: readonly CellPlacement[] = [];
+    const cases = [
+      [1, 0, -6_824],
+      [2, 0, -6_978],
+      [2, 1, -3_085],
+      [3, 0, -8_259],
+      [3, 1, -4_275],
+      [3, 2, -1_052],
+    ] as const;
+
+    for (const [white, black, expected] of cases) {
+      const lead = (white - black) * 12_000 + expected;
+      expect(
+        evaluatePosition(
+          makePosition(empty, { whiteScore: white, blackScore: black }),
+          shape,
+        ),
+        `${white}-${black}`,
+      ).toBe(lead);
+      expect(
+        evaluatePosition(
+          makePosition(empty, { whiteScore: black, blackScore: white }),
+          shape,
+        ),
+        `${black}-${white}`,
+      ).toBe(-lead);
+    }
+
+    for (const score of [0, 1, 2, 3]) {
+      expect(
+        evaluatePosition(
+          makePosition(empty, { whiteScore: score, blackScore: score }),
+          shape,
+        ),
+        `${score}-${score}`,
+      ).toBe(0);
+    }
+  });
+
+  it("keeps a scored point monotone against the score-shape correction", () => {
+    const tables = createEvalTables(
+      weights({
+        scoreUnit: 12_000,
+        scoreShape10: -6_824,
+        scoreShape20: -6_978,
+        scoreShape21: -3_085,
+        scoreShape30: -8_259,
+        scoreShape31: -4_275,
+        scoreShape32: -1_052,
+      }),
+    );
+    const stride = Math.round(Math.sqrt(tables.scoreShape.length));
+    for (let own = 0; own + 1 < stride; own += 1) {
+      for (let other = 0; other < stride; other += 1) {
+        const gain =
+          12_000 +
+          (tables.scoreShape[(own + 1) * stride + other] ?? 0) -
+          (tables.scoreShape[own * stride + other] ?? 0);
+        expect(gain, `${own}->${own + 1} against ${other}`).toBeGreaterThan(0);
+      }
+    }
+
+    expect(() =>
+      createEvalTables(weights({ scoreUnit: 12_000, scoreShape10: -20_000 })),
     ).toThrow(RangeError);
   });
 });

@@ -6,8 +6,9 @@ import {
   isFastWorkspaceAllocationFailure,
 } from "./allocation.js";
 import { moveToInputs, tryLoadPosition } from "./bridge.js";
-import { FastSearcher, type SearchLimits } from "./search.js";
-import { DEFAULT_WEIGHTS } from "./evaluation.js";
+import { FastSearcher } from "./search.js";
+import type { SearchLimits, SearchTuning } from "./search-tuning.js";
+import { DEFAULT_WEIGHTS } from "./evaluation-weights.js";
 import { FastPosition } from "./state.js";
 
 type WeakFastSearcher = {
@@ -74,19 +75,63 @@ class FastSearcherPool {
 
 const DEFAULT_FAST_SEARCHER_POOL = new FastSearcherPool();
 
+export const STRATEGIC_SEARCH_TUNING = Object.freeze({
+  lateMoveReduction: true,
+  lateMoveIndex: 2,
+  lateMoveDeepIndex: 6,
+  moveCountPruning: true,
+  moveCountDepth: 3,
+  moveCountBase: 7,
+  moveCountFactor: 7,
+  futilityMargin: 900,
+  aspirationDelta: 600,
+  aspirationMinDepth: 2,
+  winsNextTurnThreat: 0,
+}) satisfies SearchTuning;
+
+export const FAST_SEARCH_TUNING = Object.freeze({
+  lateMoveReduction: true,
+  lateMoveIndex: 2,
+  lateMoveDeepIndex: 6,
+  moveCountPruning: true,
+  moveCountDepth: 3,
+  moveCountBase: 7,
+  moveCountFactor: 7,
+  futilityMargin: 900,
+  aspirationDelta: 600,
+  aspirationMinDepth: 2,
+  winsNextTurnThreat: 2500,
+}) satisfies SearchTuning;
+
+export const PRO_SEARCH_TUNING = Object.freeze({
+  lateMoveReduction: true,
+  lateMoveIndex: 3,
+  lateMoveDeepIndex: 8,
+  moveCountPruning: true,
+  moveCountDepth: 3,
+  moveCountBase: 4,
+  moveCountFactor: 5,
+  futilityMargin: 900,
+  aspirationDelta: 0,
+  aspirationMinDepth: 3,
+  winsNextTurnThreat: 0,
+}) satisfies SearchTuning;
+
 export const PACKED_SELECTION_PROFILES = Object.freeze({
   fast: Object.freeze({
     budgetMs: 16,
     limits: Object.freeze({
       maxDepth: 40,
-      maxNodes: 30_000,
+      maxNodes: 38_400,
+      tuning: FAST_SEARCH_TUNING,
     }) satisfies SearchLimits,
   }),
   normal: Object.freeze({
     budgetMs: 75,
     limits: Object.freeze({
       maxDepth: 40,
-      maxNodes: 150_000,
+      maxNodes: 184_000,
+      tuning: STRATEGIC_SEARCH_TUNING,
     }) satisfies SearchLimits,
   }),
   pro: Object.freeze({
@@ -94,6 +139,7 @@ export const PACKED_SELECTION_PROFILES = Object.freeze({
     limits: Object.freeze({
       maxDepth: 40,
       maxNodes: 2_000_000,
+      tuning: PRO_SEARCH_TUNING,
     }) satisfies SearchLimits,
   }),
 });

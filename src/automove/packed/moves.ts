@@ -1,8 +1,15 @@
-import { canMoveMonForCounts } from "../../engine/rules/legality.js";
+import {
+  canMoveManaForCounts,
+  canMoveMonForCounts,
+} from "../../engine/rules/legality.js";
+import { TARGET_SCORE } from "../../engine/board/config.js";
 import {
   BOMB_TARGETS,
   CONS_BOMB,
   CONS_BOTH,
+  POOL_DISTANCE,
+  manaScoreValue,
+  squareIsPool,
   DEMON_TARGETS,
   KIND_DEMON,
   KIND_DRAINER,
@@ -49,6 +56,7 @@ import {
   awakeAngelGuards,
   canUseAction,
   encodeMove,
+  manaMoveAllowed,
   manaStartsAllowed,
   type FastPosition,
 } from "./state.js";
@@ -76,6 +84,13 @@ function isEnemyAwakeMon(cell: number, active: number): boolean {
     cellMonColor(cell) !== active &&
     cellCooldown(cell) === 0
   );
+}
+
+function damagingAttackKey(target: number): number {
+  let key = 1 << 17;
+  if (cellMana(target) !== 0) key += 1 << 20;
+  if (cellMonKind(target) === KIND_DRAINER) key += 1 << 19;
+  return key;
 }
 
 function spiritDestinationOptionCount(
@@ -186,6 +201,7 @@ function generateMonMoves(
   cell: number,
   out: Int32Array,
   start: number,
+  keys: Int32Array,
 ): number {
   let count = start;
   let hadRawStartOption = false;
@@ -193,6 +209,9 @@ function generateMonMoves(
   const color = cellMonColor(cell);
   const carriedMana = cellMana(cell);
   const carriedConsumable = cellConsumable(cell);
+  const active = position.active;
+  const fromPoolDistance = u8(POOL_DISTANCE, from);
+  const plainBase = kind === KIND_DRAINER ? 1024 : 0;
   const neighborStart = i32(NEIGHBORS.starts, from);
   const neighborCount = i32(NEIGHBORS.counts, from);
   for (let offset = 0; offset < neighborCount; offset += 1) {
@@ -240,17 +259,36 @@ function generateMonMoves(
     if (targetOccupancy === OCC_CONS && cellConsumable(target) !== CONS_BOTH) {
       continue;
     }
+    let key = 0;
+    if (carriedMana !== 0 && squareIsPool(square)) {
+      key += (1 << 21) + manaScoreValue(carriedMana, active) * (1 << 18);
+    }
+    if (target !== 0) {
+      if (targetOccupancy === OCC_MANA) {
+        key += (1 << 16) + manaScoreValue(cellMana(target), active) * 512;
+      } else if (targetOccupancy === OCC_CONS) {
+        key += 1 << 14;
+      }
+    }
+    if (carriedMana !== 0) {
+      key += (fromPoolDistance - u8(POOL_DISTANCE, to)) * 2048 + 4096;
+    } else {
+      key += plainBase;
+    }
     if (
       targetOccupancy === OCC_CONS &&
       cellConsumable(target) === CONS_BOTH &&
       carriedMana === 0 &&
       carriedConsumable === 0
     ) {
+      keys[count] = key;
       out[count] = encodeMove(MOVE_MON, from, to, AUX_NONE, MOD_BOMB);
       count += 1;
+      keys[count] = key;
       out[count] = encodeMove(MOVE_MON, from, to, AUX_NONE, MOD_POTION);
       count += 1;
     } else {
+      keys[count] = key;
       out[count] = encodeMove(MOVE_MON, from, to, AUX_NONE, MOD_NONE);
       count += 1;
     }
@@ -263,6 +301,7 @@ function generateMysticMoves(
   from: number,
   out: Int32Array,
   start: number,
+  keys: Int32Array,
 ): number {
   const active = position.active;
   let count = start;
@@ -276,6 +315,7 @@ function generateMysticMoves(
     if (awakeAngelGuards(position, active ^ 1, to)) continue;
     hadRawStartOption = true;
     if (!damagingAttackCanComplete(target)) continue;
+    keys[count] = damagingAttackKey(target);
     out[count] = encodeMove(MOVE_MYSTIC, from, to, AUX_NONE, MOD_NONE);
     count += 1;
   }
@@ -287,6 +327,7 @@ function generateDemonMoves(
   from: number,
   out: Int32Array,
   start: number,
+  keys: Int32Array,
 ): number {
   const active = position.active;
   let count = start;
@@ -308,6 +349,7 @@ function generateDemonMoves(
     }
     hadRawStartOption = true;
     if (!damagingAttackCanComplete(target)) continue;
+    const key = damagingAttackKey(target);
     const targetSquare = u8(position.squares, to);
     const targetMana = cellMana(target);
     const requiresStep =
@@ -315,6 +357,7 @@ function generateDemonMoves(
       targetSquare === SQ_SUPERMANA_BASE ||
       targetSquare >= SQ_MON_BASE;
     if (!requiresStep) {
+      keys[count] = key;
       out[count] = encodeMove(MOVE_DEMON, from, to, AUX_NONE, MOD_NONE);
       count += 1;
       continue;
@@ -336,20 +379,25 @@ function generateDemonMoves(
       if (!allowed) continue;
       if (stepOccupancy === OCC_CONS) {
         if (cellConsumable(stepCell) === CONS_BOTH) {
+          keys[count] = key;
           out[count] = encodeMove(MOVE_DEMON, from, to, step, MOD_BOMB);
           count += 1;
+          keys[count] = key;
           out[count] = encodeMove(MOVE_DEMON, from, to, step, MOD_POTION);
           count += 1;
         } else {
+          keys[count] = key;
           out[count] = encodeMove(MOVE_DEMON, from, to, step, MOD_IGNORED_STEP);
           count += 1;
         }
       } else {
+        keys[count] = key;
         out[count] = encodeMove(MOVE_DEMON, from, to, step, MOD_NONE);
         count += 1;
       }
     }
     if (count === before) {
+      keys[count] = key;
       out[count] = encodeMove(MOVE_DEMON, from, to, AUX_NONE, MOD_NONE);
       count += 1;
     }
@@ -357,14 +405,19 @@ function generateDemonMoves(
   return encodeGeneratedMoves(count, hadRawStartOption);
 }
 
+// A spirit push earns the tactical exemption from reduction and pruning only when it does
+// something a quiet mon step cannot: carry a mana-bearing item toward a pool, or hand mana to
+// an own awake drainer. Sideways and outward pushes are the bulk of the tactical class.
 function generateSpiritMoves(
   position: FastPosition,
   from: number,
   out: Int32Array,
   start: number,
+  keys: Int32Array,
 ): number {
   let count = start;
   let hadRawStartOption = false;
+  const active = position.active;
   const targetStart = i32(SPIRIT_TARGETS.starts, from);
   const targetCount = i32(SPIRIT_TARGETS.counts, from);
   for (let offset = 0; offset < targetCount; offset += 1) {
@@ -375,18 +428,35 @@ function generateSpiritMoves(
       continue;
     }
     hadRawStartOption = true;
+    const targetManaForKey = cellMana(target);
+    const targetIsLooseMana = cellOccupancy(target) === OCC_MANA;
+    const targetPoolDistance = u8(POOL_DISTANCE, to);
+    const manaKeyBonus =
+      (1 << 21) + manaScoreValue(targetManaForKey, active) * (1 << 18);
     const destinationStart = i32(NEIGHBORS.starts, to);
     const destinationCount = i32(NEIGHBORS.counts, to);
     for (let index = 0; index < destinationCount; index += 1) {
       const destination = i32(NEIGHBORS.list, destinationStart + index);
       const optionCount = spiritDestinationOptionCount(position, target, destination);
       if (optionCount === 0) continue;
+      let key = 0;
+      if (targetManaForKey !== 0 && squareIsPool(u8(position.squares, destination))) {
+        key += (1 << 13) + manaKeyBonus;
+      } else if (
+        targetIsLooseMana &&
+        advancesMana(position, destination, targetPoolDistance, active)
+      ) {
+        key += (1 << 13) + (1 << 15);
+      }
       if (optionCount === 2) {
+        keys[count] = key;
         out[count] = encodeMove(MOVE_SPIRIT, from, to, destination, MOD_BOMB);
         count += 1;
+        keys[count] = key;
         out[count] = encodeMove(MOVE_SPIRIT, from, to, destination, MOD_POTION);
         count += 1;
       } else {
+        keys[count] = key;
         out[count] = encodeMove(MOVE_SPIRIT, from, to, destination, MOD_NONE);
         count += 1;
       }
@@ -395,11 +465,28 @@ function generateSpiritMoves(
   return encodeGeneratedMoves(count, hadRawStartOption);
 }
 
+function advancesMana(
+  position: FastPosition,
+  destination: number,
+  fromPoolDistance: number,
+  active: number,
+): boolean {
+  if (u8(POOL_DISTANCE, destination) < fromPoolDistance) return true;
+  const cell = u16(position.cells, destination);
+  return (
+    cellOccupancy(cell) === OCC_MON &&
+    cellMonKind(cell) === KIND_DRAINER &&
+    cellMonColor(cell) === active &&
+    cellCooldown(cell) === 0
+  );
+}
+
 function generateBombMoves(
   position: FastPosition,
   from: number,
   out: Int32Array,
   start: number,
+  keys: Int32Array,
 ): number {
   const active = position.active;
   let count = start;
@@ -412,6 +499,7 @@ function generateBombMoves(
     if (!isEnemyAwakeMon(target, active)) continue;
     hadRawStartOption = true;
     if (!damagingAttackCanComplete(target)) continue;
+    keys[count] = damagingAttackKey(target);
     out[count] = encodeMove(MOVE_BOMB, from, to, AUX_NONE, MOD_NONE);
     count += 1;
   }
@@ -423,35 +511,51 @@ function generateManaMoves(
   from: number,
   out: Int32Array,
   start: number,
+  keys: Int32Array,
 ): number {
   let count = start;
   const neighborStart = i32(NEIGHBORS.starts, from);
   const neighborCount = i32(NEIGHBORS.counts, from);
   for (let offset = 0; offset < neighborCount; offset += 1) {
     const to = i32(NEIGHBORS.list, neighborStart + offset);
-    const target = u16(position.cells, to);
     const square = u8(position.squares, to);
-    let allowed: boolean;
-    if (target === 0) {
-      allowed = squareIsRegularForMovement(square);
-    } else if (
-      cellOccupancy(target) === OCC_MON &&
-      cellMana(target) === 0 &&
-      cellConsumable(target) === 0
-    ) {
-      allowed =
-        squareIsRegularForMovement(square) && cellMonKind(target) === KIND_DRAINER;
-    } else {
-      allowed = false;
-    }
-    if (!allowed) continue;
+    if (!manaMoveAllowed(position, to)) continue;
+    keys[count] = squareIsPool(square) ? (1 << 21) + (1 << 18) : 16;
     out[count] = encodeMove(MOVE_MANA, from, to, AUX_NONE, MOD_NONE);
     count += 1;
   }
   return count;
 }
 
-export function generateMoves(position: FastPosition, out: Int32Array): number {
+function generateWinningManaMoves(
+  position: FastPosition,
+  from: number,
+  out: Int32Array,
+  start: number,
+  keys: Int32Array,
+): number {
+  let count = start;
+  if (u8(POOL_DISTANCE, from) !== 1) return count;
+  const neighborStart = i32(NEIGHBORS.starts, from);
+  const neighborCount = i32(NEIGHBORS.counts, from);
+  for (let offset = 0; offset < neighborCount; offset += 1) {
+    const to = i32(NEIGHBORS.list, neighborStart + offset);
+    const square = u8(position.squares, to);
+    if (!squareIsPool(square) || !manaMoveAllowed(position, to)) continue;
+    keys[count] = (1 << 21) + (1 << 18);
+    out[count] = encodeMove(MOVE_MANA, from, to, AUX_NONE, MOD_NONE);
+    count += 1;
+  }
+  return count;
+}
+
+const FALLBACK_KEYS = new Int32Array(MAX_MOVES);
+
+export function generateMoves(
+  position: FastPosition,
+  out: Int32Array,
+  keys: Int32Array = FALLBACK_KEYS,
+): number {
   const active = position.active;
   const canMove = canMoveMonForCounts(position.monsMoves);
   const actionAvailable = canUseAction(position);
@@ -470,14 +574,14 @@ export function generateMoves(position: FastPosition, out: Int32Array): number {
     if (!carriesItem && cellCooldown(cell) !== 0) continue;
 
     if (canMove) {
-      const result = generateMonMoves(position, from, cell, out, count);
+      const result = generateMonMoves(position, from, cell, out, count, keys);
       count = generatedMoveCount(result);
       hasRawStartOption ||= generatedMovesHadRawStartOption(result);
     }
 
     if (carriesItem) {
       if (carriedConsumable === CONS_BOMB) {
-        const result = generateBombMoves(position, from, out, count);
+        const result = generateBombMoves(position, from, out, count, keys);
         count = generatedMoveCount(result);
         hasRawStartOption ||= generatedMovesHadRawStartOption(result);
       }
@@ -485,15 +589,15 @@ export function generateMoves(position: FastPosition, out: Int32Array): number {
       const square = u8(position.squares, from);
       if (square < SQ_MON_BASE && actionAvailable) {
         if (kind === KIND_MYSTIC) {
-          const result = generateMysticMoves(position, from, out, count);
+          const result = generateMysticMoves(position, from, out, count, keys);
           count = generatedMoveCount(result);
           hasRawStartOption ||= generatedMovesHadRawStartOption(result);
         } else if (kind === KIND_DEMON) {
-          const result = generateDemonMoves(position, from, out, count);
+          const result = generateDemonMoves(position, from, out, count, keys);
           count = generatedMoveCount(result);
           hasRawStartOption ||= generatedMovesHadRawStartOption(result);
         } else if (kind === KIND_SPIRIT) {
-          const result = generateSpiritMoves(position, from, out, count);
+          const result = generateSpiritMoves(position, from, out, count, keys);
           count = generatedMoveCount(result);
           hasRawStartOption ||= generatedMovesHadRawStartOption(result);
         }
@@ -510,7 +614,20 @@ export function generateMoves(position: FastPosition, out: Int32Array): number {
       const cell = u16(position.cells, index);
       if (cellOccupancy(cell) !== OCC_MANA) continue;
       if (cellMana(cell) !== wanted) continue;
-      count = generateManaMoves(position, index, out, count);
+      count = generateManaMoves(position, index, out, count, keys);
+    }
+  } else if (
+    i32(position.freeMana, active) !== 0 &&
+    canMoveManaForCounts(position.firstTurn, position.manaMoves) &&
+    (active === 0 ? position.whiteScore : position.blackScore) + 1 >= TARGET_SCORE
+  ) {
+    const wanted = active + 1;
+    for (let slot = 0; slot < position.manaCount; slot += 1) {
+      const index = i32(position.manaIndices, slot);
+      const cell = u16(position.cells, index);
+      if (cellOccupancy(cell) !== OCC_MANA) continue;
+      if (cellMana(cell) !== wanted) continue;
+      count = generateWinningManaMoves(position, index, out, count, keys);
     }
   }
 

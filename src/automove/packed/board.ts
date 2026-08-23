@@ -280,7 +280,7 @@ export function chebyshev(from: number, to: number): number {
   return u8(CHEBYSHEV, from * BOARD_CELLS + to);
 }
 
-export function midpoint(from: number, to: number): number {
+function midpointCompute(from: number, to: number): number {
   const rowFrom = Math.trunc(from / BOARD_SIZE);
   const columnFrom = from % BOARD_SIZE;
   const rowTo = Math.trunc(to / BOARD_SIZE);
@@ -289,6 +289,20 @@ export function midpoint(from: number, to: number): number {
     Math.trunc((rowFrom + rowTo) / 2) * BOARD_SIZE +
     Math.trunc((columnFrom + columnTo) / 2)
   );
+}
+
+const MIDPOINT_TABLE = (() => {
+  const table = new Uint8Array(BOARD_CELLS * BOARD_CELLS);
+  for (let from = 0; from < BOARD_CELLS; from += 1) {
+    for (let to = 0; to < BOARD_CELLS; to += 1) {
+      table[from * BOARD_CELLS + to] = midpointCompute(from, to);
+    }
+  }
+  return table;
+})();
+
+export function midpoint(from: number, to: number): number {
+  return u8(MIDPOINT_TABLE, from * BOARD_CELLS + to);
 }
 
 const POOL_INDICES = (() => {

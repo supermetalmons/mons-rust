@@ -2,7 +2,6 @@ import type { Input } from "../../engine/model/domain.js";
 import { inputArrayFen } from "../../engine/codec/input.js";
 import type { MonsGame } from "../../engine/game/mons-game.js";
 import type { AutomoveExecutionContext } from "../core/execution-context.js";
-import { automoveConfigForGame } from "../config/runtime.js";
 import type { SmartAutomovePreference } from "../config/types.js";
 import { applyInputsForSearchWithEvents } from "../transitions/simulation.js";
 import {
@@ -21,11 +20,7 @@ export function suggestMove(
   const selected =
     preference === "pro"
       ? selectProductionInputsWithDeadline(execution, game)
-      : selectStrategicSearchInputsWithDeadline(
-          execution,
-          game,
-          automoveConfigForGame(game, preference),
-        );
+      : selectStrategicSearchInputsWithDeadline(execution, game, preference);
   const inputs: readonly Input[] =
     selected.length === 0 ? deterministicLegalFallbackInputs(game) : selected;
   let applied = applyInputsForSearchWithEvents(game, inputs);
