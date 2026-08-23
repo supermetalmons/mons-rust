@@ -3,7 +3,6 @@ import {
   type Item,
   type NextInput,
   type NextInputKind,
-  type Square,
 } from "../model/domain.js";
 import { locationDistance, locationEquals, type Location } from "../board/geometry.js";
 
@@ -40,19 +39,6 @@ export function firstOptionFromEachKindGroup(
     previousKind = option.kind;
   }
   return result;
-}
-
-export function regularSquareForMovement(square: Square): boolean {
-  switch (square.kind) {
-    case "regular":
-    case "consumable-base":
-    case "mana-base":
-    case "mana-pool":
-      return true;
-    case "supermana-base":
-    case "mon-base":
-      return false;
-  }
 }
 
 export function isLocationGuardedByAngelLocation(

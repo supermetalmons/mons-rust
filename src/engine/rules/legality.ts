@@ -12,7 +12,10 @@ import {
   itemMon,
   type Color as ColorValue,
   type Item,
+  type Square,
 } from "../model/domain.js";
+import { nearbyLocations, type Location } from "../board/geometry.js";
+import type { Board } from "../board/storage.js";
 import type { RulesState } from "./state.js";
 
 export function winnerForScores(
@@ -156,11 +159,46 @@ export function shouldAdvanceTurnForCounts(
   firstTurn: boolean,
   monsMovesCount: number,
   manaMovesCount: number,
-  hasFreeRegularMana: boolean,
+  hasMovableFreeRegularMana: boolean,
 ): boolean {
   if (firstTurn) return !canMoveMonForCounts(monsMovesCount);
   if (!canMoveManaForCounts(firstTurn, manaMovesCount)) return true;
-  return !canMoveMonForCounts(monsMovesCount) && !hasFreeRegularMana;
+  return !canMoveMonForCounts(monsMovesCount) && !hasMovableFreeRegularMana;
+}
+
+export function regularSquareForMovement(square: Square): boolean {
+  switch (square.kind) {
+    case "regular":
+    case "consumable-base":
+    case "mana-base":
+    case "mana-pool":
+      return true;
+    case "supermana-base":
+    case "mon-base":
+      return false;
+  }
+}
+
+export function regularManaMoveDestinationAllowed(board: Board, at: Location): boolean {
+  const item = board.get(at);
+  const square = board.squareAt(at);
+  if (item?.kind === "mon") {
+    return regularSquareForMovement(square) && item.mon.kind === MonKind.Drainer;
+  }
+  if (item !== undefined) return false;
+  return regularSquareForMovement(square);
+}
+
+// A free mana with no legal destination cannot satisfy the mandatory mana move, so
+// it must not hold the turn open; otherwise a player whose mon moves and action are
+// spent would be left without any legal input while the game is not over.
+function hasMovableFreeRegularMana(state: RulesState): boolean {
+  for (const start of state.board.allFreeRegularManaLocations(state.activeColor)) {
+    for (const destination of nearbyLocations(start)) {
+      if (regularManaMoveDestinationAllowed(state.board, destination)) return true;
+    }
+  }
+  return false;
 }
 
 export function shouldAdvanceTurn(state: RulesState): boolean {
@@ -169,12 +207,12 @@ export function shouldAdvanceTurn(state: RulesState): boolean {
     !firstTurn &&
     canMoveManaForCounts(firstTurn, state.manaMovesCount) &&
     !canMoveMonForCounts(state.monsMovesCount);
-  const hasFreeRegularMana =
-    !needsFreeManaCheck || state.board.findMana(state.activeColor) !== undefined;
+  const movableFreeRegularMana =
+    !needsFreeManaCheck || hasMovableFreeRegularMana(state);
   return shouldAdvanceTurnForCounts(
     firstTurn,
     state.monsMovesCount,
     state.manaMovesCount,
-    hasFreeRegularMana,
+    movableFreeRegularMana,
   );
 }

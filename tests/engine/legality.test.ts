@@ -273,9 +273,9 @@ describe("scalar legality policy", () => {
     "scans for mana only when needed on $name",
     ({ turnNumber, monsMoves, manaMoves, hasMana, expected, scans }) => {
       const board = new Board();
-      const findMana = vi
-        .spyOn(board, "findMana")
-        .mockReturnValue(hasMana ? location(0, 0) : undefined);
+      const freeManaLocations = vi
+        .spyOn(board, "allFreeRegularManaLocations")
+        .mockReturnValue(hasMana ? [location(0, 0)] : []);
 
       expect(
         shouldAdvanceTurn({
@@ -291,10 +291,59 @@ describe("scalar legality policy", () => {
           turnNumber,
         }),
       ).toBe(expected);
-      expect(findMana).toHaveBeenCalledTimes(scans);
+      expect(freeManaLocations).toHaveBeenCalledTimes(scans);
       if (scans !== 0) {
-        expect(findMana).toHaveBeenCalledWith(Color.White);
+        expect(freeManaLocations).toHaveBeenCalledWith(Color.White);
       }
     },
   );
+});
+
+describe("blocked mandatory mana move", () => {
+  const preStuckFen =
+    "4 2 w 1 0 4 0 0 15 n05d1xn05/n11/n02xxmn08/n04a0xxxms0xn01Y0xn02/n04xxUxxMxxmn04/y0xn03E0xn01e0xn04/n11/n11/n04S0xn06/n09A0xn01/n10D0x 1";
+
+  it("advances the turn when the last mon move leaves every free mana unmovable", async () => {
+    const { MonsGame } = await import("../../src/engine/game/mons-game.js");
+    const { Game } = await import("../../src/api/game.js");
+    const { inputArrayFen } = await import("../../src/engine/codec/input.js");
+    const { tryLoadPosition, moveToInputs } =
+      await import("../../src/automove/packed/bridge.js");
+    const { FastPosition } = await import("../../src/automove/packed/state.js");
+    const { generateMoves, MAX_MOVES } =
+      await import("../../src/automove/packed/moves.js");
+    const { i32 } = await import("../../src/automove/packed/board.js");
+
+    const engine = MonsGame.fromFen(preStuckFen, false);
+    if (engine === undefined) throw new Error("pre-stuck FEN must load");
+    const position = new FastPosition();
+    expect(tryLoadPosition(position, engine, 40)).toBe(true);
+    const buffer = new Int32Array(MAX_MOVES);
+    const count = generateMoves(position, buffer);
+    expect(count).toBeGreaterThan(0);
+
+    let advanced = 0;
+    let held = 0;
+    for (let index = 0; index < count; index += 1) {
+      const inputFen = inputArrayFen(moveToInputs(i32(buffer, index)));
+      const game = Game.fromFen(preStuckFen);
+      if (game === undefined) throw new Error("pre-stuck FEN must load");
+      const result = game.playFen(inputFen);
+      if (result.kind !== "complete") continue;
+      if (game.activeColor === Color.Black) {
+        advanced += 1;
+        if (advanced === 1) {
+          expect(game.suggestMove("fast")).toBeDefined();
+        }
+      } else {
+        held += 1;
+        if (held === 1) {
+          expect(game.suggestMove("fast")).toBeDefined();
+        }
+      }
+    }
+    expect(advanced).toBeGreaterThan(0);
+    expect(held).toBeGreaterThan(0);
+    expect(advanced + held).toBe(count);
+  }, 30000);
 });

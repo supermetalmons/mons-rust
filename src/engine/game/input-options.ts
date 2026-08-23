@@ -20,10 +20,11 @@ import {
   type Item,
   type NextInput,
 } from "../model/domain.js";
+import { isLocationGuardedByAngelLocation } from "./input-support.js";
 import {
-  isLocationGuardedByAngelLocation,
+  regularManaMoveDestinationAllowed,
   regularSquareForMovement,
-} from "./input-support.js";
+} from "../rules/legality.js";
 
 type InputOptionGame = {
   readonly board: Board;
@@ -198,19 +199,7 @@ export function generateSecondInputOptions(
             nearbyLocations(startLocation),
             NextInputKind.ManaMove,
             specificLocation,
-            (at) => {
-              const item = game.board.get(at);
-              const square = game.board.squareAt(at);
-              if (item?.kind === "mon") {
-                return (
-                  regularSquareForMovement(square) && item.mon.kind === MonKind.Drainer
-                );
-              }
-              if (item !== undefined) {
-                return false;
-              }
-              return regularSquareForMovement(square);
-            },
+            (at) => regularManaMoveDestinationAllowed(game.board, at),
           ),
         );
       }

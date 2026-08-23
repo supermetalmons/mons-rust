@@ -15,7 +15,8 @@ import {
   type NextInput,
 } from "../model/domain.js";
 import { spiritDestinationItemAllowed } from "../rules/legality.js";
-import { nextInput, regularSquareForMovement } from "./input-support.js";
+import { nextInput } from "./input-support.js";
+import { regularSquareForMovement } from "../rules/legality.js";
 import type { InputStageResult } from "./query-cache.js";
 
 type EventCompilationContext = {

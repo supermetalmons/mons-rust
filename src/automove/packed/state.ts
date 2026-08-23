@@ -3,6 +3,8 @@ import { ACTIONS_PER_TURN } from "../../engine/board/config.js";
 import { colorId } from "../../engine/model/domain.js";
 import { rethrowFastWorkspaceAllocation } from "./allocation.js";
 import {
+  canMoveManaForCounts,
+  canMoveMonForCounts,
   canUseActionForCounts,
   shouldAdvanceTurnForCounts,
   shouldSuggestRegularManaStartsFromScalars,
@@ -32,11 +34,14 @@ import {
   cellOccupancy,
   chebyshev,
   i32,
+  KIND_DRAINER,
   makeManaCell,
   makeMonCell,
   manaScoreValue,
   monId,
+  NEIGHBORS,
   squareIsPool,
+  squareIsRegularForMovement,
   u16,
 } from "./board.js";
 
@@ -587,12 +592,48 @@ export function manaStartsAllowed(
   );
 }
 
+export function manaMoveAllowed(position: FastPosition, destination: number): boolean {
+  if (!squareIsRegularForMovement(u8(position.squares, destination))) return false;
+  const target = u16(position.cells, destination);
+  return (
+    target === 0 ||
+    (cellOccupancy(target) === OCC_MON &&
+      cellMonKind(target) === KIND_DRAINER &&
+      cellMana(target) === 0 &&
+      cellConsumable(target) === 0)
+  );
+}
+
+function hasMovableFreeRegularMana(position: FastPosition): boolean {
+  const mana = position.active + 1;
+  for (let slot = 0; slot < position.manaCount; slot += 1) {
+    const index = i32(position.manaIndices, slot);
+    const cell = u16(position.cells, index);
+    if (cellOccupancy(cell) !== OCC_MANA || cellMana(cell) !== mana) continue;
+    const start = i32(NEIGHBORS.starts, index);
+    const count = i32(NEIGHBORS.counts, index);
+    for (let offset = 0; offset < count; offset += 1) {
+      const destination = i32(NEIGHBORS.list, start + offset);
+      if (manaMoveAllowed(position, destination)) return true;
+    }
+  }
+  return false;
+}
+
 function shouldAdvanceTurn(position: FastPosition): boolean {
+  const needsFreeManaCheck =
+    !position.firstTurn &&
+    canMoveManaForCounts(position.firstTurn, position.manaMoves) &&
+    !canMoveMonForCounts(position.monsMoves);
+  const movableFreeRegularMana =
+    !needsFreeManaCheck ||
+    (i32(position.freeMana, position.active) !== 0 &&
+      hasMovableFreeRegularMana(position));
   return shouldAdvanceTurnForCounts(
     position.firstTurn,
     position.monsMoves,
     position.manaMoves,
-    i32(position.freeMana, position.active) !== 0,
+    movableFreeRegularMana,
   );
 }
 
