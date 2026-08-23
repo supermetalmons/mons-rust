@@ -5,6 +5,8 @@ import { pathToFileURL } from "node:url";
 
 import {
   addInvalid,
+  advanceHeldGame,
+  createHeldGame,
   emptyInvalidCounts,
   initialFen,
   inspectSharedFen,
@@ -28,9 +30,22 @@ import { runBundleExecutingCli } from "./evidence/options.mjs";
 const helpText = `Usage: node scripts/run-automove-strength.mjs \\
   --baseline <bundle.mjs> --candidate <bundle.mjs> --out <report.json> \\
   [--modes fast,normal,pro] [--variants all|Classic,... | --states states.jsonl] \\
-  [--max-plies 256]
+  [--max-plies 256] [--game-driving fresh|held]
 
-Runs one mirrored color-swapped pair for every selected variant or state.`;
+Runs one mirrored color-swapped pair for every selected variant or state.
+Game driving "fresh" rebuilds each acting game from the shared fen every ply;
+"held" keeps one game per bundle alive across the whole game so engines may
+reuse per-game state, while every ply is still cross-validated fresh.`;
+
+const GAME_DRIVING_MODES = Object.freeze(["fresh", "held"]);
+
+function gameDrivingOption(value) {
+  if (value === undefined) return "fresh";
+  if (!GAME_DRIVING_MODES.includes(value)) {
+    throw new Error(`--game-driving must be one of ${GAME_DRIVING_MODES.join(", ")}`);
+  }
+  return value;
+}
 
 export async function runStrengthEvidence(configuration) {
   if (configuration.states !== undefined && configuration.variants !== undefined) {
@@ -48,6 +63,7 @@ export async function runStrengthEvidence(configuration) {
   if (stateBank !== null) {
     validateStateBankVariants(stateBank, baseline, candidate);
   }
+  const gameDriving = gameDrivingOption(configuration.gameDriving);
   const maxPlies = configuration.maxPlies;
   const seeds =
     stateBank === null
@@ -82,6 +98,7 @@ export async function runStrengthEvidence(configuration) {
         candidate,
         candidateColor: "white",
         dimensions,
+        gameDriving,
         id: `${mode}/${seed.key}/candidate-white`,
         maxPlies,
         mode,
@@ -93,6 +110,7 @@ export async function runStrengthEvidence(configuration) {
         candidate,
         candidateColor: "black",
         dimensions,
+        gameDriving,
         id: `${mode}/${seed.key}/candidate-black`,
         maxPlies,
         mode,
@@ -138,12 +156,14 @@ export async function runStrengthEvidence(configuration) {
             modes,
             variants,
             maxPlies,
+            gameDriving,
             gamesPerPairedUnit: 2,
           }
         : {
             modes,
             stateIds: stateBank.states.map((state) => state.id),
             maxPlies,
+            gameDriving,
             gamesPerPairedUnit: 2,
           },
     ...(stateBank === null
@@ -166,6 +186,7 @@ function playStrengthGame({
   candidate,
   candidateColor,
   dimensions,
+  gameDriving,
   id,
   maxPlies,
   mode,
@@ -183,6 +204,24 @@ function playStrengthGame({
   let winner = null;
   let invalid = null;
   let plies = 0;
+
+  let heldGames = null;
+  if (gameDriving === "held") {
+    const heldBaseline = createHeldGame(baseline, startingFen);
+    const heldCandidate = createHeldGame(candidate, startingFen);
+    if (heldBaseline === undefined || heldCandidate === undefined) {
+      invalid = {
+        reason: "illegal-replay",
+        ply: 1,
+        actor: null,
+        color: null,
+        fen,
+        inputFen: null,
+      };
+    } else {
+      heldGames = { baseline: heldBaseline, candidate: heldCandidate };
+    }
+  }
 
   while (plies < maxPlies && winner === null && invalid === null) {
     const sharedState = inspectSharedFen(baseline, candidate, fen);
@@ -215,7 +254,13 @@ function playStrengthGame({
     const actor = sharedState.activeColor === candidateColor ? "candidate" : "baseline";
     const actorBundle = actor === "candidate" ? candidate : baseline;
     const validationBundle = actor === "candidate" ? baseline : candidate;
-    const suggestion = runValidatedSuggestion(actorBundle, validationBundle, fen, mode);
+    const suggestion = runValidatedSuggestion(
+      actorBundle,
+      validationBundle,
+      fen,
+      mode,
+      heldGames === null ? undefined : heldGames[actor],
+    );
     if (suggestion.ok && typeof suggestion.elapsedMs === "number") {
       samples[sharedState.activeColor].push(suggestion.elapsedMs);
       samples[actor].push(suggestion.elapsedMs);
@@ -223,6 +268,21 @@ function playStrengthGame({
     if (!suggestion.ok) {
       invalid = {
         reason: suggestion.reason,
+        ply: plies + 1,
+        actor,
+        color: sharedState.activeColor,
+        fen,
+        inputFen: suggestion.inputFen,
+      };
+      break;
+    }
+    if (
+      heldGames !== null &&
+      (!advanceHeldGame(heldGames.candidate, suggestion.inputFen, suggestion.nextFen) ||
+        !advanceHeldGame(heldGames.baseline, suggestion.inputFen, suggestion.nextFen))
+    ) {
+      invalid = {
+        reason: "illegal-replay",
         ply: plies + 1,
         actor,
         color: sharedState.activeColor,
@@ -384,6 +444,7 @@ export async function main(arguments_ = process.argv.slice(2)) {
     "variants",
     "states",
     "max-plies",
+    "game-driving",
     "out",
   ]);
   if (options.has("help")) {
@@ -400,6 +461,7 @@ export async function main(arguments_ = process.argv.slice(2)) {
     variants: options.get("variants"),
     states: options.get("states"),
     maxPlies: positiveIntegerOption(options, "max-plies", 256, 1024),
+    gameDriving: gameDrivingOption(options.get("game-driving")),
   };
   const outputPath = preflightJsonReportDestination(requiredOption(options, "out"));
   const report = await runStrengthEvidence(configuration);

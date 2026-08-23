@@ -104,6 +104,7 @@ describe("automove evidence runners", () => {
       outcome: "win",
       candidatePoints: 2,
     });
+    expect(report.config.gameDriving).toBe("fresh");
     expect(fs.readFileSync(baseline)).toEqual(baselineBefore);
     expect(fs.readFileSync(candidate)).toEqual(candidateBefore);
 
@@ -199,6 +200,112 @@ describe("automove evidence runners", () => {
         inconclusiveReason: "invalid",
       });
     }
+  });
+
+  it("drives held games across plies when requested", () => {
+    const root = temporaryDirectory();
+    const baseline = writeBundle(root, "baseline.mjs", "B");
+    const candidate = writeBundle(root, "candidate.mjs", "C");
+    const output = path.join(root, "reports", "strength-held.json");
+    const result = run(strengthScript, [
+      "--baseline",
+      baseline,
+      "--candidate",
+      candidate,
+      "--modes",
+      "fast",
+      "--variants",
+      "Classic",
+      "--max-plies",
+      "2",
+      "--game-driving",
+      "held",
+      "--out",
+      output,
+    ]);
+
+    expect(result.status, result.stderr).toBe(0);
+    const report = readJson(output);
+    expect(report.config.gameDriving).toBe("held");
+    expect(report.modes[0]).toMatchObject({
+      mode: "fast",
+      games: 2,
+      validGames: 2,
+      wins: 2,
+      losses: 0,
+      cutoffs: 0,
+      invalids: { total: 0 },
+    });
+  });
+
+  it("classifies held-game drift as illegal replay", () => {
+    const root = temporaryDirectory();
+    const baseline = writeBundle(root, "baseline.mjs", "B");
+    const candidate = writeBundle(root, "candidate.mjs", "stateful-playfen");
+    const freshOutput = path.join(root, "reports", "strength-fresh.json");
+    const freshResult = run(strengthScript, [
+      "--baseline",
+      baseline,
+      "--candidate",
+      candidate,
+      "--modes",
+      "fast",
+      "--variants",
+      "Classic",
+      "--max-plies",
+      "2",
+      "--out",
+      freshOutput,
+    ]);
+    expect(freshResult.status, freshResult.stderr).toBe(0);
+
+    const heldOutput = path.join(root, "reports", "strength-drift.json");
+    const heldResult = run(strengthScript, [
+      "--baseline",
+      baseline,
+      "--candidate",
+      candidate,
+      "--modes",
+      "fast",
+      "--variants",
+      "Classic",
+      "--max-plies",
+      "2",
+      "--game-driving",
+      "held",
+      "--out",
+      heldOutput,
+    ]);
+    expect(heldResult.status).toBe(1);
+    expect(heldResult.stderr).toContain("invalid games");
+    const report = readJson(heldOutput);
+    expect(report.summary.invalids.illegalReplay).toBeGreaterThan(0);
+    const invalidGame = report.games.find(
+      (game: { invalid: null | { reason: string } }) => game.invalid !== null,
+    );
+    expect(invalidGame.invalid).toMatchObject({ reason: "illegal-replay" });
+  });
+
+  it("rejects unknown game driving modes", () => {
+    const root = temporaryDirectory();
+    const baseline = writeBundle(root, "baseline.mjs", "B");
+    const candidate = writeBundle(root, "candidate.mjs", "C");
+    const result = run(strengthScript, [
+      "--baseline",
+      baseline,
+      "--candidate",
+      candidate,
+      "--modes",
+      "fast",
+      "--variants",
+      "Classic",
+      "--game-driving",
+      "sticky",
+      "--out",
+      path.join(root, "reports", "strength.json"),
+    ]);
+    expect(result.status).toBe(1);
+    expect(result.stderr).toContain("--game-driving must be one of fresh, held");
   });
 
   it("reports capped strength games as inconclusive cutoffs", () => {
@@ -298,6 +405,7 @@ describe("automove evidence runners", () => {
       modes: ["fast", "normal"],
       stateIds: ["a-state", "m-invalid", "z-state"],
       maxPlies: 2,
+      gameDriving: "fresh",
       gamesPerPairedUnit: 2,
     });
     expect(report.states).toBe(3);
@@ -1532,7 +1640,8 @@ function writeBundle(
     | "mutating-throw"
     | "throwing-payload"
     | "mutating-invalid-payload"
-    | "mutating-preview-throw",
+    | "mutating-preview-throw"
+    | "stateful-playfen",
   mutates = false,
   mutatesMetadata = false,
   invalidMetadata = false,
@@ -1554,7 +1663,11 @@ function writeBundle(
                 ? 'return { inputFen: "C", inputs: [{ kind: "synthetic", value: "C" }], events: [] };'
                 : `${mutates ? "this.state.ply += 1;" : ""}
     ${mutatesMetadata ? "this.takebacks.push(this.toFen());" : ""}
-    const inputFen = ${JSON.stringify(strategy === "mutating-preview-throw" ? "C" : strategy)};
+    const inputFen = ${JSON.stringify(
+      strategy === "mutating-preview-throw" || strategy === "stateful-playfen"
+        ? "C"
+        : strategy,
+    )};
     return {
       inputFen,
       inputs: [{ kind: "synthetic", value: inputFen }],
@@ -1672,6 +1785,11 @@ export class Game {
   }
 
   playFen(inputFen) {
+    ${
+      strategy === "stateful-playfen"
+        ? "this.plays = (this.plays ?? 0) + 1; if (this.plays > 1) { this.state.ply += 1; }"
+        : ""
+    }
     if (inputFen !== "B" && inputFen !== "C") {
       return { kind: "invalid", inputFen };
     }

@@ -1,0 +1,40 @@
+{
+  "schemaVersion": 1,
+  "corpusVersion": "automove-decisions-v9",
+  "description": "Deterministic public suggestMove decisions after the packed evaluation prices the free mana step as a queue with a cliff, buckets the fused drainer trip by whole turns, separates the carried supermana, adds the one-point mana-step window, and after the generator offers a winning mana move at any point in the turn.",
+  "fixedClockNowMs": 0,
+  "corpusFile": "decisions.jsonl",
+  "corpusSha256": "bbf58923bc145c037eee5015d2285e2adbc36d02adb133cb58c1124d62d24bbc",
+  "corpusBytes": 21918,
+  "orderedIdsSha256": "3c3e6062268009985d9c947fb05cea4586af8b81909a68025dd364ef15564ad6",
+  "stateCount": 13,
+  "decisionCount": 39,
+  "preferenceOrder": [
+    "fast",
+    "normal",
+    "pro"
+  ],
+  "variantOrder": [
+    "Classic",
+    "SwappedManaRows",
+    "OffsetArcManaRows",
+    "CenterSpokeManaRows",
+    "AlternatingManaRows",
+    "InnerWedgeManaRows",
+    "OuterWedgeManaRows",
+    "BentCenterManaRows",
+    "OuterEdgeManaRows",
+    "SplitFlankManaRows",
+    "ForwardBridgeManaRows",
+    "CornerChainManaRows"
+  ],
+  "selection": {
+    "initialVariantStates": 12,
+    "retainedRegressionStates": 1
+  },
+  "changesFromV8": {
+    "fastObservations": 2,
+    "normalObservations": 1,
+    "proObservations": 3
+  }
+}

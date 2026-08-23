@@ -51,24 +51,37 @@ export function validateStateBankVariants(stateBank, firstBundle, secondBundle) 
   }
 }
 
-export function runValidatedSuggestion(bundle, validationBundle, fen, mode) {
+export function runValidatedSuggestion(
+  bundle,
+  validationBundle,
+  fen,
+  mode,
+  heldSource,
+) {
   let source;
   let validator;
   let sourceBefore;
   let validatorBefore;
   try {
-    source = bundle.Game.fromFen(fen);
+    source = heldSource === undefined ? bundle.Game.fromFen(fen) : heldSource;
     validator = validationBundle.Game.fromFen(fen);
     sourceBefore = inspectPublicGame(source);
     validatorBefore = inspectPublicGame(validator);
+    const sharedSnapshotsMatch =
+      sourceBefore.ok &&
+      validatorBefore.ok &&
+      (heldSource === undefined
+        ? isDeepStrictEqual(sourceBefore.snapshot, validatorBefore.snapshot)
+        : isDeepStrictEqual(
+            positionSnapshot(sourceBefore.snapshot),
+            positionSnapshot(validatorBefore.snapshot),
+          ));
     if (
       source === undefined ||
       validator === undefined ||
-      !sourceBefore.ok ||
-      !validatorBefore.ok ||
       sourceBefore.fen !== fen ||
       validatorBefore.fen !== fen ||
-      !isDeepStrictEqual(sourceBefore.snapshot, validatorBefore.snapshot)
+      !sharedSnapshotsMatch
     ) {
       return invalidSuggestion("illegal-replay");
     }
@@ -283,6 +296,19 @@ function inspectPublicGame(game) {
   }
 }
 
+function positionSnapshot(snapshot) {
+  return {
+    fen: snapshot.fen,
+    variant: snapshot.variant,
+    activeColor: snapshot.activeColor,
+    turnNumber: snapshot.turnNumber,
+    scores: snapshot.scores,
+    potions: snapshot.potions,
+    winner: snapshot.winner,
+    availableMoveCounts: snapshot.availableMoveCounts,
+  };
+}
+
 function isMatchingCompleteResolution(resolution, inputFen, events) {
   return (
     typeof resolution === "object" &&
@@ -343,4 +369,33 @@ function elapsedMilliseconds(started) {
 
 function isColor(value) {
   return value === "white" || value === "black";
+}
+
+export function createHeldGame(bundle, fen) {
+  try {
+    const game = bundle.Game.fromFen(fen);
+    if (game === undefined || game === null) return undefined;
+    const inspected = inspectPublicGame(game);
+    if (!inspected.ok || inspected.fen !== fen) return undefined;
+    return game;
+  } catch {
+    return undefined;
+  }
+}
+
+export function advanceHeldGame(game, inputFen, expectedFen) {
+  try {
+    const result = game.playFen(inputFen);
+    if (
+      result === undefined ||
+      result === null ||
+      typeof result !== "object" ||
+      result.kind === "invalid-input"
+    ) {
+      return false;
+    }
+    return game.toFen() === expectedFen;
+  } catch {
+    return false;
+  }
 }
