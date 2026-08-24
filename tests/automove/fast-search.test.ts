@@ -626,6 +626,29 @@ describe("packed-state automove search", () => {
     ).toBe("events");
   });
 
+  it("keeps selective subtrees move-only in the transposition table", () => {
+    const game = MonsGame.fromFen(
+      "4 3 b 0 0 5 0 1 14 n06a1xe0xn03/n11/n04s0xn06/n08Y0xn02/n05d0mn05/n02xxmn08/n05xxMn05/E0xn03y0xS0xn05/n02xxMn02D0xA0xn04/n02xxMn08/n11",
+      true,
+    );
+    expect(game).toBeDefined();
+    if (game === undefined) return;
+
+    const searcher = new FastSearcher();
+    loadSearchRoot(searcher, game);
+    const outcome = searcher.search(
+      {
+        maxDepth: 7,
+        maxNodes: 65_000,
+        tuning: STRATEGIC_SEARCH_TUNING,
+      },
+      () => false,
+    );
+
+    expect(outcome).toMatchObject({ score: -999_994, depth: 7, supported: true });
+    expect(inputArrayFen(moveToInputs(outcome.move))).toBe("l2,4;l4,5;l3,6");
+  });
+
   it("still stops at depth one for a genuine immediate win", () => {
     const game = MonsGame.fromFen(
       "0 3 b 0 0 0 0 0 108 n01d0Mn09/n06e0xn02xxmn01/s0xn03y0xn01xxMn04/n10a0x/n04A0xn03xxmn02/n05xxUn05/n02xxMn05Y0xn02/n02D0Mn01xxMn03S0xn02/n11/n02E0xn08/n11",

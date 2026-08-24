@@ -282,10 +282,8 @@ export function evaluateWithTables(
     drainerBlack >= 0 && cellCooldown(u16(position.cells, drainerBlack)) === 0;
   let nearestManaWhite = UNREACHABLE_DISTANCE;
   let nearestManaBlack = UNREACHABLE_DISTANCE;
-  let shortestPickupScoreWhite = UNREACHABLE_DISTANCE;
-  let shortestPickupScoreBlack = UNREACHABLE_DISTANCE;
-  // The fused trip is tracked once per point class: the nearest item is not the best plan when
-  // a step or two further along stands one worth double.
+  let onePointPickupWhite = UNREACHABLE_DISTANCE;
+  let onePointPickupBlack = UNREACHABLE_DISTANCE;
   let twoPointPickupWhite = UNREACHABLE_DISTANCE;
   let twoPointPickupBlack = UNREACHABLE_DISTANCE;
   const remaining = MONS_MOVES_PER_TURN - position.monsMoves;
@@ -336,21 +334,17 @@ export function evaluateWithTables(
     const scoreDistance = u8(POOL_DISTANCE, index);
     if (drainerReadyWhite) {
       const pickupScoreDistance = distanceWhite + scoreDistance;
-      if (pickupScoreDistance < shortestPickupScoreWhite) {
-        shortestPickupScoreWhite = pickupScoreDistance;
-      }
-      // Two points for either side means the supermana or the other side's mana, so the test
-      // is one comparison against the owning code rather than a scoring lookup.
-      if (mana !== MANA_WHITE && pickupScoreDistance < twoPointPickupWhite) {
+      if (mana === MANA_WHITE && pickupScoreDistance < onePointPickupWhite) {
+        onePointPickupWhite = pickupScoreDistance;
+      } else if (mana !== MANA_WHITE && pickupScoreDistance < twoPointPickupWhite) {
         twoPointPickupWhite = pickupScoreDistance;
       }
     }
     if (drainerReadyBlack) {
       const pickupScoreDistance = distanceBlack + scoreDistance;
-      if (pickupScoreDistance < shortestPickupScoreBlack) {
-        shortestPickupScoreBlack = pickupScoreDistance;
-      }
-      if (mana !== MANA_BLACK && pickupScoreDistance < twoPointPickupBlack) {
+      if (mana === MANA_BLACK && pickupScoreDistance < onePointPickupBlack) {
+        onePointPickupBlack = pickupScoreDistance;
+      } else if (mana !== MANA_BLACK && pickupScoreDistance < twoPointPickupBlack) {
         twoPointPickupBlack = pickupScoreDistance;
       }
     }
@@ -503,29 +497,29 @@ export function evaluateWithTables(
       if (kind === KIND_DRAINER) {
         let plan = 0;
         const minMana = color === 0 ? nearestManaWhite : nearestManaBlack;
-        const pickupScoreDistance =
-          color === 0 ? shortestPickupScoreWhite : shortestPickupScoreBlack;
-        const tripBudget = color === position.active ? remaining : MONS_MOVES_PER_TURN;
+        const onePointPickup = color === 0 ? onePointPickupWhite : onePointPickupBlack;
         const twoPointPickup = color === 0 ? twoPointPickupWhite : twoPointPickupBlack;
-        const tripDistance =
+        const pickupScoreDistance =
+          onePointPickup < twoPointPickup ? onePointPickup : twoPointPickup;
+        const tripBudget = color === position.active ? remaining : MONS_MOVES_PER_TURN;
+        let tripTable = tables.drainerTrip;
+        let tripSteps =
           carriedMana !== 0
             ? u8(POOL_DISTANCE, index)
             : cellConsumable(cell) !== 0
               ? UNREACHABLE_DISTANCE
-              : pickupScoreDistance;
-        // Weigh the best two-point trip against the shortest one and keep whichever is worth
-        // more; at the neutral scale both are priced by the same table, so the shorter wins.
-        const twoPointTrip =
+              : onePointPickup;
+        if (
           carriedMana === 0 &&
           cellConsumable(cell) === 0 &&
           twoPointPickup < UNREACHABLE_DISTANCE &&
-          twoPointPickup !== tripDistance &&
-          tripValue(tables, tables.drainerTripTwoPoint, twoPointPickup, tripBudget) >
-            tripValue(tables, tables.drainerTrip, tripDistance, tripBudget);
-        const tripTable = twoPointTrip
-          ? tables.drainerTripTwoPoint
-          : tables.drainerTrip;
-        const tripSteps = twoPointTrip ? twoPointPickup : tripDistance;
+          (onePointPickup >= UNREACHABLE_DISTANCE ||
+            tripValue(tables, tables.drainerTripTwoPoint, twoPointPickup, tripBudget) >
+              tripValue(tables, tables.drainerTrip, onePointPickup, tripBudget))
+        ) {
+          tripTable = tables.drainerTripTwoPoint;
+          tripSteps = twoPointPickup;
+        }
         plan -= i32(tables.tripStep, tripSteps);
         const tripExcess = tripSteps > tripBudget ? tripSteps - tripBudget : 0;
         const tripTurns =

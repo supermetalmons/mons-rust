@@ -645,6 +645,17 @@ describe("fast position evaluation", () => {
     expect(
       evaluatePosition(position, weights({ ...trip, tripTwoPointScale: 290 })),
     ).toBe(Math.trunc((2_200 * 290) / 100) - 600);
+
+    const onlyTwoPoint = makePosition([
+      [10, 4, mon(KIND_DRAINER, 0)],
+      [10, 1, makeManaCell(MANA_BLACK)],
+    ]);
+    expect(
+      evaluatePosition(onlyTwoPoint, weights({ ...trip, tripTwoPointScale: 290 })),
+    ).toBe(Math.trunc((4_200 * 290) / 100) - 400);
+    expect(
+      evaluatePosition(onlyTwoPoint, weights({ ...trip, tripTwoPointScale: 50 })),
+    ).toBe(Math.trunc((4_200 * 50) / 100) - 400);
   });
 
   it("marks a side that needs one point and owns mana within mana-step reach", () => {

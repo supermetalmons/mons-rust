@@ -208,6 +208,7 @@ export function runValidatedSuggestion(
       activeColor,
       elapsedMs,
       expectedEvents,
+      expectedPosition: positionSnapshot(replayAfter.snapshot),
       inputFen,
       nextFen: replayAfter.fen,
       winner: replayAfter.winner,
@@ -396,7 +397,14 @@ function advanceHeldGame(game, inputFen, expectedEvents, expectedFen) {
   }
 }
 
-export function advanceHeldGames(first, second, inputFen, expectedEvents, expectedFen) {
+export function advanceHeldGames(
+  first,
+  second,
+  inputFen,
+  expectedEvents,
+  expectedFen,
+  expectedPosition,
+) {
   if (
     !advanceHeldGame(first, inputFen, expectedEvents, expectedFen) ||
     !advanceHeldGame(second, inputFen, expectedEvents, expectedFen)
@@ -408,6 +416,7 @@ export function advanceHeldGames(first, second, inputFen, expectedEvents, expect
   return (
     firstState.ok &&
     secondState.ok &&
-    isDeepStrictEqual(firstState.snapshot, secondState.snapshot)
+    isDeepStrictEqual(positionSnapshot(firstState.snapshot), expectedPosition) &&
+    isDeepStrictEqual(positionSnapshot(secondState.snapshot), expectedPosition)
   );
 }

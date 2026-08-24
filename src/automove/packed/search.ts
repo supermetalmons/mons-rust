@@ -43,7 +43,6 @@ const FLAG_EXACT = 0;
 const FLAG_LOWER = 1;
 const FLAG_UPPER = 2;
 const FLAG_MOVE_ONLY = 3;
-const INFO_SELECTIVE = 1 << 30;
 const TABLE_GENERATION_MASK = 0x3f_ffff;
 const TIMEOUT_CHECK_MASK = 511;
 const TACTICAL_THRESHOLD = 1 << 15;
@@ -389,7 +388,6 @@ export class FastSearcher {
           (flag === FLAG_LOWER && score >= beta) ||
           (flag === FLAG_UPPER && score <= alpha)
         ) {
-          if ((slotInfo & INFO_SELECTIVE) !== 0) this.#selectiveEpoch += 1;
           return score;
         }
       }
@@ -418,7 +416,6 @@ export class FastSearcher {
 
     let bestScore = -INFINITY_SCORE;
     let bestMove = 0;
-    let selectivelyPruned = false;
     const selectiveEpoch = this.#selectiveEpoch;
     for (let index = 0; index < count; index += 1) {
       this.#selectBest(buffer, keys, index, count);
@@ -437,7 +434,6 @@ export class FastSearcher {
           pruned = futile;
         }
         if (pruned) {
-          selectivelyPruned = true;
           this.#selectiveEpoch += 1;
           break;
         }
@@ -484,20 +480,14 @@ export class FastSearcher {
     if (bestMove === 0) return this.#staticScore(position);
 
     const subtreeSelective = this.#selectiveEpoch !== selectiveEpoch;
-    // A selectively pruned node proves only what its searched moves scored: a value above
-    // alpha is a lower bound (the pruned moves could raise it further) and a fail-low is
-    // stored as the upper bound the pruning itself assumed. Selectivity inherited only from
-    // descendants retains move ordering without promoting their score to an exact value.
-    const flag =
-      bestScore >= beta || (selectivelyPruned && bestScore > alphaInput)
+    const flag = subtreeSelective
+      ? FLAG_MOVE_ONLY
+      : bestScore >= beta
         ? FLAG_LOWER
         : bestScore <= alphaInput
           ? FLAG_UPPER
-          : subtreeSelective
-            ? FLAG_MOVE_ONLY
-            : FLAG_EXACT;
-    const storedScore =
-      selectivelyPruned && flag === FLAG_UPPER ? alphaInput : bestScore;
+          : FLAG_EXACT;
+    const storedScore = bestScore;
     const entryDepth = depth;
     if (storedScore < WIN_VALUE - MAX_PLY && storedScore > -WIN_VALUE + MAX_PLY) {
       const storedDepth = (slotInfo >> 2) & 63;
@@ -508,11 +498,7 @@ export class FastSearcher {
         table.keyLo[slot] = keyLo;
         table.keyHi[slot] = keyHi;
         table.score[slot] = storedScore;
-        table.info[slot] =
-          (table.generation << 8) |
-          (entryDepth << 2) |
-          flag |
-          (subtreeSelective ? INFO_SELECTIVE : 0);
+        table.info[slot] = (table.generation << 8) | (entryDepth << 2) | flag;
         table.move[slot] = bestMove;
       }
     }

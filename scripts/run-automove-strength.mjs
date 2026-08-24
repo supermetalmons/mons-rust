@@ -35,7 +35,8 @@ const helpText = `Usage: node scripts/run-automove-strength.mjs \\
 Runs one mirrored color-swapped pair for every selected variant or state.
 Game driving "fresh" rebuilds each acting game from the shared fen every ply;
 "held" keeps one game per bundle alive across the whole game so engines may
-reuse per-game state, while every ply is still cross-validated fresh.`;
+reuse per-game state, while every move and resulting position is cross-validated
+fresh. Accumulated history metadata is outside the comparison.`;
 
 const GAME_DRIVING_MODES = Object.freeze(["fresh", "held"]);
 
@@ -284,6 +285,7 @@ function playStrengthGame({
         suggestion.inputFen,
         suggestion.expectedEvents,
         suggestion.nextFen,
+        suggestion.expectedPosition,
       )
     ) {
       invalid = {

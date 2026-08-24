@@ -286,11 +286,37 @@ describe("automove evidence runners", () => {
     expect(invalidGame.invalid).toMatchObject({ reason: "illegal-replay" });
   });
 
-  it("classifies held-game history drift as illegal replay", () => {
+  it("limits held replay validation to moves and positions", () => {
     const root = temporaryDirectory();
     const baseline = writeBundle(root, "baseline.mjs", "B");
     const candidate = writeBundle(root, "candidate.mjs", "stateful-history-playfen");
     const output = path.join(root, "reports", "strength-history-drift.json");
+    const result = run(strengthScript, [
+      "--baseline",
+      baseline,
+      "--candidate",
+      candidate,
+      "--modes",
+      "fast",
+      "--variants",
+      "Classic",
+      "--max-plies",
+      "2",
+      "--game-driving",
+      "held",
+      "--out",
+      output,
+    ]);
+
+    expect(result.status, result.stderr).toBe(0);
+    expect(readJson(output).summary.invalids.total).toBe(0);
+  });
+
+  it("compares the final held position with the fresh replay", () => {
+    const root = temporaryDirectory();
+    const baseline = writeBundle(root, "baseline.mjs", "stateful-winner-playfen");
+    const candidate = writeBundle(root, "candidate.mjs", "stateful-winner-playfen");
+    const output = path.join(root, "reports", "strength-winner-drift.json");
     const result = run(strengthScript, [
       "--baseline",
       baseline,
@@ -1721,6 +1747,7 @@ function writeBundle(
     | "mutating-preview-throw"
     | "stateful-playfen"
     | "stateful-history-playfen"
+    | "stateful-winner-playfen"
     | "invalid-held-playfen"
     | "wrong-held-complete-payload",
   mutates = false,
@@ -1750,6 +1777,7 @@ function writeBundle(
       strategy === "mutating-preview-throw" ||
         strategy === "stateful-playfen" ||
         strategy === "stateful-history-playfen" ||
+        strategy === "stateful-winner-playfen" ||
         strategy === "invalid-held-playfen" ||
         strategy === "wrong-held-complete-payload"
         ? "C"
@@ -1826,6 +1854,7 @@ export class Game {
   }
 
   get winner() {
+    if (this.winnerOverride !== undefined) return this.winnerOverride;
     return this.state.ply >= 2 && this.state.candidateColor !== null
       ? this.state.candidateColor
       : undefined;
@@ -1877,7 +1906,9 @@ export class Game {
         ? "this.plays = (this.plays ?? 0) + 1; if (this.plays > 1) { this.state.ply += 1; }"
         : strategy === "stateful-history-playfen"
           ? 'this.plays = (this.plays ?? 0) + 1; if (this.plays > 1) { this.takebacks.push("drift"); }'
-          : ""
+          : strategy === "stateful-winner-playfen"
+            ? "this.plays = (this.plays ?? 0) + 1;"
+            : ""
     }
     if (inputFen !== "B" && inputFen !== "C") {
       return { kind: "invalid", inputFen };
@@ -1889,6 +1920,7 @@ export class Game {
       ply: this.state.ply + 1,
       candidateColor,
     };
+    ${strategy === "stateful-winner-playfen" ? 'if (this.plays > 1) this.winnerOverride = "white";' : ""}
     ${strategy === "invalid-held-playfen" ? 'if (this.invalidHeldReplay) return { kind: "invalid", inputFen };' : ""}
     ${strategy === "wrong-held-complete-payload" ? 'if (this.wrongHeldCompletePayload) return { kind: "complete", inputFen: "B", events: eventsFor(inputFen) };' : ""}
     return { kind: "complete", inputFen, events: eventsFor(inputFen) };

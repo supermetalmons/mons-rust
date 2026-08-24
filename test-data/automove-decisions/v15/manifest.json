@@ -1,0 +1,40 @@
+{
+  "schemaVersion": 1,
+  "corpusVersion": "automove-decisions-v15",
+  "description": "Deterministic public suggestMove decisions after correcting selective fail-low bounds and equal-distance two-point trip pricing.",
+  "fixedClockNowMs": 0,
+  "corpusFile": "decisions.jsonl",
+  "corpusSha256": "47f44394f6bf5394bf88a347a92ac18e3a02757abbb3240d7cb422e10146e355",
+  "corpusBytes": 21921,
+  "orderedIdsSha256": "3c3e6062268009985d9c947fb05cea4586af8b81909a68025dd364ef15564ad6",
+  "stateCount": 13,
+  "decisionCount": 39,
+  "preferenceOrder": [
+    "fast",
+    "normal",
+    "pro"
+  ],
+  "variantOrder": [
+    "Classic",
+    "SwappedManaRows",
+    "OffsetArcManaRows",
+    "CenterSpokeManaRows",
+    "AlternatingManaRows",
+    "InnerWedgeManaRows",
+    "OuterWedgeManaRows",
+    "BentCenterManaRows",
+    "OuterEdgeManaRows",
+    "SplitFlankManaRows",
+    "ForwardBridgeManaRows",
+    "CornerChainManaRows"
+  ],
+  "selection": {
+    "initialVariantStates": 12,
+    "retainedRegressionStates": 1
+  },
+  "changesFromV14": {
+    "fastObservations": 0,
+    "normalObservations": 5,
+    "proObservations": 1
+  }
+}
