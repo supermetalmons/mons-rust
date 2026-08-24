@@ -224,11 +224,18 @@ export async function assertPackageConsumer({
       const game = new Game({ variant: GameVariant.Classic });
       const openingFen = game.toFen();
       const suggestion = game.suggestMove("pro");
+      const packedSuggestion = game.suggestMove("fast");
       document.body.dataset["openingFen"] = openingFen;
       document.body.dataset["suggestion"] =
         suggestion?.inputFen ?? "";
       document.body.dataset["previewKind"] =
         suggestion === undefined ? "" : game.preview(suggestion.inputs).kind;
+      document.body.dataset["packedSuggestion"] =
+        packedSuggestion?.inputFen ?? "";
+      document.body.dataset["packedPreviewKind"] =
+        packedSuggestion === undefined
+          ? ""
+          : game.preview(packedSuggestion.inputs).kind;
       document.body.dataset["sourceFenAfter"] = game.toFen();
     `,
     );
@@ -243,8 +250,14 @@ export async function assertPackageConsumer({
         const game = new Game({ variant: GameVariant.Classic });
         const openingFen = game.toFen();
         const suggestion = game.suggestMove("pro");
+        const packedSuggestion = game.suggestMove("normal");
         postMessage({
           openingFen,
+          packedPreviewKind:
+            packedSuggestion === undefined
+              ? ""
+              : game.preview(packedSuggestion.inputs).kind,
+          packedSuggestion: packedSuggestion?.inputFen ?? "",
           previewKind:
             suggestion === undefined ? "" : game.preview(suggestion.inputs).kind,
           sourceFenAfter: game.toFen(),
@@ -267,18 +280,12 @@ export async function assertPackageConsumer({
       assert.equal(result.outputFiles.length, 1, `${entryPoint} bundle is missing`);
       return result.outputFiles[0].text;
     };
-    const deterministicCrypto = {
-      getRandomValues(values) {
-        values.fill(0);
-        return values;
-      },
-    };
 
     const browserDataset = {};
     runInNewContext(await bundleForBrowser("browser.ts"), {
-      crypto: deterministicCrypto,
       document: { body: { dataset: browserDataset } },
       performance: { now: () => 0 },
+      WeakRef: undefined,
     });
     assert.match(
       browserDataset.openingFen ?? "",
@@ -295,6 +302,16 @@ export async function assertPackageConsumer({
       "complete",
       "browser Pro suggestion was not applicable",
     );
+    assert.notEqual(
+      browserDataset.packedSuggestion,
+      "",
+      "browser Fast produced no opening move without WeakRef",
+    );
+    assert.equal(
+      browserDataset.packedPreviewKind,
+      "complete",
+      "browser Fast suggestion without WeakRef was not applicable",
+    );
     assert.equal(
       browserDataset.sourceFenAfter,
       browserDataset.openingFen,
@@ -304,12 +321,12 @@ export async function assertPackageConsumer({
     const workerScope = {};
     let workerMessage;
     runInNewContext(await bundleForBrowser("worker.ts"), {
-      crypto: deterministicCrypto,
       performance: { now: () => 0 },
       postMessage(value) {
         workerMessage = value;
       },
       self: workerScope,
+      WeakRef: undefined,
     });
     assert.equal(
       typeof workerScope.onmessage,
@@ -331,6 +348,16 @@ export async function assertPackageConsumer({
       workerMessage?.previewKind,
       "complete",
       "worker Pro suggestion was not applicable",
+    );
+    assert.notEqual(
+      workerMessage?.packedSuggestion,
+      "",
+      "worker Normal produced no opening move without WeakRef",
+    );
+    assert.equal(
+      workerMessage?.packedPreviewKind,
+      "complete",
+      "worker Normal suggestion without WeakRef was not applicable",
     );
     assert.equal(
       workerMessage?.sourceFenAfter,

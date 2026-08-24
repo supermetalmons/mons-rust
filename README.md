@@ -19,39 +19,40 @@ const inputs: Input[] = [
   { kind: "position", position: { row: 10, column: 5 } },
   { kind: "position", position: { row: 9, column: 4 } },
 ];
-const result = game.play(inputs);
+
+const preview = game.preview(inputs);
+if (preview.kind === "complete") {
+  game.play(inputs);
+}
+
 const suggestion = game.suggestMove("pro");
+if (suggestion !== undefined) {
+  game.play(suggestion.inputs);
+}
+
+const restored = Game.fromFen(game.toFen());
 ```
 
-Use `preview` to inspect typed inputs without mutation. Use `play` or `playFen`
-to apply a complete legal move. Serialize with `toFen` and restore with
-`Game.fromFen`.
+`preview` resolves typed inputs without mutation. `play` and `playFen` apply
+only complete legal moves. `toFen` serializes canonical game state and
+`Game.fromFen` restores it.
 
-Fast and Normal suggestions use cooperative time-bounded search. The exact move
-can vary with runtime, JIT, cache, and garbage-collection timing. Suggestions
-remain legal and do not mutate the source game. Environments without `WeakRef`
-use the canonical Fast and Normal selectors instead of the packed search path.
+Fast, Normal, and Pro automove search is cooperatively time-bounded. Exact
+moves can vary with runtime timing, but returned suggestions are complete,
+legal, and do not mutate the source game.
 
-Published JavaScript targets ES2022 and uses Web-standard `performance` and
-`crypto` globals. Node.js 22.13 through 22.x, or Node.js 24 or newer, is
-required for Node consumers and repository tooling.
+Published JavaScript targets ES2022 and automove uses the Web-standard
+`performance.now()` clock. Node.js 22.13 through 22.x, or Node.js 24 or newer,
+is required for Node consumers and repository tooling.
 
 ## Validate
 
 ```sh
-npm ci --engine-strict
 npm run check
 ```
 
-For a fast integrity check of the immutable complete-games corpus without a
-rules replay, run:
-
-```sh
-node ./scripts/run-complete-games.mjs --check-only
-```
-
-The repository's intended dependency boundaries and tooling layout are
-described in [docs/architecture.md on GitHub](https://github.com/supermetalmons/rules/blob/main/docs/architecture.md).
+Maintainer boundaries and immutable-data rules are in
+[docs/architecture.md on GitHub](https://github.com/supermetalmons/rules/blob/main/docs/architecture.md).
 
 ## Release
 

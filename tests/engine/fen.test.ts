@@ -3,17 +3,8 @@ import { describe, expect, it } from "vitest";
 import { ALL_GAME_VARIANTS, GameVariant } from "../../src/engine/board/config.js";
 import { Color, Modifier, MonKind } from "../../src/engine/model/domain.js";
 import { parseLocationFen } from "../../src/engine/codec/common.js";
-import {
-  monFen,
-  parseItemFen,
-  parseMonFen,
-} from "../../src/engine/codec/domain-item.js";
-import {
-  boardFen,
-  gameFen,
-  parseBoardFen,
-  parseGameFen,
-} from "../../src/engine/codec/game-board.js";
+import { monFen } from "../../src/engine/codec/domain-item.js";
+import { gameFen, parseGameFen } from "../../src/engine/codec/game-board.js";
 import {
   inputArrayFen,
   parseInputArrayFen,
@@ -23,13 +14,25 @@ import { eventArrayFen, outputFen } from "../../src/engine/codec/output-event.js
 import { MonsGame } from "../../src/engine/game/mons-game.js";
 
 describe("strict FEN codecs", () => {
-  it("accepts only gameplay-valid mon cooldowns", () => {
-    expect(parseMonFen("E2")).toEqual({
-      kind: MonKind.Demon,
-      color: Color.White,
-      cooldown: 2,
+  it("accepts only complete items with gameplay-valid mon cooldowns", () => {
+    const canonical = new MonsGame(false, GameVariant.Classic).fen();
+    const cooldownTwo = canonical.replace("E0x", "E2x");
+    expect(cooldownTwo).not.toBe(canonical);
+    expect(parseGameFen(cooldownTwo)?.board.items).toContainEqual({
+      kind: "mon",
+      mon: { kind: MonKind.Demon, color: Color.White, cooldown: 2 },
     });
-    expect(parseMonFen("E3")).toBeUndefined();
+
+    for (const malformed of [
+      canonical.replace("E0x", "E3x"),
+      canonical.replace("D0x", "D0z"),
+      canonical.replace("D0x", "D0"),
+      canonical.replace("D0x", "D3x"),
+    ]) {
+      expect(malformed).not.toBe(canonical);
+      expect(parseGameFen(malformed), malformed).toBeUndefined();
+    }
+
     expect(() =>
       monFen({ kind: MonKind.Demon, color: Color.White, cooldown: 3 }),
     ).toThrow(RangeError);
@@ -121,15 +124,7 @@ describe("strict FEN codecs", () => {
     expect(game.fen()).toBe(beforeOverflow);
   });
 
-  it("requires complete canonical item and coordinate tokens", () => {
-    expect(parseItemFen("D0x")).toEqual({
-      kind: "mon",
-      mon: { kind: "drainer", color: "white", cooldown: 0 },
-    });
-    expect(parseItemFen("D0z")).toBeUndefined();
-    expect(parseItemFen("D0")).toBeUndefined();
-    expect(parseItemFen("D3x")).toBeUndefined();
-
+  it("requires canonical coordinate tokens", () => {
     expect(parseLocationFen("10,0")).toEqual({ i: 10, j: 0 });
     for (const malformed of ["010,0", "10,00", "-1,0", "0,11", "1.5,0"]) {
       expect(parseLocationFen(malformed), malformed).toBeUndefined();
@@ -142,7 +137,12 @@ describe("strict FEN codecs", () => {
   });
 
   it("requires exactly eleven complete board rows", () => {
-    const boardCode = boardFen(new MonsGame(false).board);
+    const canonical = new MonsGame(false).fen();
+    const fields = canonical.split(" ");
+    const boardCode = fields[9];
+    expect(boardCode).toBeDefined();
+    if (boardCode === undefined) return;
+
     for (const malformed of [
       boardCode.slice(0, -1),
       `${boardCode}/n11`,
@@ -151,7 +151,9 @@ describe("strict FEN codecs", () => {
       boardCode.replace("y0x", "z0x"),
       `${boardCode}é`,
     ]) {
-      expect(parseBoardFen(malformed, GameVariant.Classic), malformed).toBeUndefined();
+      const malformedFields = [...fields];
+      malformedFields[9] = malformed;
+      expect(parseGameFen(malformedFields.join(" ")), malformed).toBeUndefined();
     }
   });
 

@@ -70,10 +70,6 @@ export function boardFen(board: Board): string {
   return fen;
 }
 
-export function parseBoardFen(fen: string, variant: GameVariant): Board | undefined {
-  return parseBoardFenRange(fen, 0, fen.length, variant);
-}
-
 function parseBoardFenRange(
   fen: string,
   start: number,

@@ -1,6 +1,5 @@
 import { describe, expect, it } from "vitest";
 
-import { Board } from "../../src/engine/board/storage.js";
 import {
   ALL_GAME_VARIANTS,
   GAME_VARIANT_IDS,
@@ -16,8 +15,9 @@ import {
   Modifier,
   MonKind,
 } from "../../src/engine/model/domain.js";
-import { boardFen, parseBoardFen } from "../../src/engine/codec/game-board.js";
+import { boardFen } from "../../src/engine/codec/game-board.js";
 import { isValidLocation } from "../../src/engine/board/geometry.js";
+import { MonsGame } from "../../src/engine/game/mons-game.js";
 
 describe("game variant configuration", () => {
   it("keeps the twelve persisted wire identities stable", () => {
@@ -62,13 +62,14 @@ describe("game variant configuration", () => {
         expect(locations.every(isValidLocation)).toBe(true);
       }
 
-      const code = boardFen(new Board(variant));
-      const parsed = parseBoardFen(code, variant);
+      const source = new MonsGame(false, variant);
+      const code = boardFen(source.board);
+      const parsed = MonsGame.fromFen(source.fen(), false);
       expect(parsed).toBeDefined();
       if (parsed === undefined) {
         throw new Error(`generated board FEN failed to parse for ${variant}`);
       }
-      expect(boardFen(parsed)).toBe(code);
+      expect(boardFen(parsed.board)).toBe(code);
       boardCodes.add(code);
     }
     expect(boardCodes.size).toBe(ALL_GAME_VARIANTS.length);

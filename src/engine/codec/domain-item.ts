@@ -41,10 +41,6 @@ export function monFen(mon: Mon): string {
   return `${colorKind}${mon.cooldown}`;
 }
 
-export function parseMonFen(fen: string): Mon | undefined {
-  return fen.length === 2 ? parseMonFenAt(fen, 0) : undefined;
-}
-
 function parseMonFenAt(fen: string, index: number): Mon | undefined {
   let color: Color;
   let kind: MonKind;
@@ -155,10 +151,6 @@ export function itemFen(item: Item): string {
     case "consumable":
       return `xx${consumableFen(item.consumable)}`;
   }
-}
-
-export function parseItemFen(fen: string): Item | undefined {
-  return fen.length === 3 ? parseItemFenAt(fen, 0) : undefined;
 }
 
 export function parseItemFenAt(fen: string, index: number): Item | undefined {

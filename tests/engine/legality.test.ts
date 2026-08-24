@@ -308,11 +308,10 @@ describe("blocked mandatory mana move", () => {
     const { Game } = await import("../../src/api/game.js");
     const { inputArrayFen } = await import("../../src/engine/codec/input.js");
     const { tryLoadPosition, moveToInputs } =
-      await import("../../src/automove/packed/bridge.js");
-    const { FastPosition } = await import("../../src/automove/packed/state.js");
-    const { generateMoves, MAX_MOVES } =
-      await import("../../src/automove/packed/moves.js");
-    const { i32 } = await import("../../src/automove/packed/board.js");
+      await import("../../src/automove/bridge.js");
+    const { FastPosition } = await import("../../src/automove/state.js");
+    const { generateMoves, MAX_MOVES } = await import("../../src/automove/moves.js");
+    const { i32 } = await import("../../src/automove/board.js");
 
     const engine = MonsGame.fromFen(preStuckFen, false);
     if (engine === undefined) throw new Error("pre-stuck FEN must load");

@@ -1,257 +1,137 @@
 import { describe, expect, it } from "vitest";
 
+import { moveToInputs, tryLoadPosition } from "../../src/automove/bridge.js";
+import { FastSearcher } from "../../src/automove/search.js";
+import {
+  DEFAULT_TUNING,
+  MAX_SEARCH_DEPTH,
+  memoizedSearchLimits,
+  normalizeSearchLimits,
+} from "../../src/automove/search-tuning.js";
+import {
+  FAST_SEARCH_TUNING,
+  PACKED_SELECTION_PROFILES,
+  PRO_SEARCH_TUNING,
+  STRATEGIC_SEARCH_TUNING,
+} from "../../src/automove/selector.js";
 import { GameVariant } from "../../src/engine/board/config.js";
-import { Color, type Input } from "../../src/engine/model/domain.js";
 import { inputArrayFen } from "../../src/engine/codec/input.js";
 import { MonsGame } from "../../src/engine/game/mons-game.js";
-import {
-  clearSearchCaches,
-  searchRootCandidates,
-  type SearchResult,
-} from "../../src/automove/search/engine.js";
-import {
-  compareRankedChildren,
-  enforceTacticalChildTop2,
-  isPriorityChild,
-  isQuietReductionCandidate,
-  isSelectiveExtensionCandidate,
-  truncateChildrenWithCoverage,
-  type RankedChild,
-} from "../../src/automove/search/ordering.js";
-import { hash64 } from "../../src/automove/core/hash64.js";
-import { rankRootCandidates } from "../../src/automove/root/candidates.js";
-import type { MoveClassFlags } from "../../src/automove/root/types.js";
-import { automoveConfigForGame } from "../../src/automove/config/runtime.js";
-import { patchAutomoveConfig } from "../../src/automove/config/patch.js";
-import { createTestAutomoveExecutionContext } from "./execution-context.test-helper.js";
 
-const QUIET_CLASSES: MoveClassFlags = Object.freeze({
-  immediateScore: false,
-  drainerAttack: false,
-  drainerSafetyRecover: false,
-  carrierProgress: false,
-  material: false,
-  quiet: true,
-});
+const UNSUPPORTED_FEN =
+  "0 0 b 0 1 5 0 0 2 y0xn10/n11/n02S0xn08/n11/n11/n02A0xE0xn01d0Bn05/n11/n11/n11/n11/n11";
 
-type ChildOverrides = Partial<Omit<RankedChild, "game" | "hash" | "classes">> & {
-  readonly classes?: Partial<MoveClassFlags>;
-};
-
-function child(id: number, overrides: ChildOverrides = {}): RankedChild {
-  const { classes: classOverrides, ...childOverrides } = overrides;
-  return {
-    game: {} as MonsGame,
-    hash: hash64(0, id),
-    heuristic: 0,
-    orderingEfficiency: 0,
-    tacticalExtensionTrigger: false,
-    quietReductionCandidate: true,
-    classes: { ...QUIET_CLASSES, ...classOverrides },
-    ...childOverrides,
-  };
+function loadedSearcher(game = new MonsGame(true, GameVariant.Classic)): FastSearcher {
+  const searcher = new FastSearcher();
+  expect(tryLoadPosition(searcher.root, game, 40)).toBe(true);
+  return searcher;
 }
 
-function selectedInput(result: SearchResult): string | undefined {
-  return result.best === undefined ? undefined : inputArrayFen(result.best.inputs);
-}
-
-function observations(result: SearchResult): readonly object[] {
-  return result.evaluations.map((evaluation) => ({
-    inputs: inputArrayFen(evaluation.inputs),
-    score: evaluation.score,
-    nodesAfter: evaluation.nodesAfter,
-  }));
-}
-
-describe("ranked search children", () => {
-  it("orders heuristic by side, then efficiency, class, and descending hash", () => {
-    const lower = child(1, { heuristic: 10 });
-    const higher = child(2, { heuristic: 20 });
-    expect(compareRankedChildren(higher, lower, true)).toBeLessThan(0);
-    expect(compareRankedChildren(lower, higher, false)).toBeLessThan(0);
-
-    const efficient = child(1, { orderingEfficiency: 10 });
-    expect(compareRankedChildren(efficient, child(2), true)).toBeLessThan(0);
-
-    const tactical = child(1, {
-      classes: { drainerSafetyRecover: true, quiet: false },
-    });
-    expect(compareRankedChildren(tactical, child(2), true)).toBeLessThan(0);
-
-    expect(compareRankedChildren(child(2), child(1), true)).toBeLessThan(0);
-    expect(compareRankedChildren(child(1), child(1), true) === 0).toBe(true);
-  });
-
-  it("preserves the first tactical child beyond a strict branch limit", () => {
-    const children = [
-      child(1, { heuristic: 100 }),
-      child(2, { heuristic: 90 }),
-      child(3, {
-        heuristic: 10,
-        classes: { immediateScore: true, quiet: false },
-      }),
-      child(4),
-    ];
-
-    expect(
-      truncateChildrenWithCoverage(children, 2, true).map(({ hash }) => hash.lo),
-    ).toEqual([1, 3]);
-    expect(truncateChildrenWithCoverage(children, 0, true)).toEqual(children);
-  });
-
-  it("moves a tactical child into the top two without re-sorting", () => {
-    const children = [
-      child(1, { heuristic: 100 }),
-      child(2, { heuristic: 90 }),
-      child(3, {
-        heuristic: 10,
-        classes: { carrierProgress: true, quiet: false },
-      }),
-      child(4),
-    ];
-
-    enforceTacticalChildTop2(children, true);
-    expect(children.map(({ hash }) => hash.lo)).toEqual([1, 3, 2, 4]);
-    const promoted = children[1];
-    expect(promoted === undefined ? false : isPriorityChild(promoted)).toBe(true);
-  });
-
-  it("keeps reduction and extension predicates mutually explicit", () => {
-    expect(isQuietReductionCandidate(0, false, QUIET_CLASSES)).toBe(true);
-    expect(isQuietReductionCandidate(1, false, QUIET_CLASSES)).toBe(false);
-    expect(isSelectiveExtensionCandidate(true, 0, QUIET_CLASSES)).toBe(true);
-    expect(
-      isSelectiveExtensionCandidate(false, 1, {
-        ...QUIET_CLASSES,
-        quiet: false,
-      }),
-    ).toBe(true);
-  });
-});
-
-describe("root search orchestration", () => {
-  it("is deterministic, cumulative, priority-aware, and source-immutable", () => {
-    const execution = createTestAutomoveExecutionContext();
-    const game = new MonsGame(false, GameVariant.Classic);
-    const before = game.fen();
-    const base = automoveConfigForGame(game, "fast");
-    const config = patchAutomoveConfig(base, {
-      budget: {
-        depth: 1,
-        maxVisitedNodes: 64,
+describe("packed automove search", () => {
+  it("keeps the audited budgets, node ceilings, and tuning", () => {
+    expect(PACKED_SELECTION_PROFILES).toEqual({
+      fast: {
+        budgetMs: 16,
+        limits: {
+          maxDepth: 40,
+          maxNodes: 38_400,
+          tuning: FAST_SEARCH_TUNING,
+        },
       },
-      search: {
-        twoPassRootAllocation: false,
+      normal: {
+        budgetMs: 75,
+        limits: {
+          maxDepth: 40,
+          maxNodes: 184_000,
+          tuning: STRATEGIC_SEARCH_TUNING,
+        },
+      },
+      pro: {
+        budgetMs: 460,
+        limits: {
+          maxDepth: 40,
+          maxNodes: 2_000_000,
+          tuning: PRO_SEARCH_TUNING,
+        },
       },
     });
-    const candidates = rankRootCandidates(execution, game, Color.White, config).slice(
-      0,
-      6,
-    );
-    expect(candidates.length).toBeGreaterThan(3);
-    const priorityInputs: readonly (readonly Input[])[] = [
-      candidates.at(-1)?.inputs ?? [],
-    ];
-
-    const first = searchRootCandidates(
-      execution,
-      game,
-      Color.White,
-      config,
-      candidates,
-      {
-        priorityInputs,
-      },
-    );
-    const second = searchRootCandidates(
-      execution,
-      game,
-      Color.White,
-      config,
-      candidates,
-      {
-        priorityInputs,
-      },
-    );
-
-    expect(game.fen()).toBe(before);
-    expect(observations(second)).toEqual(observations(first));
-    expect(selectedInput(second)).toBe(selectedInput(first));
-    expect(first.visitedNodes).toBe(first.evaluations.length);
-    expect(first.evaluations.map(({ nodesAfter }) => nodesAfter)).toEqual(
-      first.evaluations.map((_evaluation, index) => index + 1),
-    );
-    expect(inputArrayFen(first.evaluations[0]?.inputs ?? [])).toBe(
-      inputArrayFen(priorityInputs[0] ?? []),
-    );
-  });
-
-  it("keeps a deeper two-pass search deterministic without mutating any game", () => {
-    const execution = createTestAutomoveExecutionContext();
-    const game = new MonsGame(false, GameVariant.Classic);
-    const sourceFen = game.fen();
-    const base = automoveConfigForGame(game, "fast");
-    const config = patchAutomoveConfig(base, {
-      budget: {
-        depth: 4,
-        maxVisitedNodes: 256,
-      },
-      search: {
-        rootEnumerationLimit: 24,
-        rootBranchLimit: 8,
-        nodeEnumerationLimit: 12,
-        nodeBranchLimit: 4,
-        twoPassRootAllocation: true,
-        volatilityFocus: false,
-        selectiveExtensions: false,
-        quietReductions: false,
-        quiescence: false,
-        futilityPruning: false,
-      },
-      planner: {
-        enabled: false,
-      },
-    });
-    const candidates = rankRootCandidates(execution, game, Color.White, config).slice(
-      0,
-      6,
-    );
-    expect(candidates.length).toBeGreaterThan(3);
-    const candidateFens = candidates.map(({ game: candidateGame }) =>
-      candidateGame.fen(),
-    );
-
-    clearSearchCaches(execution);
-    const first = searchRootCandidates(
-      execution,
-      game,
-      Color.White,
-      config,
-      candidates,
-    );
-    clearSearchCaches(execution);
-    const second = searchRootCandidates(
-      execution,
-      game,
-      Color.White,
-      config,
-      candidates,
-    );
-
-    expect(game.fen()).toBe(sourceFen);
-    expect(candidates.map(({ game: candidateGame }) => candidateGame.fen())).toEqual(
-      candidateFens,
-    );
-    expect(first.evaluations.length).toBeGreaterThan(0);
-    expect(observations(second)).toEqual(observations(first));
-    expect(selectedInput(second)).toBe(selectedInput(first));
-    expect(first.visitedNodes).toBe(first.evaluations.at(-1)?.nodesAfter ?? 0);
+    expect(Object.isFrozen(PACKED_SELECTION_PROFILES)).toBe(true);
     expect(
-      first.evaluations.every(
-        ({ nodesAfter }, index, evaluations) =>
-          index === 0 || nodesAfter > (evaluations[index - 1]?.nodesAfter ?? 0),
+      Object.values(PACKED_SELECTION_PROFILES).every(
+        (profile) => Object.isFrozen(profile) && Object.isFrozen(profile.limits),
       ),
     ).toBe(true);
+    expect([
+      FAST_SEARCH_TUNING.winsNextTurnThreat,
+      STRATEGIC_SEARCH_TUNING.winsNextTurnThreat,
+      PRO_SEARCH_TUNING.winsNextTurnThreat,
+    ]).toEqual([2_500, 0, 0]);
+  });
+
+  it("selects a legal root move at each fixed node ceiling", () => {
+    for (const preference of ["fast", "normal", "pro"] as const) {
+      const game = new MonsGame(true, GameVariant.Classic);
+      const searcher = loadedSearcher(game);
+      const outcome = searcher.search(
+        PACKED_SELECTION_PROFILES[preference].limits,
+        () => false,
+      );
+      expect(outcome.supported, preference).toBe(true);
+      expect(outcome.move, preference).not.toBe(0);
+      expect(outcome.nodes, preference).toBe(
+        PACKED_SELECTION_PROFILES[preference].limits.maxNodes,
+      );
+      expect(
+        game.fork().processInput(moveToInputs(outcome.move), false, false).kind,
+        preference,
+      ).toBe("events");
+    }
+  }, 60_000);
+
+  it("cooperatively stops a running search", () => {
+    let checks = 0;
+    const outcome = loadedSearcher().search({ maxDepth: 40, maxNodes: 100_000 }, () => {
+      checks += 1;
+      return checks === 3;
+    });
+
+    expect(checks).toBe(3);
+    expect(outcome.nodes).toBeLessThan(100_000);
+    expect(outcome.move).not.toBe(0);
+  });
+
+  it("marks a later unrepresentable position unsupported", () => {
+    const game = MonsGame.fromFen(UNSUPPORTED_FEN, false);
+    expect(game).toBeDefined();
+    if (game === undefined) return;
+    const outcome = loadedSearcher(game).search(
+      PACKED_SELECTION_PROFILES.pro.limits,
+      () => false,
+    );
+
+    expect(outcome.supported).toBe(false);
+    expect(inputArrayFen(moveToInputs(outcome.move))).toBe("l5,5;l5,3");
+  });
+
+  it("normalizes limits without changing frozen profiles", () => {
+    const limits = PACKED_SELECTION_PROFILES.fast.limits;
+    const first = memoizedSearchLimits(limits);
+    expect(memoizedSearchLimits(limits)).toBe(first);
+    expect(first).toEqual(limits);
+    expect(normalizeSearchLimits({ maxDepth: 0, maxNodes: 0 })).toEqual({
+      maxDepth: 0,
+      maxNodes: 0,
+      tuning: DEFAULT_TUNING,
+    });
+  });
+
+  it.each([
+    [null, TypeError],
+    [{ maxDepth: -1, maxNodes: 1 }, RangeError],
+    [{ maxDepth: MAX_SEARCH_DEPTH + 1, maxNodes: 1 }, RangeError],
+    [{ maxDepth: 1, maxNodes: -1 }, RangeError],
+    [{ maxDepth: 1, maxNodes: 1, tuning: {} }, TypeError],
+  ])("rejects invalid search limits %#", (limits, error) => {
+    expect(() => normalizeSearchLimits(limits)).toThrow(error);
   });
 });

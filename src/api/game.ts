@@ -1,5 +1,4 @@
-import { AutomoveEngine } from "../automove/runtime/engine.js";
-import { suggestMove as suggestAutomove } from "../automove/runtime/suggestion.js";
+import { suggestMove as suggestAutomove } from "../automove/suggestion.js";
 import type { Input as EngineInput } from "../engine/model/domain.js";
 import { inputArrayFen, parseInputArrayFen } from "../engine/codec/input.js";
 import { eventArrayFen } from "../engine/codec/output-event.js";
@@ -44,7 +43,6 @@ type MoveHistory = {
 
 export class Game {
   #engine: MonsGame;
-  readonly #automoveEngine = new AutomoveEngine();
 
   public constructor(options: GameOptions = {}) {
     const { variant = GameVariant.Classic } = options;
@@ -257,9 +255,7 @@ export class Game {
     if (!isAutomovePreference(preference)) {
       throw new TypeError(`unsupported automove preference: ${String(preference)}`);
     }
-    const suggestion = this.#automoveEngine.run((execution) =>
-      suggestAutomove(execution, this.#engine, preference),
-    );
+    const suggestion = suggestAutomove(this.#engine, preference);
     if (suggestion.output.kind !== "events") {
       return undefined;
     }

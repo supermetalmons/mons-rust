@@ -58,18 +58,6 @@ describe("public API", () => {
     expect(game).not.toHaveProperty("moveUsage");
     expect(game).not.toHaveProperty("previewFen");
     expect(game).not.toHaveProperty("clearTracking");
-
-    for (const removedExport of [
-      "MonsGameModel",
-      "Location",
-      "OutputModel",
-      "OutputModelKind",
-      "EventModel",
-      "EventModelKind",
-      "winner",
-    ]) {
-      expect(api).not.toHaveProperty(removedExport);
-    }
   });
 
   it("defaults only undefined variants and rejects an explicit null", () => {

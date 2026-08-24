@@ -1,13 +1,13 @@
 import { describe, expect, it } from "vitest";
 
-import { moveToInputs, tryLoadPosition } from "../../src/automove/packed/bridge.js";
-import { MAX_MOVES, generateMoves } from "../../src/automove/packed/moves.js";
+import { moveToInputs, tryLoadPosition } from "../../src/automove/bridge.js";
+import { MAX_MOVES, generateMoves } from "../../src/automove/moves.js";
 import {
   FastPosition,
   MOVE_MANA,
   applyFastMove,
   moveType,
-} from "../../src/automove/packed/state.js";
+} from "../../src/automove/state.js";
 import { TARGET_SCORE } from "../../src/engine/board/config.js";
 import { location } from "../../src/engine/board/geometry.js";
 import { inputArrayFen } from "../../src/engine/codec/input.js";
@@ -19,7 +19,7 @@ import {
   monItem,
   regularMana,
 } from "../../src/engine/model/domain.js";
-import { gameWith } from "./fast.test-helper.js";
+import { gameWith } from "./test-helper.js";
 
 function generated(position: FastPosition): readonly number[] {
   const buffer = new Int32Array(MAX_MOVES);
