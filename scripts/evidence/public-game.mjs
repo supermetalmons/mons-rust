@@ -390,7 +390,7 @@ export function advanceHeldGame(game, inputFen, expectedFen) {
       result === undefined ||
       result === null ||
       typeof result !== "object" ||
-      result.kind === "invalid-input"
+      result.kind !== "complete"
     ) {
       return false;
     }

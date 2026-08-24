@@ -77,6 +77,12 @@ const protectedFiles = Object.freeze({
     "12beed8845b63ef49fa82df4939a6712546ed6dce3460e4ab8e8c632b81c23d2",
   "test-data/automove-decisions/v13/manifest.json":
     "3e11e2b9a615b7c87c1f3a55791c869aff5c7eaccf08f804f4afc7f61a6984b7",
+  "test-data/automove-decisions/v14/README.md":
+    "2724f3e3a642e418039d8717da594719ac23bca56266b9836e5b43110ed7e1c5",
+  "test-data/automove-decisions/v14/decisions.jsonl":
+    "490bc4bab4428a757821774de2271c408eb8411fabed51cc066d8e34e659c48a",
+  "test-data/automove-decisions/v14/manifest.json":
+    "95b7e086a57c0813c1c502c37146669f8dcf1b935db8be0ba93d1f2d13a5a4f4",
   "test-data/compatibility-edge-cases/v1/coordinate-cases.jsonl":
     "bc5f2b96f4755cd3c4e2d45f8b5b1753d56c27a7947d572c6956db3e85ddad66",
   "test-data/compatibility-edge-cases/v1/fen-cases.jsonl":

@@ -44,8 +44,9 @@ Each immutable corpus describes the selector round that produced it:
 - [v11](../test-data/automove-decisions/v11/README.md): mover-aware threat and race terms
 - [v12](../test-data/automove-decisions/v12/README.md): two-point drainer trip selection
 - [v13](../test-data/automove-decisions/v13/README.md): quiet spirit ordering and table reuse
+- [v14](../test-data/automove-decisions/v14/README.md): corrected transposition bounds and commuting-move identity
 
-`v13` is the active deterministic contract: 13 source states and all three public preferences,
+`v14` is the active deterministic contract: 13 source states and all three public preferences,
 for 39 replayed decisions with `performance.now()` fixed at zero. Earlier versions remain
 protected provenance and must not be rewritten.
 

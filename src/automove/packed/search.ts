@@ -365,9 +365,10 @@ export class FastSearcher {
     if (depth <= 0) return this.#staticScore(position);
 
     let alpha = alphaInput;
+    const commutingMove = this.#commutingMonMoveContext(position, ply);
     const scalar = scalarIndex(position);
-    const keyLo = stateKeyLo(position, scalar);
-    const keyHi = stateKeyHi(position, scalar);
+    const keyLo = stateKeyLo(position, scalar, commutingMove);
+    const keyHi = stateKeyHi(position, scalar, commutingMove);
     const table = this.#table;
     const slot = (keyLo ^ (keyHi * 3)) & table.mask;
     let ttMove = 0;
@@ -397,8 +398,8 @@ export class FastSearcher {
     const buffer = at(this.#moves, ply);
     let count = generateMoves(position, buffer, at(this.#orderKeys, ply));
     if (count === 0) return this.#staticScore(position, keyLo, keyHi);
-    if (ply > 0) {
-      count = this.#filterCommutingMonMoves(position, buffer, count, ply);
+    if (commutingMove !== 0) {
+      count = this.#filterCommutingMonMoves(buffer, count, commutingMove, ply);
     }
     this.#orderMoves(position, buffer, count, ply, ttMove);
     const keys = at(this.#orderKeys, ply);
@@ -491,8 +492,10 @@ export class FastSearcher {
         : bestScore <= alphaInput
           ? FLAG_UPPER
           : FLAG_EXACT;
+    const storedScore =
+      selectivelyPruned && flag === FLAG_UPPER ? alphaInput : bestScore;
     const entryDepth = depth;
-    if (bestScore < WIN_VALUE - MAX_PLY && bestScore > -WIN_VALUE + MAX_PLY) {
+    if (storedScore < WIN_VALUE - MAX_PLY && storedScore > -WIN_VALUE + MAX_PLY) {
       const storedDepth = (slotInfo >> 2) & 63;
       if (!slotMatches || entryDepth >= storedDepth) {
         if (slotInfo === 0 && i32(table.info, slot) === 0) {
@@ -500,7 +503,7 @@ export class FastSearcher {
         }
         table.keyLo[slot] = keyLo;
         table.keyHi[slot] = keyHi;
-        table.score[slot] = bestScore;
+        table.score[slot] = storedScore;
         table.info[slot] =
           (table.generation << 8) |
           (entryDepth << 2) |
@@ -515,19 +518,21 @@ export class FastSearcher {
   // Mon sub-moves on four distinct squares commute exactly, so every permutation of a
   // commuting chain reaches the same position; keeping only the ascending order removes
   // the duplicates at the source while every set of moves stays reachable.
+  #commutingMonMoveContext(position: FastPosition, ply: number): number {
+    if (ply === 0) return 0;
+    const previous = i32(this.#moveAtPly, ply - 1);
+    return moveType(previous) === MOVE_MON &&
+      at(this.#positions, ply - 1).active === position.active
+      ? previous
+      : 0;
+  }
+
   #filterCommutingMonMoves(
-    position: FastPosition,
     buffer: Int32Array,
     count: number,
+    previous: number,
     ply: number,
   ): number {
-    const previous = i32(this.#moveAtPly, ply - 1);
-    if (
-      moveType(previous) !== MOVE_MON ||
-      at(this.#positions, ply - 1).active !== position.active
-    ) {
-      return count;
-    }
     const previousFrom = moveFrom(previous);
     const previousTo = moveTo(previous);
     const keys = at(this.#orderKeys, ply);
@@ -700,22 +705,24 @@ function scalarIndex(position: FastPosition): number {
   return position.active + ACTIVE_STATES * scalar;
 }
 
-function stateKeyLo(position: FastPosition, scalar: number): number {
+function stateKeyLo(position: FastPosition, scalar: number, commutingMove = 0): number {
   return (
     position.hashLo ^
     i32(Z_SCALAR_LO, scalar) ^
     (position.whiteScore * 0x9e3779b1) ^
     (position.blackScore * 0x7f4a7c15) ^
-    i32(position.potions, 0)
+    i32(position.potions, 0) ^
+    Math.imul(commutingMove, 0x27d4eb2d)
   );
 }
 
-function stateKeyHi(position: FastPosition, scalar: number): number {
+function stateKeyHi(position: FastPosition, scalar: number, commutingMove = 0): number {
   return (
     position.hashHi ^
     i32(Z_SCALAR_HI, scalar) ^
     (position.whiteScore * 0x85ebca6b) ^
     (position.blackScore * 0xc2b2ae35) ^
-    i32(position.potions, 1)
+    i32(position.potions, 1) ^
+    Math.imul(commutingMove, 0x165667b1)
   );
 }

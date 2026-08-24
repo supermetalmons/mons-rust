@@ -286,6 +286,32 @@ describe("automove evidence runners", () => {
     expect(invalidGame.invalid).toMatchObject({ reason: "illegal-replay" });
   });
 
+  it("rejects invalid held-game replay results", () => {
+    const root = temporaryDirectory();
+    const baseline = writeBundle(root, "baseline.mjs", "B");
+    const candidate = writeBundle(root, "candidate.mjs", "invalid-held-playfen");
+    const output = path.join(root, "reports", "strength-invalid-held.json");
+    const result = run(strengthScript, [
+      "--baseline",
+      baseline,
+      "--candidate",
+      candidate,
+      "--modes",
+      "fast",
+      "--variants",
+      "Classic",
+      "--max-plies",
+      "2",
+      "--game-driving",
+      "held",
+      "--out",
+      output,
+    ]);
+
+    expect(result.status).toBe(1);
+    expect(readJson(output).summary.invalids.illegalReplay).toBeGreaterThan(0);
+  });
+
   it("rejects unknown game driving modes", () => {
     const root = temporaryDirectory();
     const baseline = writeBundle(root, "baseline.mjs", "B");
@@ -1641,7 +1667,8 @@ function writeBundle(
     | "throwing-payload"
     | "mutating-invalid-payload"
     | "mutating-preview-throw"
-    | "stateful-playfen",
+    | "stateful-playfen"
+    | "invalid-held-playfen",
   mutates = false,
   mutatesMetadata = false,
   invalidMetadata = false,
@@ -1663,8 +1690,11 @@ function writeBundle(
                 ? 'return { inputFen: "C", inputs: [{ kind: "synthetic", value: "C" }], events: [] };'
                 : `${mutates ? "this.state.ply += 1;" : ""}
     ${mutatesMetadata ? "this.takebacks.push(this.toFen());" : ""}
+    ${strategy === "invalid-held-playfen" ? "this.invalidHeldReplay = true;" : ""}
     const inputFen = ${JSON.stringify(
-      strategy === "mutating-preview-throw" || strategy === "stateful-playfen"
+      strategy === "mutating-preview-throw" ||
+        strategy === "stateful-playfen" ||
+        strategy === "invalid-held-playfen"
         ? "C"
         : strategy,
     )};
@@ -1800,6 +1830,7 @@ export class Game {
       ply: this.state.ply + 1,
       candidateColor,
     };
+    ${strategy === "invalid-held-playfen" ? 'if (this.invalidHeldReplay) return { kind: "invalid", inputFen };' : ""}
     return { kind: "complete", inputFen, events: eventsFor(inputFen) };
   }
 }
