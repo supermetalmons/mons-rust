@@ -207,6 +207,7 @@ export function runValidatedSuggestion(
       ok: true,
       activeColor,
       elapsedMs,
+      expectedEvents,
       inputFen,
       nextFen: replayAfter.fen,
       winner: replayAfter.winner,
@@ -383,15 +384,10 @@ export function createHeldGame(bundle, fen) {
   }
 }
 
-function advanceHeldGame(game, inputFen, expectedFen) {
+function advanceHeldGame(game, inputFen, expectedEvents, expectedFen) {
   try {
     const result = game.playFen(inputFen);
-    if (
-      result === undefined ||
-      result === null ||
-      typeof result !== "object" ||
-      result.kind !== "complete"
-    ) {
+    if (!isMatchingCompleteResolution(result, inputFen, expectedEvents)) {
       return false;
     }
     return game.toFen() === expectedFen;
@@ -400,10 +396,10 @@ function advanceHeldGame(game, inputFen, expectedFen) {
   }
 }
 
-export function advanceHeldGames(first, second, inputFen, expectedFen) {
+export function advanceHeldGames(first, second, inputFen, expectedEvents, expectedFen) {
   if (
-    !advanceHeldGame(first, inputFen, expectedFen) ||
-    !advanceHeldGame(second, inputFen, expectedFen)
+    !advanceHeldGame(first, inputFen, expectedEvents, expectedFen) ||
+    !advanceHeldGame(second, inputFen, expectedEvents, expectedFen)
   ) {
     return false;
   }

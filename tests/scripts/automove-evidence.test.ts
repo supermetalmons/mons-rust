@@ -338,6 +338,32 @@ describe("automove evidence runners", () => {
     expect(readJson(output).summary.invalids.illegalReplay).toBeGreaterThan(0);
   });
 
+  it("rejects incorrect complete held-game replay payloads", () => {
+    const root = temporaryDirectory();
+    const baseline = writeBundle(root, "baseline.mjs", "B");
+    const candidate = writeBundle(root, "candidate.mjs", "wrong-held-complete-payload");
+    const output = path.join(root, "reports", "strength-wrong-held-payload.json");
+    const result = run(strengthScript, [
+      "--baseline",
+      baseline,
+      "--candidate",
+      candidate,
+      "--modes",
+      "fast",
+      "--variants",
+      "Classic",
+      "--max-plies",
+      "2",
+      "--game-driving",
+      "held",
+      "--out",
+      output,
+    ]);
+
+    expect(result.status).toBe(1);
+    expect(readJson(output).summary.invalids.illegalReplay).toBeGreaterThan(0);
+  });
+
   it("rejects unknown game driving modes", () => {
     const root = temporaryDirectory();
     const baseline = writeBundle(root, "baseline.mjs", "B");
@@ -1695,7 +1721,8 @@ function writeBundle(
     | "mutating-preview-throw"
     | "stateful-playfen"
     | "stateful-history-playfen"
-    | "invalid-held-playfen",
+    | "invalid-held-playfen"
+    | "wrong-held-complete-payload",
   mutates = false,
   mutatesMetadata = false,
   invalidMetadata = false,
@@ -1718,11 +1745,13 @@ function writeBundle(
                 : `${mutates ? "this.state.ply += 1;" : ""}
     ${mutatesMetadata ? "this.takebacks.push(this.toFen());" : ""}
     ${strategy === "invalid-held-playfen" ? "this.invalidHeldReplay = true;" : ""}
+    ${strategy === "wrong-held-complete-payload" ? "this.wrongHeldCompletePayload = true;" : ""}
     const inputFen = ${JSON.stringify(
       strategy === "mutating-preview-throw" ||
         strategy === "stateful-playfen" ||
         strategy === "stateful-history-playfen" ||
-        strategy === "invalid-held-playfen"
+        strategy === "invalid-held-playfen" ||
+        strategy === "wrong-held-complete-payload"
         ? "C"
         : strategy,
     )};
@@ -1861,6 +1890,7 @@ export class Game {
       candidateColor,
     };
     ${strategy === "invalid-held-playfen" ? 'if (this.invalidHeldReplay) return { kind: "invalid", inputFen };' : ""}
+    ${strategy === "wrong-held-complete-payload" ? 'if (this.wrongHeldCompletePayload) return { kind: "complete", inputFen: "B", events: eventsFor(inputFen) };' : ""}
     return { kind: "complete", inputFen, events: eventsFor(inputFen) };
   }
 }

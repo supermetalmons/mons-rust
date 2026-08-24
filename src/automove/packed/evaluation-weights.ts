@@ -395,13 +395,17 @@ function moverScale(weights: EvalWeights, bucket: number): number {
     : weights.threatMoverScaleFew;
 }
 
-function scaled(value: number, scale: number): number {
-  return Math.trunc((value * scale) / 100);
+function scaledSafeInteger(value: number, scale: number, name: string): number {
+  const product = value * scale;
+  if (!Number.isSafeInteger(product)) {
+    throw new RangeError(`${name} derived value requires a safe integer product`);
+  }
+  return Math.trunc(product / 100);
 }
 
 function scaledInt32(value: number, scale: number, name: string): number {
-  const result = scaled(value, scale);
-  if (!Number.isSafeInteger(result) || result < INT32_MIN || result > INT32_MAX) {
+  const result = scaledSafeInteger(value, scale, name);
+  if (result < INT32_MIN || result > INT32_MAX) {
     throw new RangeError(`${name} derived value must fit a signed 32-bit integer`);
   }
   return result;
@@ -430,12 +434,13 @@ function threatWalkTable(weights: EvalWeights): Float64Array {
       const scale = moverScale(weights, bucket);
       const base = (carrying * THREAT_BUCKETS + bucket) * THREAT_WALK_TABLE_SIZE;
       for (let steps = 0; steps < THREAT_WALK_TABLE_SIZE; steps += 1) {
-        table[base + steps] = scaled(
+        table[base + steps] = scaledSafeInteger(
           Math.trunc(
             (weights.drainerThreatWalk * factor * (MONS_MOVES_PER_TURN + 1 - steps)) /
               MONS_MOVES_PER_TURN,
           ),
           scale,
+          "walking threat",
         );
       }
     }

@@ -827,7 +827,7 @@ describe("fast position evaluation", () => {
     ).toThrow(RangeError);
   });
 
-  it("rejects derived evaluation values that do not fit their Int32 tables", () => {
+  it("rejects derived evaluation values outside their table ranges", () => {
     const fitting = createEvalTables(
       weights({
         drainerThreatImmediate: 1_000_000,
@@ -856,5 +856,25 @@ describe("fast position evaluation", () => {
         }),
       ),
     ).toThrow(/two-point trip derived value/);
+
+    expect(() =>
+      createEvalTables(
+        weights({
+          drainerThreatWalk: 999_999,
+          carrierThreatFactor: 999_999,
+          threatMoverScaleSpare: 999_999,
+        }),
+      ),
+    ).toThrow(/walking threat derived value/);
+
+    expect(() =>
+      createEvalTables(
+        weights({
+          drainerThreatWalk: 849_326,
+          carrierThreatFactor: 933_139,
+          threatMoverScaleSpare: 709_311,
+        }),
+      ),
+    ).toThrow(/walking threat derived value/);
   });
 });

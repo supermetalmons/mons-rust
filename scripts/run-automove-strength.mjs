@@ -282,6 +282,7 @@ function playStrengthGame({
         heldGames.candidate,
         heldGames.baseline,
         suggestion.inputFen,
+        suggestion.expectedEvents,
         suggestion.nextFen,
       )
     ) {
