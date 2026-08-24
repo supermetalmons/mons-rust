@@ -30,13 +30,6 @@ export function winnerForState(state: RulesState): ColorValue | undefined {
   return winnerForScores(state.whiteScore, state.blackScore);
 }
 
-export function scoreForColor(
-  state: Pick<RulesState, "whiteScore" | "blackScore">,
-  color: ColorValue,
-): number {
-  return color === Color.White ? state.whiteScore : state.blackScore;
-}
-
 export function isFirstTurnState(state: RulesState): boolean {
   return state.turnNumber === 1;
 }

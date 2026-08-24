@@ -610,29 +610,3 @@ export function inputEquals(left: Input, right: Input): boolean {
       return right.kind === "modifier" && left.modifier === right.modifier;
   }
 }
-
-export function inputChainsShareFirstInput(
-  left: readonly Input[],
-  right: readonly Input[],
-): boolean {
-  const leftFirst = left[0];
-  const rightFirst = right[0];
-  return (
-    leftFirst !== undefined &&
-    rightFirst !== undefined &&
-    inputEquals(leftFirst, rightFirst)
-  );
-}
-
-export function inputChainsEqual(
-  left: readonly Input[],
-  right: readonly Input[],
-): boolean {
-  return (
-    left.length === right.length &&
-    left.every((input, index) => {
-      const other = right[index];
-      return other !== undefined && inputEquals(input, other);
-    })
-  );
-}

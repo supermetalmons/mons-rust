@@ -308,10 +308,3 @@ export class MutableBoard extends Board {
     return this.#readonlyView;
   }
 }
-
-export function boardEquals(left: Board, right: Board): boolean {
-  if (left.variant !== right.variant) {
-    return false;
-  }
-  return left.itemsEqual(right);
-}
