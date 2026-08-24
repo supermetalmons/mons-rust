@@ -2,11 +2,11 @@ import { describe, expect, it } from "vitest";
 
 import { ALL_GAME_VARIANTS, GameVariant } from "../../src/engine/board/config.js";
 import { Color, Modifier, MonKind } from "../../src/engine/model/domain.js";
-import { parseLocationFen } from "../../src/engine/codec/common.js";
 import { monFen } from "../../src/engine/codec/domain-item.js";
 import { gameFen, parseGameFen } from "../../src/engine/codec/game-board.js";
 import {
   inputArrayFen,
+  inputFen,
   parseInputArrayFen,
   parseInputFen,
 } from "../../src/engine/codec/input.js";
@@ -124,10 +124,14 @@ describe("strict FEN codecs", () => {
     expect(game.fen()).toBe(beforeOverflow);
   });
 
-  it("requires canonical coordinate tokens", () => {
-    expect(parseLocationFen("10,0")).toEqual({ i: 10, j: 0 });
-    for (const malformed of ["010,0", "10,00", "-1,0", "0,11", "1.5,0"]) {
-      expect(parseLocationFen(malformed), malformed).toBeUndefined();
+  it("round-trips every canonical coordinate input token", () => {
+    for (let i = 0; i <= 10; i += 1) {
+      for (let j = 0; j <= 10; j += 1) {
+        const encoded = `l${i},${j}`;
+        const parsed = parseInputFen(encoded);
+        expect(parsed, encoded).toEqual({ kind: "location", location: { i, j } });
+        if (parsed !== undefined) expect(inputFen(parsed)).toBe(encoded);
+      }
     }
   });
 
@@ -157,14 +161,58 @@ describe("strict FEN codecs", () => {
     }
   });
 
-  it("rejects partial input arrays and the removed cancel modifier", () => {
+  it("rejects noncanonical input tokens and arrays", () => {
     expect(parseInputFen("z")).toEqual({ kind: "takeback" });
-    expect(parseInputFen("zanything")).toBeUndefined();
-    expect(parseInputFen("mc")).toBeUndefined();
+    for (const malformed of [
+      "l",
+      "l,",
+      "l0",
+      "l0,",
+      "l,0",
+      "l00,0",
+      "l01,0",
+      "l0,00",
+      "l0,01",
+      "l11,0",
+      "l0,11",
+      "l-1,0",
+      "l0,-1",
+      "l1.0,0",
+      "l0,0,",
+      "l0 0",
+      "l0,0x",
+      "l💣,0",
+      "m",
+      "mc",
+      "mpp",
+      "zanything",
+      "Z",
+    ]) {
+      expect(parseInputFen(malformed), malformed).toBeUndefined();
+    }
+
+    expect(parseInputArrayFen("")).toEqual([]);
+    expect(parseInputArrayFen("z;mp;mb;l10,10")).toHaveLength(4);
     expect(parseInputArrayFen("l10,3;l9,2")).toHaveLength(2);
-    expect(parseInputArrayFen("l10,3;invalid;l9,2")).toBeUndefined();
-    expect(parseInputArrayFen("l10,3;")).toBeUndefined();
-    expect(parseInputArrayFen("l10,3;l9,2;l10,4;l9,3;z")).toBeUndefined();
+    for (const malformed of [42, true, Symbol("input"), null, undefined]) {
+      expect(() => parseInputArrayFen(malformed)).toThrow(TypeError);
+    }
+    for (const malformed of [
+      ";",
+      "z;",
+      ";z",
+      "z;;z",
+      "z z",
+      "z\t",
+      "z；mp",
+      "\ufeffz",
+      "\ud800",
+      "💣",
+      "l10,3;invalid;l9,2",
+      "l10,3;l9,2;l10,4;l9,3;z",
+    ]) {
+      expect(parseInputArrayFen(malformed), malformed).toBeUndefined();
+    }
   });
 
   it("round-trips complete input arrays and preserves event/output ordering", () => {
