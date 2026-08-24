@@ -42,6 +42,7 @@ const EVAL_CACHE_EPOCH_LIMIT = 1 << 30;
 const FLAG_EXACT = 0;
 const FLAG_LOWER = 1;
 const FLAG_UPPER = 2;
+const FLAG_MOVE_ONLY = 3;
 const INFO_SELECTIVE = 1 << 30;
 const TABLE_GENERATION_MASK = 0x3f_ffff;
 const TIMEOUT_CHECK_MASK = 511;
@@ -485,13 +486,16 @@ export class FastSearcher {
     const subtreeSelective = this.#selectiveEpoch !== selectiveEpoch;
     // A selectively pruned node proves only what its searched moves scored: a value above
     // alpha is a lower bound (the pruned moves could raise it further) and a fail-low is
-    // stored as the upper bound the pruning itself assumed, so such an entry is never exact.
+    // stored as the upper bound the pruning itself assumed. Selectivity inherited only from
+    // descendants retains move ordering without promoting their score to an exact value.
     const flag =
       bestScore >= beta || (selectivelyPruned && bestScore > alphaInput)
         ? FLAG_LOWER
         : bestScore <= alphaInput
           ? FLAG_UPPER
-          : FLAG_EXACT;
+          : subtreeSelective
+            ? FLAG_MOVE_ONLY
+            : FLAG_EXACT;
     const storedScore =
       selectivelyPruned && flag === FLAG_UPPER ? alphaInput : bestScore;
     const entryDepth = depth;
