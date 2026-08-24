@@ -4,6 +4,8 @@ import { i32 } from "./board.js";
 import { rethrowFastWorkspaceAllocation } from "./allocation.js";
 
 const MAX_ABSOLUTE_EVAL_WEIGHT = 1_000_000;
+const INT32_MIN = -0x8000_0000;
+const INT32_MAX = 0x7fff_ffff;
 
 const EVAL_WEIGHT_KEYS = [
   "scoreUnit",
@@ -339,7 +341,11 @@ function drainerTripTable(weights: EvalWeights): Int32Array {
 function twoPointTripTable(weights: EvalWeights): Int32Array {
   const table = drainerTripTable(weights);
   for (let excess = 0; excess < DISTANCE_TABLE_SIZE; excess += 1) {
-    table[excess] = scaled(i32(table, excess), weights.tripTwoPointScale);
+    table[excess] = scaledInt32(
+      i32(table, excess),
+      weights.tripTwoPointScale,
+      "two-point trip",
+    );
   }
   return table;
 }
@@ -393,14 +399,23 @@ function scaled(value: number, scale: number): number {
   return Math.trunc((value * scale) / 100);
 }
 
+function scaledInt32(value: number, scale: number, name: string): number {
+  const result = scaled(value, scale);
+  if (!Number.isSafeInteger(result) || result < INT32_MIN || result > INT32_MAX) {
+    throw new RangeError(`${name} derived value must fit a signed 32-bit integer`);
+  }
+  return result;
+}
+
 function threatImmediateTable(weights: EvalWeights): Int32Array {
   const table = createInt32Table(2 * THREAT_BUCKETS);
   for (let carrying = 0; carrying < 2; carrying += 1) {
     const factor = carrying === 1 ? weights.carrierThreatFactor : 1;
     for (let bucket = 0; bucket < THREAT_BUCKETS; bucket += 1) {
-      table[carrying * THREAT_BUCKETS + bucket] = scaled(
+      table[carrying * THREAT_BUCKETS + bucket] = scaledInt32(
         weights.drainerThreatImmediate * factor,
         moverScale(weights, bucket),
+        "immediate threat",
       );
     }
   }

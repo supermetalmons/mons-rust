@@ -826,4 +826,35 @@ describe("fast position evaluation", () => {
       createEvalTables(weights({ scoreUnit: 12_000, scoreShape10: -20_000 })),
     ).toThrow(RangeError);
   });
+
+  it("rejects derived evaluation values that do not fit their Int32 tables", () => {
+    const fitting = createEvalTables(
+      weights({
+        drainerThreatImmediate: 1_000_000,
+        carrierThreatFactor: 2_147,
+        drainerTripTurn1: 1_000_000,
+        tripTwoPointScale: 214_748,
+      }),
+    );
+    expect(fitting.threatImmediate[3]).toBe(2_147_000_000);
+    expect(fitting.drainerTripTwoPoint[0]).toBe(2_147_480_000);
+
+    expect(() =>
+      createEvalTables(
+        weights({
+          drainerThreatImmediate: 1_000_000,
+          carrierThreatFactor: 1_000_000,
+        }),
+      ),
+    ).toThrow(/immediate threat derived value/);
+
+    expect(() =>
+      createEvalTables(
+        weights({
+          drainerTripTurn1: 1_000_000,
+          tripTwoPointScale: 1_000_000,
+        }),
+      ),
+    ).toThrow(/two-point trip derived value/);
+  });
 });
