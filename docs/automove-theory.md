@@ -50,6 +50,9 @@ Each immutable corpus describes the selector round that produced it:
 for 39 replayed decisions with `performance.now()` fixed at zero. Earlier versions remain
 protected provenance and must not be rewritten.
 
+The immutable v8 README retains historical `TBD` placeholders for the node ceilings. The final
+ceilings are 38,400 for Fast, 184,000 for Normal, and 2,000,000 for Pro, as recorded above.
+
 ## Final-round evidence
 
 The final quiet-spirit ordering change was measured on held-out, colour-swapped, fixed-node

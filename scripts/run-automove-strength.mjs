@@ -5,7 +5,7 @@ import { pathToFileURL } from "node:url";
 
 import {
   addInvalid,
-  advanceHeldGame,
+  advanceHeldGames,
   createHeldGame,
   emptyInvalidCounts,
   initialFen,
@@ -278,8 +278,12 @@ function playStrengthGame({
     }
     if (
       heldGames !== null &&
-      (!advanceHeldGame(heldGames.candidate, suggestion.inputFen, suggestion.nextFen) ||
-        !advanceHeldGame(heldGames.baseline, suggestion.inputFen, suggestion.nextFen))
+      !advanceHeldGames(
+        heldGames.candidate,
+        heldGames.baseline,
+        suggestion.inputFen,
+        suggestion.nextFen,
+      )
     ) {
       invalid = {
         reason: "illegal-replay",

@@ -671,6 +671,44 @@ describe("fast position evaluation", () => {
     ).toBe(-8_000);
   });
 
+  it("counts a scoring mana move onto a drainer occupying the pool", () => {
+    const position = makePosition(
+      [
+        [0, 0, mon(KIND_DRAINER, 0)],
+        [0, 1, makeManaCell(MANA_BLACK)],
+        [5, 5, mon(KIND_DRAINER, 1, 0, CONS_BOMB)],
+      ],
+      { blackScore: 4, active: 0 },
+    );
+
+    expect(evaluateWithTables(position, createEvalTables(weights({})), 2_500)).toBe(
+      -2_500,
+    );
+  });
+
+  it("keeps equal-point pickup windows independent of board order", () => {
+    const tables = createEvalTables(weights({}));
+    const first = makePosition(
+      [
+        [2, 2, mon(KIND_DRAINER, 1)],
+        [0, 1, makeManaCell(MANA_BLACK)],
+        [1, 2, makeManaCell(MANA_BLACK)],
+      ],
+      { blackScore: 3, active: 0 },
+    );
+    const rotated = makePosition(
+      [
+        [8, 8, mon(KIND_DRAINER, 1)],
+        [9, 8, makeManaCell(MANA_BLACK)],
+        [10, 9, makeManaCell(MANA_BLACK)],
+      ],
+      { blackScore: 3, active: 0 },
+    );
+
+    expect(evaluateWithTables(first, tables, 2_500)).toBe(-2_500);
+    expect(evaluateWithTables(rotated, tables, 2_500)).toBe(-2_500);
+  });
+
   it("separates the carried supermana from an enemy regular mana of equal point value", () => {
     const carrier = weights({ supermanaCarrier: 1_200 });
 

@@ -286,6 +286,32 @@ describe("automove evidence runners", () => {
     expect(invalidGame.invalid).toMatchObject({ reason: "illegal-replay" });
   });
 
+  it("classifies held-game history drift as illegal replay", () => {
+    const root = temporaryDirectory();
+    const baseline = writeBundle(root, "baseline.mjs", "B");
+    const candidate = writeBundle(root, "candidate.mjs", "stateful-history-playfen");
+    const output = path.join(root, "reports", "strength-history-drift.json");
+    const result = run(strengthScript, [
+      "--baseline",
+      baseline,
+      "--candidate",
+      candidate,
+      "--modes",
+      "fast",
+      "--variants",
+      "Classic",
+      "--max-plies",
+      "2",
+      "--game-driving",
+      "held",
+      "--out",
+      output,
+    ]);
+
+    expect(result.status).toBe(1);
+    expect(readJson(output).summary.invalids.illegalReplay).toBeGreaterThan(0);
+  });
+
   it("rejects invalid held-game replay results", () => {
     const root = temporaryDirectory();
     const baseline = writeBundle(root, "baseline.mjs", "B");
@@ -1668,6 +1694,7 @@ function writeBundle(
     | "mutating-invalid-payload"
     | "mutating-preview-throw"
     | "stateful-playfen"
+    | "stateful-history-playfen"
     | "invalid-held-playfen",
   mutates = false,
   mutatesMetadata = false,
@@ -1694,6 +1721,7 @@ function writeBundle(
     const inputFen = ${JSON.stringify(
       strategy === "mutating-preview-throw" ||
         strategy === "stateful-playfen" ||
+        strategy === "stateful-history-playfen" ||
         strategy === "invalid-held-playfen"
         ? "C"
         : strategy,
@@ -1818,7 +1846,9 @@ export class Game {
     ${
       strategy === "stateful-playfen"
         ? "this.plays = (this.plays ?? 0) + 1; if (this.plays > 1) { this.state.ply += 1; }"
-        : ""
+        : strategy === "stateful-history-playfen"
+          ? 'this.plays = (this.plays ?? 0) + 1; if (this.plays > 1) { this.takebacks.push("drift"); }'
+          : ""
     }
     if (inputFen !== "B" && inputFen !== "C") {
       return { kind: "invalid", inputFen };

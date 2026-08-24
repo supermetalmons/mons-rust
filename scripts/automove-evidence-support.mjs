@@ -24,7 +24,7 @@ export {
   selectVariants,
 } from "./evidence/options.mjs";
 export {
-  advanceHeldGame,
+  advanceHeldGames,
   createHeldGame,
   inspectSharedFen,
   runValidatedSuggestion,

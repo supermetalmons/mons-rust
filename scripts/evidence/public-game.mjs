@@ -383,7 +383,7 @@ export function createHeldGame(bundle, fen) {
   }
 }
 
-export function advanceHeldGame(game, inputFen, expectedFen) {
+function advanceHeldGame(game, inputFen, expectedFen) {
   try {
     const result = game.playFen(inputFen);
     if (
@@ -398,4 +398,20 @@ export function advanceHeldGame(game, inputFen, expectedFen) {
   } catch {
     return false;
   }
+}
+
+export function advanceHeldGames(first, second, inputFen, expectedFen) {
+  if (
+    !advanceHeldGame(first, inputFen, expectedFen) ||
+    !advanceHeldGame(second, inputFen, expectedFen)
+  ) {
+    return false;
+  }
+  const firstState = inspectPublicGame(first);
+  const secondState = inspectPublicGame(second);
+  return (
+    firstState.ok &&
+    secondState.ok &&
+    isDeepStrictEqual(firstState.snapshot, secondState.snapshot)
+  );
 }

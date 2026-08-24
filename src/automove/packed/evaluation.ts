@@ -36,7 +36,7 @@ import {
   u8,
 } from "./board.js";
 import { rethrowFastWorkspaceAllocation } from "./allocation.js";
-import { awakeAngelGuards, type FastPosition } from "./state.js";
+import { awakeAngelGuards, manaMoveAllowed, type FastPosition } from "./state.js";
 import {
   DISTANCE_TABLE_SIZE,
   THREAT_BUCKETS,
@@ -69,10 +69,10 @@ const POOL_INDICES = Int32Array.of(
   BOARD_CELLS - 1,
 );
 
-function hasEmptyAdjacentPool(position: FastPosition, index: number): boolean {
+function hasAdjacentScoringPool(position: FastPosition, index: number): boolean {
   for (let slot = 0; slot < POOL_INDICES.length; slot += 1) {
     const pool = i32(POOL_INDICES, slot);
-    if (chebyshev(index, pool) === 1 && u16(position.cells, pool) === 0) {
+    if (chebyshev(index, pool) === 1 && manaMoveAllowed(position, pool)) {
       return true;
     }
   }
@@ -359,7 +359,7 @@ export function evaluateWithTables(
       if (
         mana !== MANA_SUPER &&
         scoreDistance <= 1 &&
-        hasEmptyAdjacentPool(position, index)
+        hasAdjacentScoringPool(position, index)
       ) {
         manaMoveTarget = true;
         if (mana - 1 === 0) {
@@ -377,6 +377,11 @@ export function evaluateWithTables(
           if (points > pickupBestPointsWhite) {
             pickupBestPointsWhite = points;
             pickupBestAdjacentOwnWhite = manaMoveTarget && mana - 1 === 0;
+          } else if (
+            points === pickupBestPointsWhite &&
+            !(manaMoveTarget && mana - 1 === 0)
+          ) {
+            pickupBestAdjacentOwnWhite = false;
           }
         }
       }
@@ -389,6 +394,11 @@ export function evaluateWithTables(
           if (points > pickupBestPointsBlack) {
             pickupBestPointsBlack = points;
             pickupBestAdjacentOwnBlack = manaMoveTarget && mana - 1 === 1;
+          } else if (
+            points === pickupBestPointsBlack &&
+            !(manaMoveTarget && mana - 1 === 1)
+          ) {
+            pickupBestAdjacentOwnBlack = false;
           }
         }
       }
