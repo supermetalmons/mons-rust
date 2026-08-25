@@ -13,6 +13,8 @@ import {
   Consumable,
   MonKind,
   createMon,
+  isMonFainted,
+  itemMon,
   manaItem,
   monItem,
   monWithConsumableItem,
@@ -193,63 +195,72 @@ describe("fast packed-state compatibility", () => {
     }
   });
 
-  it("reports Demon Bomb-step successors that cannot stay packed", () => {
-    const from = location(5, 3);
-    const targetAt = location(5, 5);
-    const stepAt = location(5, 6);
+  it.each([
+    {
+      name: "supermana base",
+      from: location(5, 3),
+      targetAt: location(5, 5),
+      formerStepAt: location(5, 6),
+    },
+    {
+      name: "mon base",
+      from: location(8, 4),
+      targetAt: location(10, 4),
+      formerStepAt: location(10, 3),
+    },
+  ])("cancels a bomb-fainted Demon step from the $name", (testCase) => {
+    const demon = createMon(MonKind.Demon, Color.White, 0);
+    const defender = createMon(MonKind.Drainer, Color.Black, 0);
     const game = gameWith([
-      [from, monItem(createMon(MonKind.Demon, Color.White, 0))],
-      [
-        targetAt,
-        monWithConsumableItem(
-          createMon(MonKind.Drainer, Color.Black, 0),
-          Consumable.Bomb,
-        ),
-      ],
+      [testCase.from, monItem(demon)],
+      [testCase.targetAt, monWithConsumableItem(defender, Consumable.Bomb)],
     ]);
-    const inputs = [
-      locationInput(from),
-      locationInput(targetAt),
-      locationInput(stepAt),
-    ];
-    const move = generatedMoves(game).get(inputArrayFen(inputs));
+    const inputs = [locationInput(testCase.from), locationInput(testCase.targetAt)];
+    const formerInputs = [...inputs, locationInput(testCase.formerStepAt)];
+
+    const moves = generatedMoves(game);
+    const move = moves.get(inputArrayFen(inputs));
     expect(move).toBeDefined();
+    expect(moves.has(inputArrayFen(formerInputs))).toBe(false);
     if (move === undefined) return;
 
-    const position = loadedPosition(game);
-    expect(applyFastMove(position, move)).toBe(FAST_MOVE_UNREPRESENTABLE);
+    expect(game.fork().processInput(formerInputs, false, false).kind).toBe(
+      "invalid-input",
+    );
     const canonical = game.fork();
-    expect(canonical.processInput(inputs, false, false).kind).toBe("events");
-    expect(tryLoadPosition(new FastPosition(), canonical, 1)).toBe(false);
-  });
-
-  it("keeps a Demon Bomb step onto its own base representable", () => {
-    const from = location(8, 4);
-    const targetAt = location(10, 4);
-    const demonBase = location(10, 3);
-    const game = gameWith([
-      [from, monItem(createMon(MonKind.Demon, Color.White, 0))],
-      [
-        targetAt,
-        monWithConsumableItem(
-          createMon(MonKind.Drainer, Color.Black, 0),
-          Consumable.Bomb,
-        ),
-      ],
+    const output = canonical.processInput(inputs, false, false);
+    expect(output.kind).toBe("events");
+    if (output.kind !== "events") return;
+    expect(output.events.slice(0, 4).map((event) => event.kind)).toEqual([
+      "demon-action",
+      "mon-fainted",
+      "bomb-explosion",
+      "mon-fainted",
     ]);
-    const inputs = [
-      locationInput(from),
-      locationInput(targetAt),
-      locationInput(demonBase),
-    ];
-    const move = generatedMoves(game).get(inputArrayFen(inputs));
-    expect(move).toBeDefined();
-    if (move === undefined) return;
+    expect(output.events.some((event) => event.kind === "demon-additional-step")).toBe(
+      false,
+    );
+
+    const demonAtBase = canonical.board.get(canonical.board.base(demon));
+    const defenderAtBase = canonical.board.get(canonical.board.base(defender));
+    const demonAtBaseMon = demonAtBase === undefined ? undefined : itemMon(demonAtBase);
+    const defenderAtBaseMon =
+      defenderAtBase === undefined ? undefined : itemMon(defenderAtBase);
+    expect(demonAtBaseMon === undefined ? false : isMonFainted(demonAtBaseMon)).toBe(
+      true,
+    );
+    expect(
+      defenderAtBaseMon === undefined ? false : isMonFainted(defenderAtBaseMon),
+    ).toBe(true);
+    expect(
+      canonical.board.items.filter((item) => {
+        const mon = item === undefined ? undefined : itemMon(item);
+        return mon?.kind === demon.kind && mon.color === demon.color;
+      }),
+    ).toHaveLength(1);
 
     const position = loadedPosition(game);
     expectRepresentable(position, move);
-    const canonical = game.fork();
-    expect(canonical.processInput(inputs, false, false).kind).toBe("events");
     expect(fastPositionSnapshot(position)).toEqual(
       fastPositionSnapshot(loadedPosition(canonical, 1)),
     );

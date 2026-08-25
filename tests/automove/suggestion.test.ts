@@ -3,7 +3,6 @@ import { describe, expect, it, vi } from "vitest";
 import { FAST_WORKSPACE_ALLOCATION_FAILED } from "../../src/automove/allocation.js";
 import { moveToInputs } from "../../src/automove/bridge.js";
 import { FastSearcher } from "../../src/automove/search.js";
-import { selectPackedInputs } from "../../src/automove/selector.js";
 import {
   deterministicLegalFallbackInputs,
   suggestMove,
@@ -13,7 +12,7 @@ import { inputArrayFen, parseInputArrayFen } from "../../src/engine/codec/input.
 import { MonsGame } from "../../src/engine/game/mons-game.js";
 import { MAX_INPUTS_PER_MOVE } from "../../src/engine/model/domain.js";
 
-const UNSUPPORTED_FEN =
+const BOMB_DEMON_FEN =
   "0 0 b 0 1 5 0 0 2 y0xn10/n11/n02S0xn08/n11/n11/n02A0xE0xn01d0Bn05/n11/n11/n11/n11/n11";
 
 function expectLegalSourcePure(
@@ -143,15 +142,23 @@ describe("packed automove suggestion", () => {
     }
   });
 
-  it("uses the deterministic fallback for unsupported states", () => {
-    const game = MonsGame.fromFen(UNSUPPORTED_FEN, true);
+  it("uses the supported search result when bomb-fainted Demon replies are reachable", () => {
+    const game = MonsGame.fromFen(BOMB_DEMON_FEN, true);
     expect(game).toBeDefined();
     if (game === undefined) return;
-    const expected = inputArrayFen(deterministicLegalFallbackInputs(game));
-
-    expect(selectPackedInputs(game, "pro", () => 0)).toEqual({ kind: "fallback" });
-    expect(suggestMove(game, "pro", () => 0).inputFen).toBe(expected);
-  });
+    const search = vi.spyOn(FastSearcher.prototype, "search");
+    try {
+      const suggestion = suggestMove(game, "pro", () => 0);
+      expect(search).toHaveBeenCalledTimes(1);
+      const result = search.mock.results[0];
+      expect(result?.type).toBe("return");
+      if (result?.type !== "return") return;
+      expect(result.value.supported).toBe(true);
+      expect(suggestion.inputFen).toBe(inputArrayFen(moveToInputs(result.value.move)));
+    } finally {
+      search.mockRestore();
+    }
+  }, 15_000);
 
   it("uses the deterministic fallback on workspace allocation failure", () => {
     const search = vi.spyOn(FastSearcher.prototype, "search").mockImplementation(() => {

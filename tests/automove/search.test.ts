@@ -18,7 +18,7 @@ import { GameVariant } from "../../src/engine/board/config.js";
 import { inputArrayFen } from "../../src/engine/codec/input.js";
 import { MonsGame } from "../../src/engine/game/mons-game.js";
 
-const UNSUPPORTED_FEN =
+const BOMB_DEMON_FEN =
   "0 0 b 0 1 5 0 0 2 y0xn10/n11/n02S0xn08/n11/n11/n02A0xE0xn01d0Bn05/n11/n11/n11/n11/n11";
 
 function loadedSearcher(game = new MonsGame(true, GameVariant.Classic)): FastSearcher {
@@ -100,8 +100,8 @@ describe("packed automove search", () => {
     expect(outcome.move).not.toBe(0);
   });
 
-  it("marks a later unrepresentable position unsupported", () => {
-    const game = MonsGame.fromFen(UNSUPPORTED_FEN, false);
+  it("keeps bomb-fainted Demon replies representable", () => {
+    const game = MonsGame.fromFen(BOMB_DEMON_FEN, false);
     expect(game).toBeDefined();
     if (game === undefined) return;
     const outcome = loadedSearcher(game).search(
@@ -109,8 +109,13 @@ describe("packed automove search", () => {
       () => false,
     );
 
-    expect(outcome.supported).toBe(false);
-    expect(inputArrayFen(moveToInputs(outcome.move))).toBe("l5,5;l5,3");
+    expect(outcome.supported).toBe(true);
+    expect(outcome.move).not.toBe(0);
+    expect(outcome.depth).toBeGreaterThan(0);
+    expect(inputArrayFen(moveToInputs(outcome.move))).toBe("l0,0;l2,2");
+    expect(
+      game.fork().processInput(moveToInputs(outcome.move), false, false).kind,
+    ).toBe("events");
   });
 
   it("normalizes limits without changing frozen profiles", () => {

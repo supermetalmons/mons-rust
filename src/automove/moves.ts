@@ -349,10 +349,12 @@ function generateDemonMoves(
     const key = damagingAttackKey(target);
     const targetSquare = u8(position.squares, to);
     const targetMana = cellMana(target);
+    const attackerFaints = cellConsumable(target) === CONS_BOMB;
     const requiresStep =
-      (targetMana !== 0 && targetMana !== MANA_SUPER) ||
-      targetSquare === SQ_SUPERMANA_BASE ||
-      targetSquare >= SQ_MON_BASE;
+      !attackerFaints &&
+      ((targetMana !== 0 && targetMana !== MANA_SUPER) ||
+        targetSquare === SQ_SUPERMANA_BASE ||
+        targetSquare >= SQ_MON_BASE);
     if (!requiresStep) {
       keys[count] = key;
       out[count] = encodeMove(MOVE_DEMON, from, to, AUX_NONE, MOD_NONE);

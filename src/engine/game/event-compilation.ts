@@ -227,6 +227,7 @@ export function compileSecondInput(
         to: targetLocation,
       });
       let requiresAdditionalStep = false;
+      let attackerFainted = false;
       if (targetItem !== undefined) {
         const targetMon = itemMon(targetItem);
         if (targetMon === undefined) {
@@ -257,6 +258,7 @@ export function compileSecondInput(
         if (targetItem.kind === "mon-with-consumable") {
           switch (targetItem.consumable) {
             case Consumable.Bomb:
+              attackerFainted = true;
               events.push({ kind: "bomb-explosion", at: targetLocation });
               events.push({
                 kind: "mon-fainted",
@@ -271,7 +273,10 @@ export function compileSecondInput(
           }
         }
       }
-      if (targetSquare.kind === "supermana-base" || targetSquare.kind === "mon-base") {
+      if (
+        !attackerFainted &&
+        (targetSquare.kind === "supermana-base" || targetSquare.kind === "mon-base")
+      ) {
         requiresAdditionalStep = true;
       }
       if (requiresAdditionalStep) {
