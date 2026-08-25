@@ -418,7 +418,11 @@ function releaseFaintedCarry(
     setCell(position, at, makeManaCell(mana));
   }
   if (cellConsumable(target) === CONS_BOMB) {
-    setCell(position, at, 0);
+    const targetBase = i32(
+      MON_BASE_INDEX,
+      monId(cellMonKind(target), cellMonColor(target)),
+    );
+    if (at !== targetBase) setCell(position, at, 0);
   }
 }
 

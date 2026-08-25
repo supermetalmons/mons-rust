@@ -203,10 +203,10 @@ describe("fast packed-state compatibility", () => {
       formerStepAt: location(5, 6),
     },
     {
-      name: "mon base",
-      from: location(8, 4),
-      targetAt: location(10, 4),
-      formerStepAt: location(10, 3),
+      name: "defender's own mon base",
+      from: location(2, 5),
+      targetAt: location(0, 5),
+      formerStepAt: location(1, 5),
     },
   ])("cancels a bomb-fainted Demon step from the $name", (testCase) => {
     const demon = createMon(MonKind.Demon, Color.White, 0);

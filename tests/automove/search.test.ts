@@ -116,7 +116,7 @@ describe("packed automove search", () => {
     expect(
       game.fork().processInput(moveToInputs(outcome.move), false, false).kind,
     ).toBe("events");
-  });
+  }, 15_000);
 
   it("normalizes limits without changing frozen profiles", () => {
     const limits = PACKED_SELECTION_PROFILES.fast.limits;

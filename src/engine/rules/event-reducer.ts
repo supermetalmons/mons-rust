@@ -13,6 +13,7 @@ import {
   otherColor,
   type Event,
 } from "../model/domain.js";
+import { locationEquals } from "../board/geometry.js";
 import { copyRulesCounters, projectEventCounters } from "./event-counters.js";
 import { shouldAdvanceTurn, winnerForState } from "./legality.js";
 import type { MutableRulesState } from "./state.js";
@@ -138,9 +139,18 @@ function applyEvent(
       state.board.delete(event.to);
       state.board.set(event.from, monItem(event.by));
       break;
-    case "bomb-explosion":
-      state.board.delete(event.at);
+    case "bomb-explosion": {
+      const item = state.board.get(event.at);
+      const mon = item === undefined ? undefined : itemMon(item);
+      if (
+        mon === undefined ||
+        !isMonFainted(mon) ||
+        !locationEquals(state.board.base(mon), event.at)
+      ) {
+        state.board.delete(event.at);
+      }
       break;
+    }
     case "mon-awake":
     case "game-over":
     case "next-turn":
