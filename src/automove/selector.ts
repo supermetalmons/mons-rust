@@ -181,7 +181,6 @@ export function selectPackedInputs(
   if (
     outcome === undefined ||
     isFastWorkspaceAllocationFailure(outcome) ||
-    deadlineReached() ||
     !outcome.supported ||
     outcome.move === 0
   ) {

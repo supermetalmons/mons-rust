@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 
 import { FAST_WORKSPACE_ALLOCATION_FAILED } from "../../src/automove/allocation.js";
+import { moveToInputs } from "../../src/automove/bridge.js";
 import { FastSearcher } from "../../src/automove/search.js";
 import { selectPackedInputs } from "../../src/automove/selector.js";
 import {
@@ -97,9 +98,9 @@ describe("packed automove suggestion", () => {
     expect(game.fen()).toBe(new MonsGame(false, GameVariant.Classic).fen());
   });
 
-  it("discards partial search results after a cooperative timeout", () => {
+  it("retains partial search results after a cooperative timeout", () => {
     const originalSearch = Reflect.get(FastSearcher.prototype, "search");
-    const partialMoves: number[] = [];
+    const partialInputFens: string[] = [];
     let now = 0;
     let searchEntries = 0;
     const search = vi
@@ -123,18 +124,20 @@ describe("packed automove suggestion", () => {
           },
           weights,
         );
-        partialMoves.push(outcome.move);
+        partialInputFens.push(inputArrayFen(moveToInputs(outcome.move)));
         return outcome;
       });
     try {
       for (const preference of ["fast", "normal", "pro"] as const) {
         now = 0;
         const game = new MonsGame(true, GameVariant.Classic);
-        const expected = inputArrayFen(deterministicLegalFallbackInputs(game));
-        expect(suggestMove(game, preference, () => now).inputFen).toBe(expected);
+        const fallback = inputArrayFen(deterministicLegalFallbackInputs(game));
+        const suggestion = suggestMove(game, preference, () => now);
+        expect(suggestion.inputFen).toBe(partialInputFens[partialInputFens.length - 1]);
+        expect(suggestion.inputFen).not.toBe(fallback);
       }
       expect(searchEntries).toBe(3);
-      expect(partialMoves.every((move) => move !== 0)).toBe(true);
+      expect(partialInputFens.every((inputFen) => inputFen.length > 0)).toBe(true);
     } finally {
       search.mockRestore();
     }

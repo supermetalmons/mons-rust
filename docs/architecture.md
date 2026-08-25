@@ -65,10 +65,12 @@ The public profiles are fixed:
 | Pro        |            460 ms |                2,000,000 |
 
 Search is cooperative, so runtime, JIT, cache, and garbage-collection timing
-can change a live selection. If the deadline is reached, the packed state is
-unsupported, allocation fails, or a selected move cannot be applied,
-`suggestion` returns the first deterministic complete legal move. Suggestions
-must remain legal and leave the source game byte-for-byte unchanged.
+can change a live selection. Reaching the deadline stops the search and retains
+its supported nonzero move from the last completed iteration. If no such move is
+available, the packed state is unsupported, allocation fails, or a selected move
+cannot be applied, `suggestion` returns the first deterministic complete legal
+move. Suggestions must remain legal and leave the source game byte-for-byte
+unchanged.
 
 The shipped search keeps aspiration windows for Fast and Normal, bounded
 transposition data for selective nodes, deterministic ordering for commuting
