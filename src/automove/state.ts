@@ -162,14 +162,14 @@ class MutableFastPosition implements FastPosition {
     const monLocations = this.monLocations;
     const sourceMonLocations = source.monLocations;
     for (let index = 0; index < MON_ID_COUNT; index += 1) {
-      monLocations[index] = i32(sourceMonLocations, index);
+      monLocations[index] = sourceMonLocations[index] ?? 0;
     }
-    this.freeMana[0] = i32(source.freeMana, 0);
-    this.freeMana[1] = i32(source.freeMana, 1);
+    this.freeMana[0] = source.freeMana[0] ?? 0;
+    this.freeMana[1] = source.freeMana[1] ?? 0;
     const manaIndices = this.manaIndices;
     const sourceManaIndices = source.manaIndices;
     for (let index = 0; index < PACKED_MANA_INDEX_CAPACITY; index += 1) {
-      manaIndices[index] = i32(sourceManaIndices, index);
+      manaIndices[index] = sourceManaIndices[index] ?? 0;
     }
     this.manaCount = source.manaCount;
     this.whiteScore = source.whiteScore;
@@ -178,8 +178,8 @@ class MutableFastPosition implements FastPosition {
     this.monsMoves = source.monsMoves;
     this.manaMoves = source.manaMoves;
     this.actionsUsed = source.actionsUsed;
-    this.potions[0] = i32(source.potions, 0);
-    this.potions[1] = i32(source.potions, 1);
+    this.potions[0] = source.potions[0] ?? 0;
+    this.potions[1] = source.potions[1] ?? 0;
     this.firstTurn = source.firstTurn;
     this.hashLo = source.hashLo;
     this.hashHi = source.hashHi;

@@ -1,7 +1,15 @@
 import { describe, expect, it } from "vitest";
 
 import { moveToInputs, tryLoadPosition } from "../../src/automove/bridge.js";
-import { cellCooldown } from "../../src/automove/board.js";
+import {
+  COLOR_COUNT,
+  MANA_BLACK,
+  MANA_WHITE,
+  MON_KIND_COUNT,
+  cellCooldown,
+  makeManaCell,
+  makeMonCell,
+} from "../../src/automove/board.js";
 import { MAX_MOVES, generateMoves } from "../../src/automove/moves.js";
 import {
   FAST_MOVE_UNREPRESENTABLE,
@@ -26,6 +34,7 @@ import {
 import { inputArrayFen } from "../../src/engine/codec/input.js";
 import { MonsGame } from "../../src/engine/game/mons-game.js";
 import {
+  BOARD_CELLS,
   BOARD_SIZE,
   location,
   locationIndex,
@@ -99,6 +108,58 @@ function expectRepresentable(position: FastPosition, move: number): void {
 }
 
 describe("fast packed-state compatibility", () => {
+  it("copies every packed position field into independent storage", () => {
+    const source = new FastPosition();
+    const cells = new Uint16Array(BOARD_CELLS);
+    for (let kind = 0; kind < MON_KIND_COUNT; kind += 1) {
+      for (let color = 0; color < COLOR_COUNT; color += 1) {
+        const index = kind * COLOR_COUNT + color;
+        cells[index] = makeMonCell(kind, color, index % 3, 0, 0);
+      }
+    }
+    for (let index = 0; index < source.manaIndices.length; index += 1) {
+      cells[20 + index] = makeManaCell(index % 2 === 0 ? MANA_WHITE : MANA_BLACK);
+    }
+    source.reset({
+      cells,
+      squares: new Uint8Array(BOARD_CELLS).fill(1),
+      whiteScore: 3,
+      blackScore: 2,
+      active: 1,
+      monsMoves: 1,
+      manaMoves: 1,
+      actionsUsed: 1,
+      potions: new Int32Array([7, 11]),
+      firstTurn: true,
+    });
+    const expected = fastPositionSnapshot(source);
+    const destination = new FastPosition();
+
+    destination.copyFrom(source);
+
+    expect(fastPositionSnapshot(destination)).toEqual(expected);
+    expect(destination.cells).not.toBe(source.cells);
+    expect(destination.monLocations).not.toBe(source.monLocations);
+    expect(destination.freeMana).not.toBe(source.freeMana);
+    expect(destination.manaIndices).not.toBe(source.manaIndices);
+    expect(destination.potions).not.toBe(source.potions);
+    expect(destination.squares).toBe(source.squares);
+
+    source.reset({
+      cells: new Uint16Array(BOARD_CELLS),
+      squares: new Uint8Array(BOARD_CELLS),
+      whiteScore: 0,
+      blackScore: 0,
+      active: 0,
+      monsMoves: 0,
+      manaMoves: 0,
+      actionsUsed: 0,
+      potions: new Int32Array(COLOR_COUNT),
+      firstTurn: false,
+    });
+    expect(fastPositionSnapshot(destination)).toEqual(expected);
+  });
+
   it("rejects unsupported loads without mutating the destination", () => {
     const position = loadedPosition(new MonsGame(false), 1);
     const before = fastPositionSnapshot(position);

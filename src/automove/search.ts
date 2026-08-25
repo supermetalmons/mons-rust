@@ -101,6 +101,84 @@ type RootSearchOutcome = {
   readonly selective: boolean;
 };
 
+export function orderMoves(
+  buffer: Int32Array,
+  keys: Int32Array,
+  count: number,
+  commutingMove: number,
+  ttMove: number,
+  killerA: number,
+  killerB: number,
+  history: Int32Array,
+  historyBase: number,
+): number {
+  if (commutingMove === 0) {
+    for (let index = 0; index < count; index += 1) {
+      const move = i32(buffer, index);
+      let key = i32(keys, index);
+      if (move === ttMove) key += KEY_TT;
+      else if (move === killerA) key += KEY_KILLER_A;
+      else if (move === killerB) key += KEY_KILLER_B;
+      else {
+        const historyScore = i32(
+          history,
+          historyBase + moveFrom(move) * BOARD_CELLS + moveTo(move),
+        );
+        key += historyScore > 8191 ? 8191 : historyScore;
+      }
+      keys[index] = key;
+    }
+    return count;
+  }
+
+  const previousFrom = moveFrom(commutingMove);
+  const previousTo = moveTo(commutingMove);
+  let write = 0;
+  for (let read = 0; read < count; read += 1) {
+    const move = i32(buffer, read);
+    if (moveType(move) === MOVE_MON && move < commutingMove) {
+      const from = moveFrom(move);
+      const to = moveTo(move);
+      if (
+        from !== previousFrom &&
+        from !== previousTo &&
+        to !== previousFrom &&
+        to !== previousTo
+      ) {
+        continue;
+      }
+    }
+    let key = i32(keys, read);
+    if (move === ttMove) key += KEY_TT;
+    else if (move === killerA) key += KEY_KILLER_A;
+    else if (move === killerB) key += KEY_KILLER_B;
+    else {
+      const historyScore = i32(
+        history,
+        historyBase + moveFrom(move) * BOARD_CELLS + moveTo(move),
+      );
+      key += historyScore > 8191 ? 8191 : historyScore;
+    }
+    if (write !== read) buffer[write] = move;
+    keys[write] = key;
+    write += 1;
+  }
+  if (write === 0) {
+    return orderMoves(
+      buffer,
+      keys,
+      count,
+      0,
+      ttMove,
+      killerA,
+      killerB,
+      history,
+      historyBase,
+    );
+  }
+  return write;
+}
+
 export class FastSearcher {
   readonly #positions: FastPosition[] = [];
   readonly #moves: Int32Array[] = [];
@@ -286,7 +364,17 @@ export class FastSearcher {
         selective: false,
       };
     }
-    this.#orderMoves(position, buffer, count, 0, previousBest);
+    orderMoves(
+      buffer,
+      at(this.#orderKeys, 0),
+      count,
+      0,
+      previousBest,
+      i32(this.#killers, 0),
+      i32(this.#killers, 1),
+      this.#history,
+      position.active * BOARD_CELLS * BOARD_CELLS,
+    );
     const rootKeys = at(this.#orderKeys, 0);
 
     let alpha = alphaStart;
@@ -296,18 +384,40 @@ export class FastSearcher {
     for (let index = 0; index < count; index += 1) {
       this.#selectBest(buffer, rootKeys, index, count);
       const move = i32(buffer, index);
+      const winner = this.#prepareChild(position, move, 0);
       let score: number;
       let selectiveEpoch = this.#selectiveEpoch;
       let selective: boolean;
       if (index === 0) {
-        score = this.#child(position, move, 0, depth - 1, alpha, betaStart);
+        score = this.#searchPreparedChild(
+          position,
+          winner,
+          0,
+          depth - 1,
+          alpha,
+          betaStart,
+        );
         selective = this.#selectiveEpoch !== selectiveEpoch;
       } else {
-        score = this.#child(position, move, 0, depth - 1, alpha, alpha + 1);
+        score = this.#searchPreparedChild(
+          position,
+          winner,
+          0,
+          depth - 1,
+          alpha,
+          alpha + 1,
+        );
         selective = this.#selectiveEpoch !== selectiveEpoch;
         if (score > alpha && !this.#isStopped()) {
           selectiveEpoch = this.#selectiveEpoch;
-          score = this.#child(position, move, 0, depth - 1, alpha, betaStart);
+          score = this.#searchPreparedChild(
+            position,
+            winner,
+            0,
+            depth - 1,
+            alpha,
+            betaStart,
+          );
           selective = this.#selectiveEpoch !== selectiveEpoch;
         }
       }
@@ -332,14 +442,7 @@ export class FastSearcher {
     };
   }
 
-  #child(
-    parent: FastPosition,
-    move: number,
-    ply: number,
-    depth: number,
-    alpha: number,
-    beta: number,
-  ): number {
+  #prepareChild(parent: FastPosition, move: number, ply: number): number {
     const child = at(this.#positions, ply + 1);
     child.copyFrom(parent);
     this.#moveAtPly[ply] = move;
@@ -347,8 +450,20 @@ export class FastSearcher {
     if (winner === FAST_MOVE_UNREPRESENTABLE) {
       this.#unsupported = true;
       this.#stopped = true;
-      return 0;
     }
+    return winner;
+  }
+
+  #searchPreparedChild(
+    parent: FastPosition,
+    winner: number,
+    ply: number,
+    depth: number,
+    alpha: number,
+    beta: number,
+  ): number {
+    const child = at(this.#positions, ply + 1);
+    if (winner === FAST_MOVE_UNREPRESENTABLE) return 0;
     if (winner !== -1) {
       return winner === parent.active ? WIN_VALUE - ply : -(WIN_VALUE - ply);
     }
@@ -397,11 +512,18 @@ export class FastSearcher {
     const buffer = at(this.#moves, ply);
     let count = generateMoves(position, buffer, at(this.#orderKeys, ply));
     if (count === 0) return this.#staticScore(position, keyLo, keyHi);
-    if (commutingMove !== 0) {
-      count = this.#filterCommutingMonMoves(buffer, count, commutingMove, ply);
-    }
-    this.#orderMoves(position, buffer, count, ply, ttMove);
     const keys = at(this.#orderKeys, ply);
+    count = orderMoves(
+      buffer,
+      keys,
+      count,
+      commutingMove,
+      ttMove,
+      i32(this.#killers, ply * 2),
+      i32(this.#killers, ply * 2 + 1),
+      this.#history,
+      position.active * BOARD_CELLS * BOARD_CELLS,
+    );
 
     let moveLimit = count;
     if (tuning.moveCountPruning && depth <= tuning.moveCountDepth) {
@@ -439,9 +561,17 @@ export class FastSearcher {
         }
       }
 
+      const winner = this.#prepareChild(position, move, ply);
       let score: number;
       if (index === 0) {
-        score = this.#child(position, move, ply, depth - 1, alpha, beta);
+        score = this.#searchPreparedChild(
+          position,
+          winner,
+          ply,
+          depth - 1,
+          alpha,
+          beta,
+        );
       } else {
         let reduction = 0;
         if (
@@ -453,16 +583,23 @@ export class FastSearcher {
           reduction = index >= tuning.lateMoveDeepIndex ? 2 : 1;
           if (reduction >= depth) reduction = depth - 1;
         }
-        score = this.#child(
+        score = this.#searchPreparedChild(
           position,
-          move,
+          winner,
           ply,
           depth - 1 - reduction,
           alpha,
           alpha + 1,
         );
         if (!this.#isStopped() && score > alpha && (reduction > 0 || score < beta)) {
-          score = this.#child(position, move, ply, depth - 1, alpha, beta);
+          score = this.#searchPreparedChild(
+            position,
+            winner,
+            ply,
+            depth - 1,
+            alpha,
+            beta,
+          );
         }
       }
       if (this.#isStopped()) return 0;
@@ -515,37 +652,6 @@ export class FastSearcher {
       at(this.#positions, ply - 1).active === position.active
       ? previous
       : 0;
-  }
-
-  #filterCommutingMonMoves(
-    buffer: Int32Array,
-    count: number,
-    previous: number,
-    ply: number,
-  ): number {
-    const previousFrom = moveFrom(previous);
-    const previousTo = moveTo(previous);
-    const keys = at(this.#orderKeys, ply);
-    let write = 0;
-    for (let read = 0; read < count; read += 1) {
-      const move = i32(buffer, read);
-      if (moveType(move) === MOVE_MON && move < previous) {
-        const from = moveFrom(move);
-        const to = moveTo(move);
-        if (
-          from !== previousFrom &&
-          from !== previousTo &&
-          to !== previousFrom &&
-          to !== previousTo
-        ) {
-          continue;
-        }
-      }
-      buffer[write] = move;
-      keys[write] = i32(keys, read);
-      write += 1;
-    }
-    return write === 0 ? count : write;
   }
 
   #isStopped(): boolean {
@@ -627,34 +733,6 @@ export class FastSearcher {
       moveTo(move);
     const updated = i32(this.#history, historyIndex) + depth * depth;
     this.#history[historyIndex] = updated > 1 << 20 ? 1 << 20 : updated;
-  }
-
-  #orderMoves(
-    position: FastPosition,
-    buffer: Int32Array,
-    count: number,
-    ply: number,
-    ttMove: number,
-  ): void {
-    const keys = at(this.#orderKeys, ply);
-    const killerA = i32(this.#killers, ply * 2);
-    const killerB = i32(this.#killers, ply * 2 + 1);
-    const historyBase = position.active * BOARD_CELLS * BOARD_CELLS;
-    for (let index = 0; index < count; index += 1) {
-      const move = i32(buffer, index);
-      let key = i32(keys, index);
-      if (move === ttMove) key += KEY_TT;
-      else if (move === killerA) key += KEY_KILLER_A;
-      else if (move === killerB) key += KEY_KILLER_B;
-      else {
-        const history = i32(
-          this.#history,
-          historyBase + moveFrom(move) * BOARD_CELLS + moveTo(move),
-        );
-        key += history > 8191 ? 8191 : history;
-      }
-      keys[index] = key;
-    }
   }
 
   #selectBest(

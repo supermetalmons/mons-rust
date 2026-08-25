@@ -1,7 +1,7 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 
 import { moveToInputs, tryLoadPosition } from "../../src/automove/bridge.js";
-import { FastSearcher } from "../../src/automove/search.js";
+import { FastSearcher, orderMoves } from "../../src/automove/search.js";
 import {
   DEFAULT_TUNING,
   MAX_SEARCH_DEPTH,
@@ -9,12 +9,21 @@ import {
   normalizeSearchLimits,
 } from "../../src/automove/search-tuning.js";
 import {
+  AUX_NONE,
+  FastPosition,
+  MOD_NONE,
+  MOVE_MANA,
+  MOVE_MON,
+  encodeMove,
+} from "../../src/automove/state.js";
+import {
   FAST_SEARCH_TUNING,
   PACKED_SELECTION_PROFILES,
   PRO_SEARCH_TUNING,
   STRATEGIC_SEARCH_TUNING,
 } from "../../src/automove/selector.js";
 import { GameVariant } from "../../src/engine/board/config.js";
+import { BOARD_CELLS } from "../../src/engine/board/geometry.js";
 import { inputArrayFen } from "../../src/engine/codec/input.js";
 import { MonsGame } from "../../src/engine/game/mons-game.js";
 
@@ -105,6 +114,91 @@ describe("packed automove search", () => {
     expect(
       game.fork().processInput(moveToInputs(outcome.move), false, false).kind,
     ).toBe("events");
+  });
+
+  it("reuses prepared children across PVS and LMR re-searches", () => {
+    const searcher = loadedSearcher();
+    const copyFrom = vi.spyOn(FastPosition.prototype, "copyFrom");
+    try {
+      const outcome = searcher.search(
+        {
+          maxDepth: 4,
+          maxNodes: 1_000_000,
+          tuning: {
+            ...DEFAULT_TUNING,
+            aspirationDelta: 0,
+            lateMoveReduction: true,
+            lateMoveIndex: 1,
+            lateMoveDeepIndex: 2,
+          },
+        },
+        () => false,
+      );
+
+      expect(outcome).toEqual({
+        move: 16_752_536,
+        score: 3_188,
+        depth: 4,
+        nodes: 1_261,
+        supported: true,
+      });
+      expect(copyFrom).toHaveBeenCalledTimes(634);
+    } finally {
+      copyFrom.mockRestore();
+    }
+  });
+
+  it("compacts mixed commuting moves without changing retained tie order", () => {
+    const previous = encodeMove(MOVE_MON, 8, 9, AUX_NONE, MOD_NONE);
+    const discarded = encodeMove(MOVE_MON, 1, 2, AUX_NONE, MOD_NONE);
+    const overlapping = encodeMove(MOVE_MON, 8, 3, AUX_NONE, MOD_NONE);
+    const mana = encodeMove(MOVE_MANA, 4, 5, AUX_NONE, MOD_NONE);
+    const later = encodeMove(MOVE_MON, 10, 11, AUX_NONE, MOD_NONE);
+    const buffer = Int32Array.from([discarded, overlapping, mana, later]);
+    const keys = Int32Array.from([99, 7, 7, 7]);
+
+    const count = orderMoves(
+      buffer,
+      keys,
+      buffer.length,
+      previous,
+      0,
+      0,
+      0,
+      new Int32Array(BOARD_CELLS * BOARD_CELLS),
+      0,
+    );
+
+    expect(count).toBe(3);
+    expect([...buffer.subarray(0, count)]).toEqual([overlapping, mana, later]);
+    expect([...keys.subarray(0, count)]).toEqual([7, 7, 7]);
+  });
+
+  it("falls back to the full ordered list when every commuting move is filtered", () => {
+    const previous = encodeMove(MOVE_MON, 20, 21, AUX_NONE, MOD_NONE);
+    const first = encodeMove(MOVE_MON, 1, 2, AUX_NONE, MOD_NONE);
+    const second = encodeMove(MOVE_MON, 3, 4, AUX_NONE, MOD_NONE);
+    const buffer = Int32Array.from([first, second]);
+    const keys = Int32Array.from([5, 5]);
+    const history = new Int32Array(BOARD_CELLS * BOARD_CELLS);
+    history[1 * BOARD_CELLS + 2] = 11;
+    history[3 * BOARD_CELLS + 4] = 22;
+
+    const count = orderMoves(
+      buffer,
+      keys,
+      buffer.length,
+      previous,
+      0,
+      0,
+      0,
+      history,
+      0,
+    );
+
+    expect(count).toBe(2);
+    expect([...buffer]).toEqual([first, second]);
+    expect([...keys]).toEqual([16, 27]);
   });
 
   it("keeps bomb-fainted Demon replies representable", () => {
