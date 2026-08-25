@@ -60,9 +60,9 @@ The public profiles are fixed:
 
 | Preference | Wall-clock budget | Fixed-clock node ceiling |
 | ---------- | ----------------: | -----------------------: |
-| Fast       |             16 ms |                   38,400 |
-| Normal     |             75 ms |                  184,000 |
-| Pro        |            460 ms |                2,000,000 |
+| Fast       |             50 ms |                   38,400 |
+| Normal     |            150 ms |                  184,000 |
+| Pro        |            650 ms |                2,000,000 |
 
 Search is cooperative, so runtime, JIT, cache, and garbage-collection timing
 can change a live selection. Reaching the deadline stops the search and retains

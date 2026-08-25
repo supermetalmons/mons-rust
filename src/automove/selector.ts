@@ -66,7 +66,7 @@ export const PRO_SEARCH_TUNING = Object.freeze({
 
 export const PACKED_SELECTION_PROFILES = Object.freeze({
   fast: Object.freeze({
-    budgetMs: 16,
+    budgetMs: 50,
     limits: Object.freeze({
       maxDepth: 40,
       maxNodes: 38_400,
@@ -74,7 +74,7 @@ export const PACKED_SELECTION_PROFILES = Object.freeze({
     }) satisfies SearchLimits,
   }),
   normal: Object.freeze({
-    budgetMs: 75,
+    budgetMs: 150,
     limits: Object.freeze({
       maxDepth: 40,
       maxNodes: 184_000,
@@ -82,7 +82,7 @@ export const PACKED_SELECTION_PROFILES = Object.freeze({
     }) satisfies SearchLimits,
   }),
   pro: Object.freeze({
-    budgetMs: 460,
+    budgetMs: 650,
     limits: Object.freeze({
       maxDepth: 40,
       maxNodes: 2_000_000,

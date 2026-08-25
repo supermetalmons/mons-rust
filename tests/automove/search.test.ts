@@ -31,7 +31,7 @@ describe("packed automove search", () => {
   it("keeps the audited budgets, node ceilings, and tuning", () => {
     expect(PACKED_SELECTION_PROFILES).toEqual({
       fast: {
-        budgetMs: 16,
+        budgetMs: 50,
         limits: {
           maxDepth: 40,
           maxNodes: 38_400,
@@ -39,7 +39,7 @@ describe("packed automove search", () => {
         },
       },
       normal: {
-        budgetMs: 75,
+        budgetMs: 150,
         limits: {
           maxDepth: 40,
           maxNodes: 184_000,
@@ -47,7 +47,7 @@ describe("packed automove search", () => {
         },
       },
       pro: {
-        budgetMs: 460,
+        budgetMs: 650,
         limits: {
           maxDepth: 40,
           maxNodes: 2_000_000,
@@ -88,16 +88,23 @@ describe("packed automove search", () => {
     }
   }, 60_000);
 
-  it("cooperatively stops a running search", () => {
+  it("checks the cooperative timeout every 2,048 nodes", () => {
+    const game = new MonsGame(true, GameVariant.Classic);
+    const searcher = loadedSearcher(game);
+    searcher.search({ maxDepth: 2, maxNodes: 100_000 }, () => false);
+
     let checks = 0;
-    const outcome = loadedSearcher().search({ maxDepth: 40, maxNodes: 100_000 }, () => {
+    const outcome = searcher.search({ maxDepth: 40, maxNodes: 100_000 }, () => {
       checks += 1;
       return checks === 3;
     });
 
     expect(checks).toBe(3);
-    expect(outcome.nodes).toBeLessThan(100_000);
+    expect(outcome.nodes).toBe(3 * 2_048);
     expect(outcome.move).not.toBe(0);
+    expect(
+      game.fork().processInput(moveToInputs(outcome.move), false, false).kind,
+    ).toBe("events");
   });
 
   it("keeps bomb-fainted Demon replies representable", () => {
