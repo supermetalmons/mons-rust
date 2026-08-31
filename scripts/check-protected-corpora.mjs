@@ -95,6 +95,18 @@ const protectedFiles = Object.freeze({
     "ab738696d41ea0f019c2e160f9f991cb348056a74fc3e23ee580d0ac1947bd04",
   "test-data/automove-decisions/v16/manifest.json":
     "add6fa8ec045a1881ea577c64d323da1119fe41f1f968642da8cb541a72182dd",
+  "test-data/automove-decisions/v17/README.md":
+    "b793d69917d32742e819800f9470ce8d83bb629dcfe7613e31ba7ed122a0241b",
+  "test-data/automove-decisions/v17/decisions.jsonl":
+    "095e682c91cd4e34ce9f727f1f5a930a10bf8ae7376af0c074fca76fb5f47e0d",
+  "test-data/automove-decisions/v17/manifest.json":
+    "f0c2e701135e0ad5603ef518f0aff184ab777679e197fbebbab4f4dbd14aa35a",
+  "test-data/automove-decisions/v18/README.md":
+    "710b179cc2b3bb6b9b662db7e9f7cc668040e2230f813aea37dab346045448f7",
+  "test-data/automove-decisions/v18/decisions.jsonl":
+    "095e682c91cd4e34ce9f727f1f5a930a10bf8ae7376af0c074fca76fb5f47e0d",
+  "test-data/automove-decisions/v18/manifest.json":
+    "a6f3758c6abc7af2dcb43517c2fe6af7299680b9a86ff814f81bfbadfdfa7ee1",
   "test-data/compatibility-edge-cases/v1/coordinate-cases.jsonl":
     "bc5f2b96f4755cd3c4e2d45f8b5b1753d56c27a7947d572c6956db3e85ddad66",
   "test-data/compatibility-edge-cases/v1/fen-cases.jsonl":

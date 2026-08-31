@@ -107,6 +107,51 @@ function expectRepresentable(position: FastPosition, move: number): void {
   expectFastPositionInvariants(position);
 }
 
+function expectPackedStorageLayout(position: FastPosition): void {
+  const cells = position.cells as Uint16Array;
+  const views = [
+    cells,
+    position.monLocations as Int32Array,
+    position.freeMana as Int32Array,
+    position.manaIndices as Int32Array,
+    position.potions as Int32Array,
+  ];
+  const cellEnd = BOARD_CELLS * Uint16Array.BYTES_PER_ELEMENT;
+  const monOffset =
+    Math.ceil(cellEnd / Int32Array.BYTES_PER_ELEMENT) * Int32Array.BYTES_PER_ELEMENT;
+  const freeManaOffset =
+    monOffset + COLOR_COUNT * MON_KIND_COUNT * Int32Array.BYTES_PER_ELEMENT;
+  const manaIndicesOffset = freeManaOffset + COLOR_COUNT * Int32Array.BYTES_PER_ELEMENT;
+  const potionsOffset =
+    manaIndicesOffset + position.manaIndices.length * Int32Array.BYTES_PER_ELEMENT;
+  const storageEnd = potionsOffset + COLOR_COUNT * Int32Array.BYTES_PER_ELEMENT;
+
+  expect(views.every((view) => view.buffer === cells.buffer)).toBe(true);
+  expect(
+    views.map((view) => [view.byteOffset, view.byteOffset + view.byteLength]),
+  ).toEqual([
+    [0, cellEnd],
+    [monOffset, freeManaOffset],
+    [freeManaOffset, manaIndicesOffset],
+    [manaIndicesOffset, potionsOffset],
+    [potionsOffset, storageEnd],
+  ]);
+  expect(views.every((view) => view.byteOffset % view.BYTES_PER_ELEMENT === 0)).toBe(
+    true,
+  );
+  for (let index = 1; index < views.length; index += 1) {
+    const previous = views[index - 1];
+    const current = views[index];
+    if (previous === undefined || current === undefined) {
+      throw new RangeError("packed view layout is incomplete");
+    }
+    expect(previous.byteOffset + previous.byteLength).toBeLessThanOrEqual(
+      current.byteOffset,
+    );
+  }
+  expect(cells.buffer.byteLength).toBe(storageEnd);
+}
+
 describe("fast packed-state compatibility", () => {
   it("copies every packed position field into independent storage", () => {
     const source = new FastPosition();
@@ -138,6 +183,11 @@ describe("fast packed-state compatibility", () => {
     destination.copyFrom(source);
 
     expect(fastPositionSnapshot(destination)).toEqual(expected);
+    expectPackedStorageLayout(source);
+    expectPackedStorageLayout(destination);
+    expect((destination.cells as Uint16Array).buffer).not.toBe(
+      (source.cells as Uint16Array).buffer,
+    );
     expect(destination.cells).not.toBe(source.cells);
     expect(destination.monLocations).not.toBe(source.monLocations);
     expect(destination.freeMana).not.toBe(source.freeMana);

@@ -3,5 +3,13 @@
   "proseWrap": "preserve",
   "semi": true,
   "singleQuote": false,
-  "trailingComma": "all"
+  "trailingComma": "all",
+  "overrides": [
+    {
+      "files": "src/automove/search.ts",
+      "options": {
+        "printWidth": 110
+      }
+    }
+  ]
 }

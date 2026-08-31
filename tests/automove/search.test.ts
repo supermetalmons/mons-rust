@@ -1,6 +1,12 @@
 import { describe, expect, it, vi } from "vitest";
 
 import { moveToInputs, tryLoadPosition } from "../../src/automove/bridge.js";
+import {
+  DEFAULT_WEIGHTS,
+  LEARNED_PRO_WEIGHTS,
+  NORMAL_WEIGHTS,
+} from "../../src/automove/evaluation-weights.js";
+import { WIN_VALUE } from "../../src/automove/evaluation.js";
 import { FastSearcher, orderMoves } from "../../src/automove/search.js";
 import {
   DEFAULT_TUNING,
@@ -29,6 +35,8 @@ import { MonsGame } from "../../src/engine/game/mons-game.js";
 
 const BOMB_DEMON_FEN =
   "0 0 b 0 1 5 0 0 2 y0xn10/n11/n02S0xn08/n11/n11/n02A0xE0xn01d0Bn05/n11/n11/n11/n11/n11";
+const VERIFIED_CHALLENGER_FEN =
+  "0 3 w 0 0 0 0 0 7 n07e0xn02d0x/n04s0xn06/n11/n01y0xn02xxmn01xxma0xn03/n05xxmn05/xxQn03E0xn01Y0xn01xxmn01xxQ/n05xxMn01xxMS0xn02/n04xxMn01xxMn04/n01xxMn03D0xn05/n11/n04A0xn06";
 
 function loadedSearcher(game = new MonsGame(true, GameVariant.Classic)): FastSearcher {
   const searcher = new FastSearcher();
@@ -41,14 +49,16 @@ describe("packed automove search", () => {
     expect(PACKED_SELECTION_PROFILES).toEqual({
       fast: {
         budgetMs: 50,
+        weights: DEFAULT_WEIGHTS,
         limits: {
           maxDepth: 40,
-          maxNodes: 38_400,
+          maxNodes: 39_936,
           tuning: FAST_SEARCH_TUNING,
         },
       },
       normal: {
         budgetMs: 150,
+        weights: NORMAL_WEIGHTS,
         limits: {
           maxDepth: 40,
           maxNodes: 184_000,
@@ -57,6 +67,7 @@ describe("packed automove search", () => {
       },
       pro: {
         budgetMs: 650,
+        weights: LEARNED_PRO_WEIGHTS,
         limits: {
           maxDepth: 40,
           maxNodes: 2_000_000,
@@ -84,11 +95,16 @@ describe("packed automove search", () => {
       const outcome = searcher.search(
         PACKED_SELECTION_PROFILES[preference].limits,
         () => false,
+        PACKED_SELECTION_PROFILES[preference].weights,
       );
       expect(outcome.supported, preference).toBe(true);
       expect(outcome.move, preference).not.toBe(0);
       expect(outcome.nodes, preference).toBe(
         PACKED_SELECTION_PROFILES[preference].limits.maxNodes,
+      );
+      expect(Number.isSafeInteger(outcome.score * 2), preference).toBe(true);
+      expect(Math.abs(outcome.score * 2), preference).toBeLessThanOrEqual(
+        WIN_VALUE * 2,
       );
       expect(
         game.fork().processInput(moveToInputs(outcome.move), false, false).kind,
@@ -96,6 +112,16 @@ describe("packed automove search", () => {
       ).toBe("events");
     }
   }, 60_000);
+
+  it("round-trips positive and negative half scores through Int32 TT units", () => {
+    const scores = [-999_999.5, -0.5, 0, 0.5, 999_999.5];
+    const stored = Int32Array.from(scores, (score) => score * 2);
+    expect(Array.from(stored, (score) => score / 2)).toEqual(scores);
+    expect(scores.every((score) => Number.isSafeInteger(score * 2))).toBe(true);
+    expect(Math.max(...Array.from(stored, Math.abs))).toBeLessThanOrEqual(
+      WIN_VALUE * 2,
+    );
+  });
 
   it("checks the cooperative timeout every 2,048 nodes", () => {
     const game = new MonsGame(true, GameVariant.Classic);
@@ -174,6 +200,31 @@ describe("packed automove search", () => {
     expect([...keys.subarray(0, count)]).toEqual([7, 7, 7]);
   });
 
+  it("preselects the stable top two moves", () => {
+    const first = encodeMove(MOVE_MON, 1, 2, AUX_NONE, MOD_NONE);
+    const second = encodeMove(MOVE_MON, 3, 4, AUX_NONE, MOD_NONE);
+    const third = encodeMove(MOVE_MON, 5, 6, AUX_NONE, MOD_NONE);
+    const fourth = encodeMove(MOVE_MON, 7, 8, AUX_NONE, MOD_NONE);
+    const buffer = Int32Array.from([first, second, third, fourth]);
+    const keys = Int32Array.from([10, 30, 30, 20]);
+
+    const count = orderMoves(
+      buffer,
+      keys,
+      buffer.length,
+      0,
+      0,
+      0,
+      0,
+      new Int32Array(BOARD_CELLS * BOARD_CELLS),
+      0,
+    );
+
+    expect(count).toBe(4);
+    expect([...buffer]).toEqual([second, third, first, fourth]);
+    expect([...keys]).toEqual([30, 30, 10, 20]);
+  });
+
   it("falls back to the full ordered list when every commuting move is filtered", () => {
     const previous = encodeMove(MOVE_MON, 20, 21, AUX_NONE, MOD_NONE);
     const first = encodeMove(MOVE_MON, 1, 2, AUX_NONE, MOD_NONE);
@@ -197,9 +248,34 @@ describe("packed automove search", () => {
     );
 
     expect(count).toBe(2);
-    expect([...buffer]).toEqual([first, second]);
-    expect([...keys]).toEqual([16, 27]);
+    expect([...buffer]).toEqual([second, first]);
+    expect([...keys]).toEqual([27, 16]);
   });
+
+  it("adopts a fully verified Pro challenger when the next root move hits the cap", () => {
+    const game = MonsGame.fromFen(VERIFIED_CHALLENGER_FEN, false);
+    expect(game).toBeDefined();
+    if (game === undefined) return;
+
+    const profile = PACKED_SELECTION_PROFILES.pro;
+    const outcome = loadedSearcher(game).search(
+      profile.limits,
+      () => false,
+      profile.weights,
+    );
+
+    expect(outcome).toEqual({
+      move: 16_730_856,
+      score: -14_732.5,
+      depth: 7,
+      nodes: 2_000_000,
+      supported: true,
+    });
+    expect(inputArrayFen(moveToInputs(outcome.move))).toBe("l8,5;l7,5");
+    expect(
+      game.fork().processInput(moveToInputs(outcome.move), false, false).kind,
+    ).toBe("events");
+  }, 15_000);
 
   it("keeps bomb-fainted Demon replies representable", () => {
     const game = MonsGame.fromFen(BOMB_DEMON_FEN, false);

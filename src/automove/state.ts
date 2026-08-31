@@ -60,6 +60,14 @@ export const MOD_IGNORED_STEP = 3;
 export const FAST_MOVE_UNREPRESENTABLE = -2;
 
 const PACKED_MANA_INDEX_CAPACITY = 16;
+const PACKED_CELL_WORDS = Math.ceil(
+  (BOARD_CELLS * Uint16Array.BYTES_PER_ELEMENT) / Int32Array.BYTES_PER_ELEMENT,
+);
+const PACKED_MON_LOCATIONS_OFFSET = PACKED_CELL_WORDS;
+const PACKED_FREE_MANA_OFFSET = PACKED_MON_LOCATIONS_OFFSET + MON_ID_COUNT;
+const PACKED_MANA_INDICES_OFFSET = PACKED_FREE_MANA_OFFSET + COLOR_COUNT;
+const PACKED_POTIONS_OFFSET = PACKED_MANA_INDICES_OFFSET + PACKED_MANA_INDEX_CAPACITY;
+const PACKED_POSITION_WORDS = PACKED_POTIONS_OFFSET + COLOR_COUNT;
 
 export function encodeMove(
   type: number,
@@ -73,6 +81,18 @@ export function encodeMove(
 
 export function moveType(move: number): number {
   return move & 7;
+}
+
+export function sameSquares(
+  previous: ArrayLike<number> | undefined,
+  current: ArrayLike<number>,
+): boolean {
+  if (previous === current) return true;
+  if (previous?.length !== current.length) return false;
+  for (let index = 0; index < current.length; index += 1) {
+    if (u8(previous, index) !== u8(current, index)) return false;
+  }
+  return true;
 }
 
 export function moveFrom(move: number): number {
@@ -138,11 +158,20 @@ function validateArrayLength(
 }
 
 class MutableFastPosition implements FastPosition {
-  public readonly cells = new Uint16Array(BOARD_CELLS);
+  private readonly storage = new Int32Array(PACKED_POSITION_WORDS);
+  public readonly cells = new Uint16Array(this.storage.buffer, 0, BOARD_CELLS);
   public squares: Uint8Array = new Uint8Array(BOARD_CELLS);
-  public readonly monLocations = new Int32Array(MON_ID_COUNT).fill(-1);
-  public readonly freeMana = new Int32Array(COLOR_COUNT);
-  public readonly manaIndices = new Int32Array(PACKED_MANA_INDEX_CAPACITY);
+  public readonly monLocations = this.storage
+    .subarray(PACKED_MON_LOCATIONS_OFFSET, PACKED_MON_LOCATIONS_OFFSET + MON_ID_COUNT)
+    .fill(-1);
+  public readonly freeMana = this.storage.subarray(
+    PACKED_FREE_MANA_OFFSET,
+    PACKED_FREE_MANA_OFFSET + COLOR_COUNT,
+  );
+  public readonly manaIndices = this.storage.subarray(
+    PACKED_MANA_INDICES_OFFSET,
+    PACKED_MANA_INDICES_OFFSET + PACKED_MANA_INDEX_CAPACITY,
+  );
   public manaCount = 0;
   public whiteScore = 0;
   public blackScore = 0;
@@ -150,27 +179,18 @@ class MutableFastPosition implements FastPosition {
   public monsMoves = 0;
   public manaMoves = 0;
   public actionsUsed = 0;
-  public readonly potions = new Int32Array(COLOR_COUNT);
+  public readonly potions = this.storage.subarray(
+    PACKED_POTIONS_OFFSET,
+    PACKED_POTIONS_OFFSET + COLOR_COUNT,
+  );
   public firstTurn = false;
   public hashLo = 0;
   public hashHi = 0;
 
   public copyFrom(other: FastPosition): void {
     const source = other as MutableFastPosition;
-    this.cells.set(source.cells);
+    this.storage.set(source.storage);
     this.squares = source.squares;
-    const monLocations = this.monLocations;
-    const sourceMonLocations = source.monLocations;
-    for (let index = 0; index < MON_ID_COUNT; index += 1) {
-      monLocations[index] = sourceMonLocations[index] ?? 0;
-    }
-    this.freeMana[0] = source.freeMana[0] ?? 0;
-    this.freeMana[1] = source.freeMana[1] ?? 0;
-    const manaIndices = this.manaIndices;
-    const sourceManaIndices = source.manaIndices;
-    for (let index = 0; index < PACKED_MANA_INDEX_CAPACITY; index += 1) {
-      manaIndices[index] = sourceManaIndices[index] ?? 0;
-    }
     this.manaCount = source.manaCount;
     this.whiteScore = source.whiteScore;
     this.blackScore = source.blackScore;
@@ -178,8 +198,6 @@ class MutableFastPosition implements FastPosition {
     this.monsMoves = source.monsMoves;
     this.manaMoves = source.manaMoves;
     this.actionsUsed = source.actionsUsed;
-    this.potions[0] = source.potions[0] ?? 0;
-    this.potions[1] = source.potions[1] ?? 0;
     this.firstTurn = source.firstTurn;
     this.hashLo = source.hashLo;
     this.hashHi = source.hashHi;

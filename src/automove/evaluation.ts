@@ -31,8 +31,6 @@ import {
   i32,
   manaScoreValue,
   midpoint,
-  monId,
-  u16,
   u8,
 } from "./board.js";
 import { rethrowFastWorkspaceAllocation } from "./allocation.js";
@@ -50,14 +48,11 @@ import {
   RACE_SPAN,
   SCORE_SHAPE_STRIDE,
   UNREACHABLE_DISTANCE,
+  LEARNED_PRO_RESIDUAL_SCALE,
   type EvalTables,
 } from "./evaluation-weights.js";
 
 export const WIN_VALUE = 1_000_000;
-
-function ownPoolDistance(index: number, color: number): number {
-  return u8(OWN_POOL_DISTANCE, color * BOARD_CELLS + index);
-}
 
 const POOL_INDICES = Int32Array.of(
   0,
@@ -76,21 +71,40 @@ function hasAdjacentScoringPool(position: FastPosition, index: number): boolean 
   return false;
 }
 
-// What a fused trip is worth: the turn bucket it lands in, less the steps still to walk.
-function tripValue(
-  tables: EvalTables,
-  bucket: Int32Array,
-  distance: number,
-  budget: number,
-): number {
-  return (
-    i32(bucket, distance > budget ? distance - budget : 0) -
-    i32(tables.tripStep, distance)
-  );
-}
-
-function centerDistance(index: number): number {
-  return u8(CENTER_ROW_DISTANCE, index);
+function learnedProResidual(position: FastPosition, numerators: Int16Array): number {
+  const leadingScore =
+    position.whiteScore > position.blackScore
+      ? position.whiteScore
+      : position.blackScore;
+  const phaseBase =
+    (leadingScore < TARGET_SCORE ? leadingScore : TARGET_SCORE - 1) * 605;
+  const locations = position.monLocations;
+  let sum = 0;
+  const white0 = locations[0] ?? 0;
+  if (white0 >= 0) sum += numerators[phaseBase + white0] ?? 0;
+  const black0 = locations[1] ?? 0;
+  if (black0 >= 0) sum -= numerators[phaseBase + 120 - black0] ?? 0;
+  const kind1 = phaseBase + BOARD_CELLS;
+  const white1 = locations[2] ?? 0;
+  if (white1 >= 0) sum += numerators[kind1 + white1] ?? 0;
+  const black1 = locations[3] ?? 0;
+  if (black1 >= 0) sum -= numerators[kind1 + 120 - black1] ?? 0;
+  const kind2 = kind1 + BOARD_CELLS;
+  const white2 = locations[4] ?? 0;
+  if (white2 >= 0) sum += numerators[kind2 + white2] ?? 0;
+  const black2 = locations[5] ?? 0;
+  if (black2 >= 0) sum -= numerators[kind2 + 120 - black2] ?? 0;
+  const kind3 = kind2 + BOARD_CELLS;
+  const white3 = locations[6] ?? 0;
+  if (white3 >= 0) sum += numerators[kind3 + white3] ?? 0;
+  const black3 = locations[7] ?? 0;
+  if (black3 >= 0) sum -= numerators[kind3 + 120 - black3] ?? 0;
+  const kind4 = kind3 + BOARD_CELLS;
+  const white4 = locations[8] ?? 0;
+  if (white4 >= 0) sum += numerators[kind4 + white4] ?? 0;
+  const black4 = locations[9] ?? 0;
+  if (black4 >= 0) sum -= numerators[kind4 + 120 - black4] ?? 0;
+  return sum * LEARNED_PRO_RESIDUAL_SCALE;
 }
 
 type AttackTables = {
@@ -207,44 +221,46 @@ function estimatedAttackSteps(
   ownerColor: number,
   guarded: boolean,
 ): number {
-  if (!damagingAttackCanComplete(u16(position.cells, at))) {
+  const cells = position.cells;
+  if (!damagingAttackCanComplete(cells[at] ?? 0)) {
     return UNREACHABLE_DISTANCE;
   }
   const enemy = ownerColor ^ 1;
   let best = UNREACHABLE_DISTANCE;
   const attackTables = attackTablesFor(position.squares);
 
-  for (let kind = 0; kind < MON_KIND_COUNT; kind += 1) {
-    const index = i32(position.monLocations, monId(kind, enemy));
+  for (let kind = 0, id = enemy; kind < MON_KIND_COUNT; kind += 1, id += COLOR_COUNT) {
+    const index = position.monLocations[id] ?? -1;
     if (index < 0) continue;
-    const cell = u16(position.cells, index);
+    const cell = cells[index] ?? 0;
     if (cellOccupancy(cell) !== OCC_MON) continue;
-    if (cellConsumable(cell) === CONS_BOMB) {
+    const consumable = cellConsumable(cell);
+    if (consumable === CONS_BOMB) {
       const reach = chebyshev(index, at) - 3;
       const steps = reach < 0 ? 0 : reach;
       if (steps === 0) return 0;
       if (steps < best) best = steps;
       continue;
     }
-    if (cellCooldown(cell) !== 0) continue;
-    if (cellConsumable(cell) !== 0) continue;
+    if (kind !== KIND_MYSTIC && kind !== KIND_DEMON) continue;
     if (guarded) continue;
+    if (cellCooldown(cell) !== 0) continue;
+    if (consumable !== 0) continue;
     if (cellMana(cell) !== 0) continue;
     if (kind === KIND_MYSTIC) {
-      const steps = u8(attackTables.mysticSteps, at * BOARD_CELLS + index);
+      const steps = attackTables.mysticSteps[at * BOARD_CELLS + index] ?? 0;
       if (steps === 0) return 0;
       if (steps < best) best = steps;
       continue;
     }
-    if (kind !== KIND_DEMON) continue;
-    const targetStart = i32(attackTables.demonStarts, at);
-    const targetCount = i32(attackTables.demonCounts, at);
+    const targetStart = attackTables.demonStarts[at] ?? 0;
+    const targetCount = attackTables.demonCounts[at] ?? 0;
     for (let offset = 0; offset < targetCount; offset += 1) {
-      const between = i32(attackTables.demonBetween, targetStart + offset);
-      if (between !== index && u16(position.cells, between) !== 0) continue;
+      const between = attackTables.demonBetween[targetStart + offset] ?? 0;
+      if (between !== index && cells[between] !== 0) continue;
       const steps = chebyshev(
         index,
-        i32(attackTables.demonOrigins, targetStart + offset),
+        attackTables.demonOrigins[targetStart + offset] ?? 0,
       );
       if (steps === 0) return 0;
       if (steps < best) best = steps;
@@ -259,20 +275,24 @@ export function evaluateWithTables(
   winsNextTurnThreat = 0,
 ): number {
   const weights = tables.weights;
+  const cells = position.cells;
+  const squares = position.squares;
+  const monLocations = position.monLocations;
+  const manaIndices = position.manaIndices;
+  const potions = position.potions;
   let value =
     (position.whiteScore - position.blackScore) * weights.scoreUnit +
-    i32(
-      tables.scoreShape,
-      position.whiteScore * SCORE_SHAPE_STRIDE + position.blackScore,
-    ) +
-    (i32(position.potions, 0) - i32(position.potions, 1)) * weights.potion;
+    (tables.scoreShape[
+      position.whiteScore * SCORE_SHAPE_STRIDE + position.blackScore
+    ] ?? 0) +
+    ((potions[0] ?? 0) - (potions[1] ?? 0)) * weights.potion;
 
-  const drainerWhite = i32(position.monLocations, monId(KIND_DRAINER, 0));
-  const drainerBlack = i32(position.monLocations, monId(KIND_DRAINER, 1));
+  const drainerWhite = monLocations[KIND_DRAINER * COLOR_COUNT] ?? 0;
+  const drainerBlack = monLocations[KIND_DRAINER * COLOR_COUNT + 1] ?? 0;
   const drainerReadyWhite =
-    drainerWhite >= 0 && cellCooldown(u16(position.cells, drainerWhite)) === 0;
+    drainerWhite >= 0 && cellCooldown(cells[drainerWhite] ?? 0) === 0;
   const drainerReadyBlack =
-    drainerBlack >= 0 && cellCooldown(u16(position.cells, drainerBlack)) === 0;
+    drainerBlack >= 0 && cellCooldown(cells[drainerBlack] ?? 0) === 0;
   let nearestManaWhite = UNREACHABLE_DISTANCE;
   let nearestManaBlack = UNREACHABLE_DISTANCE;
   let onePointPickupWhite = UNREACHABLE_DISTANCE;
@@ -292,12 +312,12 @@ export function evaluateWithTables(
   let pickupNextBlack = false;
   if (windowTracking) {
     if (drainerWhite >= 0) {
-      const cell = u16(position.cells, drainerWhite);
+      const cell = cells[drainerWhite] ?? 0;
       pickupNextWhite =
         cellCooldown(cell) <= 1 && cellMana(cell) === 0 && cellConsumable(cell) === 0;
     }
     if (drainerBlack >= 0) {
-      const cell = u16(position.cells, drainerBlack);
+      const cell = cells[drainerBlack] ?? 0;
       pickupNextBlack =
         cellCooldown(cell) <= 1 && cellMana(cell) === 0 && cellConsumable(cell) === 0;
     }
@@ -312,8 +332,8 @@ export function evaluateWithTables(
   let carrierNextPointsBlack = 0;
 
   for (let slot = 0; slot < position.manaCount; slot += 1) {
-    const index = i32(position.manaIndices, slot);
-    const cell = u16(position.cells, index);
+    const index = manaIndices[slot] ?? 0;
+    const cell = cells[index] ?? 0;
     if (cellOccupancy(cell) !== OCC_MANA) continue;
     const mana = cellMana(cell);
     const distanceWhite = drainerReadyWhite
@@ -324,7 +344,7 @@ export function evaluateWithTables(
       : UNREACHABLE_DISTANCE;
     if (distanceWhite < nearestManaWhite) nearestManaWhite = distanceWhite;
     if (distanceBlack < nearestManaBlack) nearestManaBlack = distanceBlack;
-    const scoreDistance = u8(POOL_DISTANCE, index);
+    const scoreDistance = POOL_DISTANCE[index] ?? 0;
     if (drainerReadyWhite) {
       const pickupScoreDistance = distanceWhite + scoreDistance;
       if (mana === MANA_WHITE && pickupScoreDistance < onePointPickupWhite) {
@@ -396,16 +416,14 @@ export function evaluateWithTables(
     if (weights.manaPointsAttraction !== 0) {
       const attraction = tables.manaPointsAttraction;
       if (drainerReadyWhite) {
-        value += i32(
-          attraction,
-          manaScoreValue(mana, 0) * DISTANCE_TABLE_SIZE + distanceWhite,
-        );
+        value +=
+          attraction[manaScoreValue(mana, 0) * DISTANCE_TABLE_SIZE + distanceWhite] ??
+          0;
       }
       if (drainerReadyBlack) {
-        value -= i32(
-          attraction,
-          manaScoreValue(mana, 1) * DISTANCE_TABLE_SIZE + distanceBlack,
-        );
+        value -=
+          attraction[manaScoreValue(mana, 1) * DISTANCE_TABLE_SIZE + distanceBlack] ??
+          0;
       }
     }
     if (mana === MANA_SUPER) {
@@ -414,8 +432,11 @@ export function evaluateWithTables(
       const ownerColor = mana - 1;
       const ownerSign = ownerColor === 0 ? 1 : -1;
       value +=
-        ownerSign * i32(tables.manaToOwnerPool, ownPoolDistance(index, ownerColor));
-      value += ownerSign * i32(tables.manaToNearestPool, scoreDistance);
+        ownerSign *
+        (tables.manaToOwnerPool[
+          OWN_POOL_DISTANCE[ownerColor * BOARD_CELLS + index] ?? 0
+        ] ?? 0);
+      value += ownerSign * (tables.manaToNearestPool[scoreDistance] ?? 0);
       value += weights.manaDrainerControl * control;
       // One point from winning, with own mana already inside mana-step reach of a pool, is
       // the one need-by-distance cell the additive form cannot price.
@@ -439,10 +460,14 @@ export function evaluateWithTables(
   for (let color = 0; color < COLOR_COUNT; color += 1) {
     const sign = color === 0 ? 1 : -1;
     const enemy = color ^ 1;
-    for (let kind = 0; kind < MON_KIND_COUNT; kind += 1) {
-      const index = i32(position.monLocations, monId(kind, color));
+    for (
+      let kind = 0, id = color;
+      kind < MON_KIND_COUNT;
+      kind += 1, id += COLOR_COUNT
+    ) {
+      const index = monLocations[id] ?? 0;
       if (index < 0) continue;
-      const cell = u16(position.cells, index);
+      const cell = cells[index] ?? 0;
       if (cellOccupancy(cell) !== OCC_MON) continue;
       const cooldown = cellCooldown(cell);
       if (cooldown !== 0) {
@@ -451,7 +476,7 @@ export function evaluateWithTables(
           ((kind === KIND_DRAINER ? weights.faintDrainer : weights.faintMon) +
             weights.faintCooldownStep * cooldown);
       }
-      const square = u8(position.squares, index);
+      const square = squares[index] ?? 0;
       if (cooldown === 0 && square < SQ_MON_BASE) {
         value += sign * weights.activeMon;
       }
@@ -459,10 +484,10 @@ export function evaluateWithTables(
       const carriedMana = cellMana(cell);
       if (carriedMana !== 0) {
         const points = manaScoreValue(carriedMana, color);
-        const poolDistance = u8(POOL_DISTANCE, index);
+        const poolDistance = POOL_DISTANCE[index] ?? 0;
         value +=
           sign *
-          (i32(tables.carrierCloseToPool, poolDistance) +
+          ((tables.carrierCloseToPool[poolDistance] ?? 0) +
             points * weights.carrierPointBonus);
         if (carriedMana === MANA_SUPER) value += sign * weights.supermanaCarrier;
         if (color === position.active && poolDistance <= remaining) {
@@ -498,7 +523,7 @@ export function evaluateWithTables(
         let tripTable = tables.drainerTrip;
         let tripSteps =
           carriedMana !== 0
-            ? u8(POOL_DISTANCE, index)
+            ? (POOL_DISTANCE[index] ?? 0)
             : cellConsumable(cell) !== 0
               ? UNREACHABLE_DISTANCE
               : onePointPickup;
@@ -507,13 +532,19 @@ export function evaluateWithTables(
           cellConsumable(cell) === 0 &&
           twoPointPickup < UNREACHABLE_DISTANCE &&
           (onePointPickup >= UNREACHABLE_DISTANCE ||
-            tripValue(tables, tables.drainerTripTwoPoint, twoPointPickup, tripBudget) >
-              tripValue(tables, tables.drainerTrip, onePointPickup, tripBudget))
+            (tables.drainerTripTwoPoint[
+              twoPointPickup > tripBudget ? twoPointPickup - tripBudget : 0
+            ] ?? 0) -
+              (tables.tripStep[twoPointPickup] ?? 0) >
+              (tables.drainerTrip[
+                onePointPickup > tripBudget ? onePointPickup - tripBudget : 0
+              ] ?? 0) -
+                (tables.tripStep[onePointPickup] ?? 0))
         ) {
           tripTable = tables.drainerTripTwoPoint;
           tripSteps = twoPointPickup;
         }
-        plan -= i32(tables.tripStep, tripSteps);
+        plan -= tables.tripStep[tripSteps] ?? 0;
         const tripExcess = tripSteps > tripBudget ? tripSteps - tripBudget : 0;
         const tripTurns =
           1 + (((tripExcess + MONS_MOVES_PER_TURN - 1) / MONS_MOVES_PER_TURN) | 0);
@@ -522,13 +553,14 @@ export function evaluateWithTables(
         } else if (tripTurns < tripTurnsBlack) {
           tripTurnsBlack = tripTurns;
         }
-        plan += i32(tripTable, tripExcess);
-        plan += i32(tables.drainerCloseToMana, minMana);
-        plan += i32(tables.drainerCloseToOwnPool, ownPoolDistance(index, color));
-        plan += i32(
-          tables.drainerCloseToSupermana,
-          chebyshev(index, SUPERMANA_BASE_INDEX),
-        );
+        plan += tripTable[tripExcess] ?? 0;
+        plan += tables.drainerCloseToMana[minMana] ?? 0;
+        plan +=
+          tables.drainerCloseToOwnPool[
+            OWN_POOL_DISTANCE[color * BOARD_CELLS + index] ?? 0
+          ] ?? 0;
+        plan +=
+          tables.drainerCloseToSupermana[chebyshev(index, SUPERMANA_BASE_INDEX)] ?? 0;
         if (
           carriedMana === 0 &&
           cellConsumable(cell) === 0 &&
@@ -549,7 +581,7 @@ export function evaluateWithTables(
               : THREAT_BUCKET_FEW;
         const row = (carrying ? THREAT_BUCKETS : 0) + bucket;
         if (threatSteps === 0) {
-          value -= sign * i32(tables.threatImmediate, row);
+          value -= sign * (tables.threatImmediate[row] ?? 0);
         } else if (threatSteps <= MONS_MOVES_PER_TURN) {
           value -=
             sign * (tables.threatWalk[row * THREAT_WALK_STRIDE + threatSteps] ?? 0);
@@ -560,28 +592,32 @@ export function evaluateWithTables(
       } else if (kind === KIND_ANGEL) {
         const own = color === 0 ? drainerWhite : drainerBlack;
         if (own >= 0) {
-          value += sign * i32(tables.angelCloseToDrainer, chebyshev(index, own));
+          value += sign * (tables.angelCloseToDrainer[chebyshev(index, own)] ?? 0);
         }
       } else if (kind === KIND_SPIRIT) {
         let nearestEnemy = UNREACHABLE_DISTANCE;
-        for (let other = 0; other < MON_KIND_COUNT; other += 1) {
-          const enemyIndex = i32(position.monLocations, monId(other, enemy));
+        for (
+          let other = 0, id = enemy;
+          other < MON_KIND_COUNT;
+          other += 1, id += COLOR_COUNT
+        ) {
+          const enemyIndex = monLocations[id] ?? 0;
           if (enemyIndex < 0) continue;
-          const enemyCell = u16(position.cells, enemyIndex);
+          const enemyCell = cells[enemyIndex] ?? 0;
           if (cellCooldown(enemyCell) !== 0) continue;
           const distance = chebyshev(index, enemyIndex);
           if (distance < nearestEnemy) nearestEnemy = distance;
         }
-        value += sign * i32(tables.spiritCloseToEnemy, nearestEnemy);
+        value += sign * (tables.spiritCloseToEnemy[nearestEnemy] ?? 0);
         if (square >= SQ_MON_BASE) value -= sign * weights.spiritOnOwnBase;
       } else {
-        value += sign * i32(tables.monCloseToCenter, centerDistance(index));
+        value += sign * (tables.monCloseToCenter[CENTER_ROW_DISTANCE[index] ?? 0] ?? 0);
         const enemyDrainer = enemy === 0 ? drainerWhite : drainerBlack;
         const enemyDrainerReady = enemy === 0 ? drainerReadyWhite : drainerReadyBlack;
         if (enemyDrainer >= 0 && enemyDrainerReady) {
           value +=
             sign *
-            i32(tables.attackerCloseToEnemyDrainer, chebyshev(index, enemyDrainer));
+            (tables.attackerCloseToEnemyDrainer[chebyshev(index, enemyDrainer)] ?? 0);
         }
       }
     }
@@ -606,7 +642,7 @@ export function evaluateWithTables(
       (tauWhite * 2 + (position.active === 0 ? 0 : 1));
     const clamped =
       half > RACE_SPAN ? RACE_SPAN : half < -RACE_SPAN ? -RACE_SPAN : half;
-    value += i32(tables.race, clamped + RACE_SPAN);
+    value += tables.race[clamped + RACE_SPAN] ?? 0;
   }
 
   if (windowTracking) {
@@ -631,6 +667,10 @@ export function evaluateWithTables(
     if (window > 0 && inactiveScore + window >= TARGET_SCORE) {
       value += inactiveSign * winsNextTurnThreat;
     }
+  }
+
+  if (tables.learnedPro !== undefined) {
+    value += learnedProResidual(position, tables.learnedPro);
   }
 
   return value;

@@ -47,7 +47,6 @@ import {
   MOVE_BOMB,
   MOVE_DEMON,
   MOVE_MANA,
-  MOVE_MON,
   MOVE_MYSTIC,
   MOVE_SPIRIT,
   awakeAngelGuards,
@@ -207,86 +206,144 @@ function generateMonMoves(
   const carriedMana = cellMana(cell);
   const carriedConsumable = cellConsumable(cell);
   const active = position.active;
-  const fromPoolDistance = u8(POOL_DISTANCE, from);
+  const cells = position.cells;
+  const squares = position.squares;
+  const neighborList = NEIGHBORS.list;
+  const fromPoolDistance = POOL_DISTANCE[from] ?? 0;
   const plainBase = kind === KIND_DRAINER ? 1024 : 0;
-  const neighborStart = i32(NEIGHBORS.starts, from);
-  const neighborCount = i32(NEIGHBORS.counts, from);
-  for (let offset = 0; offset < neighborCount; offset += 1) {
-    const to = i32(NEIGHBORS.list, neighborStart + offset);
-    const target = u16(position.cells, to);
-    const square = u8(position.squares, to);
-    const targetOccupancy = target === 0 ? -1 : cellOccupancy(target);
-    let allowed: boolean;
-    if (carriedMana !== 0) {
-      if (targetOccupancy === OCC_MON) allowed = false;
-      else if (targetOccupancy === OCC_MANA || targetOccupancy === OCC_CONS) {
-        allowed = true;
-      } else {
-        allowed =
-          squareIsRegularForMovement(square) ||
-          (square === SQ_SUPERMANA_BASE && carriedMana === MANA_SUPER);
+  const moveBase = (from << 3) | (AUX_NONE << 17);
+  const neighborStart = NEIGHBORS.starts[from] ?? 0;
+  const neighborCount = NEIGHBORS.counts[from] ?? 0;
+
+  if (carriedMana !== 0) {
+    for (let offset = 0; offset < neighborCount; offset += 1) {
+      const to = neighborList[neighborStart + offset] ?? 0;
+      const target = cells[to] ?? 0;
+      const square = squares[to] ?? 0;
+      const targetOccupancy = target === 0 ? -1 : cellOccupancy(target);
+      if (targetOccupancy === OCC_MON) continue;
+      if (
+        targetOccupancy !== OCC_MANA &&
+        targetOccupancy !== OCC_CONS &&
+        !squareIsRegularForMovement(square) &&
+        (square !== SQ_SUPERMANA_BASE || carriedMana !== MANA_SUPER)
+      ) {
+        continue;
       }
-    } else if (carriedConsumable !== 0) {
-      if (targetOccupancy === OCC_CONS) {
-        allowed = true;
-      } else if (targetOccupancy === -1) {
-        allowed = squareIsRegularForMovement(square);
-      } else allowed = false;
-    } else {
-      let itemAllows: boolean;
-      if (targetOccupancy === OCC_MON) itemAllows = false;
-      else if (targetOccupancy === OCC_MANA) itemAllows = kind === KIND_DRAINER;
-      else itemAllows = true;
-      if (!itemAllows) {
-        allowed = false;
-      } else if (square >= SQ_MON_BASE) {
-        allowed =
-          squareMonBaseKind(square) === kind && squareMonBaseColor(square) === color;
-      } else if (square === SQ_SUPERMANA_BASE) {
-        allowed =
-          kind === KIND_DRAINER &&
-          (target === 0 ||
-            (targetOccupancy === OCC_MANA && cellMana(target) === MANA_SUPER));
-      } else {
-        allowed = true;
+      hadRawStartOption = true;
+      if (targetOccupancy === OCC_CONS && cellConsumable(target) !== CONS_BOTH) {
+        continue;
       }
-    }
-    if (!allowed) continue;
-    hadRawStartOption = true;
-    if (targetOccupancy === OCC_CONS && cellConsumable(target) !== CONS_BOTH) {
-      continue;
-    }
-    let key = 0;
-    if (carriedMana !== 0 && squareIsPool(square)) {
-      key += (1 << 21) + manaScoreValue(carriedMana, active) * (1 << 18);
-    }
-    if (target !== 0) {
+      let key = 0;
+      if (squareIsPool(square)) {
+        key += (1 << 21) + manaScoreValue(carriedMana, active) * (1 << 18);
+      }
       if (targetOccupancy === OCC_MANA) {
         key += (1 << 16) + manaScoreValue(cellMana(target), active) * 512;
       } else if (targetOccupancy === OCC_CONS) {
         key += 1 << 14;
       }
-    }
-    if (carriedMana !== 0) {
-      key += (fromPoolDistance - u8(POOL_DISTANCE, to)) * 2048 + 4096;
-    } else {
-      key += plainBase;
-    }
-    if (
-      targetOccupancy === OCC_CONS &&
-      cellConsumable(target) === CONS_BOTH &&
-      carriedMana === 0 &&
-      carriedConsumable === 0
-    ) {
-      keys[count] = key;
-      out[count] = encodeMove(MOVE_MON, from, to, AUX_NONE, MOD_BOMB);
+      keys[count] = key + (fromPoolDistance - (POOL_DISTANCE[to] ?? 0)) * 2048 + 4096;
+      out[count] = moveBase | (to << 10) | (MOD_NONE << 24);
       count += 1;
-      keys[count] = key;
-      out[count] = encodeMove(MOVE_MON, from, to, AUX_NONE, MOD_POTION);
+    }
+    return encodeGeneratedMoves(count, hadRawStartOption);
+  }
+
+  if (carriedConsumable !== 0) {
+    for (let offset = 0; offset < neighborCount; offset += 1) {
+      const to = neighborList[neighborStart + offset] ?? 0;
+      const target = cells[to] ?? 0;
+      const targetOccupancy = target === 0 ? -1 : cellOccupancy(target);
+      if (targetOccupancy === OCC_CONS) {
+        hadRawStartOption = true;
+        if (cellConsumable(target) !== CONS_BOTH) continue;
+        keys[count] = plainBase + (1 << 14);
+      } else {
+        if (targetOccupancy !== -1 || !squareIsRegularForMovement(squares[to] ?? 0)) {
+          continue;
+        }
+        hadRawStartOption = true;
+        keys[count] = plainBase;
+      }
+      out[count] = moveBase | (to << 10) | (MOD_NONE << 24);
+      count += 1;
+    }
+    return encodeGeneratedMoves(count, hadRawStartOption);
+  }
+
+  if (kind === KIND_DRAINER) {
+    for (let offset = 0; offset < neighborCount; offset += 1) {
+      const to = neighborList[neighborStart + offset] ?? 0;
+      const target = cells[to] ?? 0;
+      const square = squares[to] ?? 0;
+      const targetOccupancy = target === 0 ? -1 : cellOccupancy(target);
+      if (targetOccupancy === OCC_MON) continue;
+      if (square >= SQ_MON_BASE) {
+        if (
+          squareMonBaseKind(square) !== KIND_DRAINER ||
+          squareMonBaseColor(square) !== color
+        ) {
+          continue;
+        }
+      } else if (
+        square === SQ_SUPERMANA_BASE &&
+        target !== 0 &&
+        (targetOccupancy !== OCC_MANA || cellMana(target) !== MANA_SUPER)
+      ) {
+        continue;
+      }
+      hadRawStartOption = true;
+      if (targetOccupancy === OCC_CONS && cellConsumable(target) !== CONS_BOTH) {
+        continue;
+      }
+      let key = 1024;
+      if (targetOccupancy === OCC_MANA) {
+        key += (1 << 16) + manaScoreValue(cellMana(target), active) * 512;
+      } else if (targetOccupancy === OCC_CONS) {
+        key += 1 << 14;
+      }
+      if (targetOccupancy === OCC_CONS && cellConsumable(target) === CONS_BOTH) {
+        keys[count] = key;
+        out[count] = moveBase | (to << 10) | (MOD_BOMB << 24);
+        count += 1;
+        keys[count] = key;
+        out[count] = moveBase | (to << 10) | (MOD_POTION << 24);
+        count += 1;
+      } else {
+        keys[count] = key;
+        out[count] = moveBase | (to << 10) | (MOD_NONE << 24);
+        count += 1;
+      }
+    }
+    return encodeGeneratedMoves(count, hadRawStartOption);
+  }
+
+  for (let offset = 0; offset < neighborCount; offset += 1) {
+    const to = neighborList[neighborStart + offset] ?? 0;
+    const target = cells[to] ?? 0;
+    const square = squares[to] ?? 0;
+    const targetOccupancy = target === 0 ? -1 : cellOccupancy(target);
+    if (targetOccupancy === OCC_MON || targetOccupancy === OCC_MANA) continue;
+    if (square >= SQ_MON_BASE) {
+      if (squareMonBaseKind(square) !== kind || squareMonBaseColor(square) !== color) {
+        continue;
+      }
+    } else if (square === SQ_SUPERMANA_BASE) {
+      continue;
+    }
+    hadRawStartOption = true;
+    if (targetOccupancy === OCC_CONS) {
+      if (cellConsumable(target) !== CONS_BOTH) continue;
+      keys[count] = 1 << 14;
+      out[count] = moveBase | (to << 10) | (MOD_BOMB << 24);
+      count += 1;
+      keys[count] = 1 << 14;
+      out[count] = moveBase | (to << 10) | (MOD_POTION << 24);
       count += 1;
     } else {
-      keys[count] = key;
-      out[count] = encodeMove(MOVE_MON, from, to, AUX_NONE, MOD_NONE);
+      keys[count] = 0;
+      out[count] = moveBase | (to << 10) | (MOD_NONE << 24);
       count += 1;
     }
   }

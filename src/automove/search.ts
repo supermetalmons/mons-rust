@@ -1,10 +1,6 @@
 import { BOARD_CELLS } from "../engine/board/geometry.js";
-import {
-  ACTIONS_PER_TURN,
-  MANA_MOVES_PER_TURN,
-  MONS_MOVES_PER_TURN,
-} from "../engine/board/config.js";
-import { COLOR_COUNT, Z_SCALAR_HI, Z_SCALAR_LO, at, i32, u8 } from "./board.js";
+import { ACTIONS_PER_TURN, MANA_MOVES_PER_TURN, MONS_MOVES_PER_TURN } from "../engine/board/config.js";
+import { COLOR_COUNT, Z_SCALAR_HI, Z_SCALAR_LO, at, i32 } from "./board.js";
 import { WIN_VALUE, evaluateWithTables } from "./evaluation.js";
 import {
   DEFAULT_EVAL_TABLES,
@@ -24,6 +20,7 @@ import {
   moveTo,
   moveType,
   positionWinner,
+  sameSquares,
 } from "./state.js";
 import {
   DEFAULT_TUNING,
@@ -66,25 +63,8 @@ const SCALAR_STATE_COUNT =
   POTION_BUCKET_STATES *
   POTION_BUCKET_STATES;
 
-if (
-  Z_SCALAR_LO.length !== Z_SCALAR_HI.length ||
-  Z_SCALAR_LO.length < SCALAR_STATE_COUNT
-) {
-  throw new RangeError(
-    "fast scalar hash table is too small for the configured state space",
-  );
-}
-
-function sameSquares(
-  previous: ArrayLike<number> | undefined,
-  current: ArrayLike<number>,
-): boolean {
-  if (previous === current) return true;
-  if (previous?.length !== current.length) return false;
-  for (let index = 0; index < current.length; index += 1) {
-    if (u8(previous, index) !== u8(current, index)) return false;
-  }
-  return true;
+if (Z_SCALAR_LO.length !== Z_SCALAR_HI.length || Z_SCALAR_LO.length < SCALAR_STATE_COUNT) {
+  throw new RangeError("fast scalar hash table is too small for the configured state space");
 }
 
 type SearchOutcome = {
@@ -99,6 +79,7 @@ type RootSearchOutcome = {
   readonly move: number;
   readonly score: number;
   readonly selective: boolean;
+  readonly verifiedChallenger?: boolean;
 };
 
 export function orderMoves(
@@ -113,6 +94,13 @@ export function orderMoves(
   historyBase: number,
 ): number {
   if (commutingMove === 0) {
+    let bestSlot = 0;
+    let bestKey = -2147483648;
+    let secondSlot = 1;
+    let secondKey = -2147483648;
+    let firstKey = -2147483648;
+    let tailSlot = 1;
+    let tailKey = -2147483648;
     for (let index = 0; index < count; index += 1) {
       const move = i32(buffer, index);
       let key = i32(keys, index);
@@ -120,13 +108,48 @@ export function orderMoves(
       else if (move === killerA) key += KEY_KILLER_A;
       else if (move === killerB) key += KEY_KILLER_B;
       else {
-        const historyScore = i32(
-          history,
-          historyBase + moveFrom(move) * BOARD_CELLS + moveTo(move),
-        );
+        const historyScore = i32(history, historyBase + moveFrom(move) * BOARD_CELLS + moveTo(move));
         key += historyScore > 8191 ? 8191 : historyScore;
       }
       keys[index] = key;
+      const finalKey = i32(keys, index);
+      if (index === 0) {
+        firstKey = finalKey;
+        bestKey = finalKey;
+        continue;
+      }
+      if (finalKey > bestKey) {
+        bestKey = finalKey;
+        bestSlot = index;
+        if (tailKey >= firstKey) {
+          secondKey = tailKey;
+          secondSlot = tailSlot;
+        } else {
+          secondKey = firstKey;
+          secondSlot = index;
+        }
+      } else if (index === 1 || finalKey > secondKey) {
+        secondKey = finalKey;
+        secondSlot = index;
+      }
+      if (index === 1 || finalKey > tailKey) {
+        tailKey = finalKey;
+        tailSlot = index;
+      }
+    }
+    if (bestSlot !== 0) {
+      const move = i32(buffer, 0);
+      buffer[0] = i32(buffer, bestSlot);
+      buffer[bestSlot] = move;
+      keys[bestSlot] = i32(keys, 0);
+      keys[0] = bestKey;
+    }
+    if (count > 1 && secondSlot !== 1) {
+      const move = i32(buffer, 1);
+      buffer[1] = i32(buffer, secondSlot);
+      buffer[secondSlot] = move;
+      keys[secondSlot] = i32(keys, 1);
+      keys[1] = secondKey;
     }
     return count;
   }
@@ -134,17 +157,19 @@ export function orderMoves(
   const previousFrom = moveFrom(commutingMove);
   const previousTo = moveTo(commutingMove);
   let write = 0;
+  let bestSlot = 0;
+  let bestKey = -2147483648;
+  let secondSlot = 1;
+  let secondKey = -2147483648;
+  let firstKey = -2147483648;
+  let tailSlot = 1;
+  let tailKey = -2147483648;
   for (let read = 0; read < count; read += 1) {
     const move = i32(buffer, read);
     if (moveType(move) === MOVE_MON && move < commutingMove) {
       const from = moveFrom(move);
       const to = moveTo(move);
-      if (
-        from !== previousFrom &&
-        from !== previousTo &&
-        to !== previousFrom &&
-        to !== previousTo
-      ) {
+      if (from !== previousFrom && from !== previousTo && to !== previousFrom && to !== previousTo) {
         continue;
       }
     }
@@ -153,28 +178,53 @@ export function orderMoves(
     else if (move === killerA) key += KEY_KILLER_A;
     else if (move === killerB) key += KEY_KILLER_B;
     else {
-      const historyScore = i32(
-        history,
-        historyBase + moveFrom(move) * BOARD_CELLS + moveTo(move),
-      );
+      const historyScore = i32(history, historyBase + moveFrom(move) * BOARD_CELLS + moveTo(move));
       key += historyScore > 8191 ? 8191 : historyScore;
     }
     if (write !== read) buffer[write] = move;
     keys[write] = key;
+    const finalKey = i32(keys, write);
+    if (write === 0) {
+      firstKey = finalKey;
+      bestKey = finalKey;
+    } else {
+      if (finalKey > bestKey) {
+        bestKey = finalKey;
+        bestSlot = write;
+        if (tailKey >= firstKey) {
+          secondKey = tailKey;
+          secondSlot = tailSlot;
+        } else {
+          secondKey = firstKey;
+          secondSlot = write;
+        }
+      } else if (write === 1 || finalKey > secondKey) {
+        secondKey = finalKey;
+        secondSlot = write;
+      }
+      if (write === 1 || finalKey > tailKey) {
+        tailKey = finalKey;
+        tailSlot = write;
+      }
+    }
     write += 1;
   }
   if (write === 0) {
-    return orderMoves(
-      buffer,
-      keys,
-      count,
-      0,
-      ttMove,
-      killerA,
-      killerB,
-      history,
-      historyBase,
-    );
+    return orderMoves(buffer, keys, count, 0, ttMove, killerA, killerB, history, historyBase);
+  }
+  if (bestSlot !== 0) {
+    const move = i32(buffer, 0);
+    buffer[0] = i32(buffer, bestSlot);
+    buffer[bestSlot] = move;
+    keys[bestSlot] = i32(keys, 0);
+    keys[0] = bestKey;
+  }
+  if (write > 1 && secondSlot !== 1) {
+    const move = i32(buffer, 1);
+    buffer[1] = i32(buffer, secondSlot);
+    buffer[secondSlot] = move;
+    keys[secondSlot] = i32(keys, 1);
+    keys[1] = secondKey;
   }
   return write;
 }
@@ -277,10 +327,7 @@ export class FastSearcher {
       let completedDepth = 0;
       for (let depth = 1; depth <= normalizedLimits.maxDepth; depth += 1) {
         if (depth === 2) {
-          if (
-            this.#nodes >= this.#nodeLimit ||
-            !this.#table.prepare(this.#checkTimeout)
-          ) {
+          if (this.#nodes >= this.#nodeLimit || !this.#table.prepare(this.#checkTimeout)) {
             this.#stopped = true;
             break;
           }
@@ -288,11 +335,7 @@ export class FastSearcher {
         }
         let alphaStart = -INFINITY_SCORE;
         let betaStart = INFINITY_SCORE;
-        if (
-          tuning.aspirationDelta > 0 &&
-          completedDepth > 0 &&
-          depth >= tuning.aspirationMinDepth
-        ) {
+        if (tuning.aspirationDelta > 0 && completedDepth > 0 && depth >= tuning.aspirationMinDepth) {
           alphaStart = bestScore - tuning.aspirationDelta;
           betaStart = bestScore + tuning.aspirationDelta;
         }
@@ -316,7 +359,13 @@ export class FastSearcher {
         }
         if (outcome.move === 0) break;
         if (this.#isStopped()) {
-          if (completedDepth === 0) {
+          if (
+            completedDepth === 0 ||
+            (this.#tables.learnedPro !== undefined &&
+              outcome.verifiedChallenger === true &&
+              // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition
+              !this.#unsupported)
+          ) {
             bestMove = outcome.move;
             bestScore = outcome.score;
           }
@@ -348,12 +397,7 @@ export class FastSearcher {
     if (this.#table.generation > TABLE_GENERATION_MASK) this.#table.clear();
   }
 
-  #searchRoot(
-    depth: number,
-    previousBest: number,
-    alphaStart: number,
-    betaStart: number,
-  ): RootSearchOutcome {
+  #searchRoot(depth: number, previousBest: number, alphaStart: number, betaStart: number): RootSearchOutcome {
     const position = at(this.#positions, 0);
     const buffer = at(this.#moves, 0);
     const count = generateMoves(position, buffer, at(this.#orderKeys, 0));
@@ -381,43 +425,25 @@ export class FastSearcher {
     let bestMove = 0;
     let bestScore = -INFINITY_SCORE;
     let bestSelective = false;
+    let bestVerifiedChallenger = false;
     for (let index = 0; index < count; index += 1) {
-      this.#selectBest(buffer, rootKeys, index, count);
+      if (index >= 2) this.#selectBest(buffer, rootKeys, index, count);
       const move = i32(buffer, index);
       const winner = this.#prepareChild(position, move, 0);
       let score: number;
       let selectiveEpoch = this.#selectiveEpoch;
       let selective: boolean;
+      let fullWindowCompleted = index === 0;
       if (index === 0) {
-        score = this.#searchPreparedChild(
-          position,
-          winner,
-          0,
-          depth - 1,
-          alpha,
-          betaStart,
-        );
+        score = this.#searchPreparedChild(position, winner, 0, depth - 1, alpha, betaStart);
         selective = this.#selectiveEpoch !== selectiveEpoch;
       } else {
-        score = this.#searchPreparedChild(
-          position,
-          winner,
-          0,
-          depth - 1,
-          alpha,
-          alpha + 1,
-        );
+        score = this.#searchPreparedChild(position, winner, 0, depth - 1, alpha, alpha + 1);
         selective = this.#selectiveEpoch !== selectiveEpoch;
         if (score > alpha && !this.#isStopped()) {
           selectiveEpoch = this.#selectiveEpoch;
-          score = this.#searchPreparedChild(
-            position,
-            winner,
-            0,
-            depth - 1,
-            alpha,
-            betaStart,
-          );
+          score = this.#searchPreparedChild(position, winner, 0, depth - 1, alpha, betaStart);
+          fullWindowCompleted = true;
           selective = this.#selectiveEpoch !== selectiveEpoch;
         }
       }
@@ -426,6 +452,11 @@ export class FastSearcher {
         bestScore = score;
         bestMove = move;
         bestSelective = selective;
+        bestVerifiedChallenger =
+          fullWindowCompleted &&
+          previousBest !== 0 &&
+          i32(buffer, 0) === previousBest &&
+          move !== previousBest;
         if (score > alpha) alpha = score;
       }
       if (alpha >= betaStart) break;
@@ -439,6 +470,7 @@ export class FastSearcher {
       move: bestMove,
       score: bestScore,
       selective: bestSelective,
+      verifiedChallenger: bestVerifiedChallenger,
     };
   }
 
@@ -496,7 +528,7 @@ export class FastSearcher {
       ttMove = i32(table.move, slot);
       const storedDepth = (slotInfo >> 2) & 63;
       if (storedDepth >= depth) {
-        const score = i32(table.score, slot);
+        const score = i32(table.score, slot) / 2;
         const flag = slotInfo & 3;
         if (
           flag === FLAG_EXACT ||
@@ -540,7 +572,7 @@ export class FastSearcher {
     let bestMove = 0;
     const selectiveEpoch = this.#selectiveEpoch;
     for (let index = 0; index < count; index += 1) {
-      this.#selectBest(buffer, keys, index, count);
+      if (index >= 2) this.#selectBest(buffer, keys, index, count);
       const move = i32(buffer, index);
       const tactical = i32(keys, index) >= TACTICAL_THRESHOLD;
       if (!tactical && bestMove !== 0) {
@@ -548,9 +580,7 @@ export class FastSearcher {
         if (!pruned && futilityEnabled) {
           if (!futilityKnown) {
             futile =
-              this.#evaluateStatic(position, keyLo, keyHi) +
-                tuning.futilityMargin * depth <=
-              alphaInput;
+              this.#evaluateStatic(position, keyLo, keyHi) + tuning.futilityMargin * depth <= alphaInput;
             futilityKnown = true;
           }
           pruned = futile;
@@ -564,42 +594,16 @@ export class FastSearcher {
       const winner = this.#prepareChild(position, move, ply);
       let score: number;
       if (index === 0) {
-        score = this.#searchPreparedChild(
-          position,
-          winner,
-          ply,
-          depth - 1,
-          alpha,
-          beta,
-        );
+        score = this.#searchPreparedChild(position, winner, ply, depth - 1, alpha, beta);
       } else {
         let reduction = 0;
-        if (
-          tuning.lateMoveReduction &&
-          !tactical &&
-          depth >= 3 &&
-          index >= tuning.lateMoveIndex
-        ) {
+        if (tuning.lateMoveReduction && !tactical && depth >= 3 && index >= tuning.lateMoveIndex) {
           reduction = index >= tuning.lateMoveDeepIndex ? 2 : 1;
           if (reduction >= depth) reduction = depth - 1;
         }
-        score = this.#searchPreparedChild(
-          position,
-          winner,
-          ply,
-          depth - 1 - reduction,
-          alpha,
-          alpha + 1,
-        );
+        score = this.#searchPreparedChild(position, winner, ply, depth - 1 - reduction, alpha, alpha + 1);
         if (!this.#isStopped() && score > alpha && (reduction > 0 || score < beta)) {
-          score = this.#searchPreparedChild(
-            position,
-            winner,
-            ply,
-            depth - 1,
-            alpha,
-            beta,
-          );
+          score = this.#searchPreparedChild(position, winner, ply, depth - 1, alpha, beta);
         }
       }
       if (this.#isStopped()) return 0;
@@ -634,7 +638,7 @@ export class FastSearcher {
         }
         table.keyLo[slot] = keyLo;
         table.keyHi[slot] = keyHi;
-        table.score[slot] = storedScore;
+        table.score[slot] = storedScore * 2;
         table.info[slot] = (table.generation << 8) | (entryDepth << 2) | flag;
         table.move[slot] = bestMove;
       }
@@ -648,8 +652,7 @@ export class FastSearcher {
   #commutingMonMoveContext(position: FastPosition, ply: number): number {
     if (ply === 0) return 0;
     const previous = i32(this.#moveAtPly, ply - 1);
-    return moveType(previous) === MOVE_MON &&
-      at(this.#positions, ply - 1).active === position.active
+    return moveType(previous) === MOVE_MON && at(this.#positions, ply - 1).active === position.active
       ? previous
       : 0;
   }
@@ -672,11 +675,7 @@ export class FastSearcher {
     return true;
   }
 
-  #evaluateStatic(
-    position: FastPosition,
-    precomputedKeyLo?: number,
-    precomputedKeyHi?: number,
-  ): number {
+  #evaluateStatic(position: FastPosition, precomputedKeyLo?: number, precomputedKeyHi?: number): number {
     let keyLo = precomputedKeyLo;
     let keyHi = precomputedKeyHi;
     if (keyLo === undefined || keyHi === undefined) {
@@ -705,22 +704,12 @@ export class FastSearcher {
     return score;
   }
 
-  #staticScore(
-    position: FastPosition,
-    precomputedKeyLo?: number,
-    precomputedKeyHi?: number,
-  ): number {
+  #staticScore(position: FastPosition, precomputedKeyLo?: number, precomputedKeyHi?: number): number {
     if (!this.#beginWorkUnit()) return 0;
     return this.#evaluateStatic(position, precomputedKeyLo, precomputedKeyHi);
   }
 
-  #recordCutoff(
-    position: FastPosition,
-    move: number,
-    ply: number,
-    depth: number,
-    tactical: boolean,
-  ): void {
+  #recordCutoff(position: FastPosition, move: number, ply: number, depth: number, tactical: boolean): void {
     if (tactical) return;
     const killerIndex = ply * 2;
     if (i32(this.#killers, killerIndex) !== move) {
@@ -728,19 +717,12 @@ export class FastSearcher {
       this.#killers[killerIndex] = move;
     }
     const historyIndex =
-      position.active * BOARD_CELLS * BOARD_CELLS +
-      moveFrom(move) * BOARD_CELLS +
-      moveTo(move);
+      position.active * BOARD_CELLS * BOARD_CELLS + moveFrom(move) * BOARD_CELLS + moveTo(move);
     const updated = i32(this.#history, historyIndex) + depth * depth;
     this.#history[historyIndex] = updated > 1 << 20 ? 1 << 20 : updated;
   }
 
-  #selectBest(
-    buffer: Int32Array,
-    keys: Int32Array,
-    index: number,
-    count: number,
-  ): void {
+  #selectBest(buffer: Int32Array, keys: Int32Array, index: number, count: number): void {
     let bestSlot = index;
     let bestKey = i32(keys, index);
     for (let slot = index + 1; slot < count; slot += 1) {

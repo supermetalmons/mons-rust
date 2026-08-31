@@ -5,7 +5,11 @@ import {
   isFastWorkspaceAllocationFailure,
 } from "./allocation.js";
 import { moveToInputs, tryLoadPosition } from "./bridge.js";
-import { DEFAULT_WEIGHTS } from "./evaluation-weights.js";
+import {
+  DEFAULT_WEIGHTS,
+  LEARNED_PRO_WEIGHTS,
+  NORMAL_WEIGHTS,
+} from "./evaluation-weights.js";
 import { FastSearcher } from "./search.js";
 import type { SearchLimits, SearchTuning } from "./search-tuning.js";
 import { FastPosition } from "./state.js";
@@ -67,14 +71,16 @@ export const PRO_SEARCH_TUNING = Object.freeze({
 export const PACKED_SELECTION_PROFILES = Object.freeze({
   fast: Object.freeze({
     budgetMs: 50,
+    weights: DEFAULT_WEIGHTS,
     limits: Object.freeze({
       maxDepth: 40,
-      maxNodes: 38_400,
+      maxNodes: 39_936,
       tuning: FAST_SEARCH_TUNING,
     }) satisfies SearchLimits,
   }),
   normal: Object.freeze({
     budgetMs: 150,
+    weights: NORMAL_WEIGHTS,
     limits: Object.freeze({
       maxDepth: 40,
       maxNodes: 184_000,
@@ -83,6 +89,7 @@ export const PACKED_SELECTION_PROFILES = Object.freeze({
   }),
   pro: Object.freeze({
     budgetMs: 650,
+    weights: LEARNED_PRO_WEIGHTS,
     limits: Object.freeze({
       maxDepth: 40,
       maxNodes: 2_000_000,
@@ -176,7 +183,7 @@ export function selectPackedInputs(
     if (deadlineReached()) return undefined;
     searcher.root.copyFrom(position);
     if (deadlineReached()) return undefined;
-    return searcher.search(profile.limits, deadlineReached, DEFAULT_WEIGHTS);
+    return searcher.search(profile.limits, deadlineReached, profile.weights);
   });
   if (
     outcome === undefined ||

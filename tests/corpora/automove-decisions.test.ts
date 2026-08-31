@@ -47,23 +47,23 @@ type CorpusManifest = {
     readonly initialVariantStates: number;
     readonly retainedRegressionStates: number;
   };
-  readonly changesFromV15: {
+  readonly changesFromV17: {
     readonly fastObservations: number;
     readonly normalObservations: number;
     readonly proObservations: number;
+  };
+  readonly candidate: {
+    readonly sourceTreeSha256: string;
+    readonly publicBundleSha256: string;
+    readonly finalCandidateVerdictSha256: string;
+    readonly independentResultAuditSha256: string;
   };
 };
 
 const EXPECTED_CHANGED_IDS = Object.freeze({
   fast: [],
-  normal: [
-    "initial-InnerWedgeManaRows",
-    "initial-OuterWedgeManaRows",
-    "initial-BentCenterManaRows",
-    "initial-ForwardBridgeManaRows",
-    "retained-release",
-  ],
-  pro: ["initial-AlternatingManaRows"],
+  normal: [],
+  pro: [],
 } satisfies Readonly<Record<Preference, readonly string[]>>);
 
 function archivedSuggestionKind(suggestion: ReturnType<Game["suggestMove"]>): number {
@@ -75,10 +75,10 @@ function archivedPlayResultKind(result: ReturnType<Game["playFen"]>): number {
 }
 
 const corpusDirectory = fileURLToPath(
-  new URL("../../test-data/automove-decisions/v16/", import.meta.url),
+  new URL("../../test-data/automove-decisions/v18/", import.meta.url),
 );
 const previousCorpusDirectory = fileURLToPath(
-  new URL("../../test-data/automove-decisions/v15/", import.meta.url),
+  new URL("../../test-data/automove-decisions/v17/", import.meta.url),
 );
 const manifest = JSON.parse(
   readFileSync(join(corpusDirectory, "manifest.json"), "utf8"),
@@ -110,7 +110,7 @@ describe("automove decision corpus", () => {
     vi.restoreAllMocks();
   });
 
-  it("validates the v16 manifest and corpus identity", () => {
+  it("validates the v18 manifest and corpus identity", () => {
     const ids = states.map((state) => state.id);
     const initialStates = states.filter(
       (state) => state.source.kind === "initial-variant",
@@ -121,7 +121,7 @@ describe("automove decision corpus", () => {
 
     expect(manifest).toMatchObject({
       schemaVersion: 1,
-      corpusVersion: "automove-decisions-v16",
+      corpusVersion: "automove-decisions-v18",
       description: expect.any(String),
       fixedClockNowMs: 0,
       corpusFile: "decisions.jsonl",
@@ -131,10 +131,20 @@ describe("automove decision corpus", () => {
         initialVariantStates: 12,
         retainedRegressionStates: 1,
       },
-      changesFromV15: {
+      changesFromV17: {
         fastObservations: 0,
-        normalObservations: 5,
-        proObservations: 1,
+        normalObservations: 0,
+        proObservations: 0,
+      },
+      candidate: {
+        sourceTreeSha256:
+          "c2cb6dd62a9fe9447944222dc6b0482152d20669dd5506c99b4889cf4ee0755b",
+        publicBundleSha256:
+          "3d114af6f137bfebf2147f81fd82d21bd91274f4e578d1864a26634c02c87e91",
+        finalCandidateVerdictSha256:
+          "140b16d27056b34e89ea9e4e30afcb75586273c9310a5feae40d44dcf390fceb",
+        independentResultAuditSha256:
+          "b3838d61e2ae367ecd4f863bd267e8184f14048d8bf7600f1430c7e7286295ae",
       },
     });
     expect(corpusBytes.byteLength).toBe(manifest.corpusBytes);
@@ -161,7 +171,7 @@ describe("automove decision corpus", () => {
     ).toBe(true);
   });
 
-  it("pins the exact v15-to-v16 observation delta", () => {
+  it("pins the exact v17-to-v18 observation delta", () => {
     expect(
       states.map(({ id, variant, source, fen }) => ({
         id,
@@ -199,9 +209,9 @@ describe("automove decision corpus", () => {
 
     expect(changedIds).toEqual(EXPECTED_CHANGED_IDS);
     expect(Object.values(changedIds).map((ids) => ids.length)).toEqual([
-      manifest.changesFromV15.fastObservations,
-      manifest.changesFromV15.normalObservations,
-      manifest.changesFromV15.proObservations,
+      manifest.changesFromV17.fastObservations,
+      manifest.changesFromV17.normalObservations,
+      manifest.changesFromV17.proObservations,
     ]);
   });
 

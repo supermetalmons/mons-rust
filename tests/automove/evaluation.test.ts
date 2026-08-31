@@ -1,3 +1,5 @@
+import { createHash } from "node:crypto";
+
 import { describe, expect, it } from "vitest";
 
 import { tryLoadPosition } from "../../src/automove/bridge.js";
@@ -14,18 +16,27 @@ import {
   cellConsumable,
   cellCooldown,
   fastSquaresForVariant,
+  i32,
   makeManaCell,
   makeMonCell,
   manaScoreValue,
 } from "../../src/automove/board.js";
 import { evaluateWithTables } from "../../src/automove/evaluation.js";
 import {
+  DEFAULT_WEIGHTS,
+  LEARNED_PRO_MODEL_FILE_SHA256,
+  LEARNED_PRO_MODEL_SHA256,
+  LEARNED_PRO_RESIDUAL_SCALE,
+  LEARNED_PRO_TABLE_SHA256,
+  LEARNED_PRO_WEIGHTS,
+  NORMAL_WEIGHTS,
   createEvalTables,
+  memoizedNormalizedEvalWeights,
   normalizeEvalWeights,
   type EvalWeights,
 } from "../../src/automove/evaluation-weights.js";
 import { FastPosition } from "../../src/automove/state.js";
-import { DEFAULT_GAME_VARIANT } from "../../src/engine/board/config.js";
+import { DEFAULT_GAME_VARIANT, TARGET_SCORE } from "../../src/engine/board/config.js";
 import {
   Color,
   Consumable,
@@ -168,6 +179,34 @@ function mon(kind: number, color: number, cooldown = 0, consumable = 0): number 
   return makeMonCell(kind, color, cooldown, 0, consumable);
 }
 
+function referenceLearnedResidual(position: FastPosition, table: Int16Array): number {
+  const leading =
+    position.whiteScore > position.blackScore
+      ? position.whiteScore
+      : position.blackScore;
+  const phaseBase = (leading < TARGET_SCORE ? leading : TARGET_SCORE - 1) * 605;
+  let sum = 0;
+  for (let kind = 0; kind < 5; kind += 1) {
+    const kindBase = phaseBase + kind * BOARD_CELLS;
+    const white = i32(position.monLocations, kind * 2);
+    if (white >= 0) sum += i32(table, kindBase + white);
+    const black = i32(position.monLocations, kind * 2 + 1);
+    if (black >= 0) sum -= i32(table, kindBase + BOARD_CELLS - 1 - black);
+  }
+  return sum * LEARNED_PRO_RESIDUAL_SCALE;
+}
+
+function learnedResidual(position: FastPosition): number {
+  const learned = createEvalTables(LEARNED_PRO_WEIGHTS);
+  const baseline = createEvalTables(DEFAULT_WEIGHTS);
+  const table = learned.learnedPro;
+  if (table === undefined) throw new Error("learned Pro table missing");
+  const actual =
+    evaluateWithTables(position, learned) - evaluateWithTables(position, baseline);
+  expect(actual).toBe(referenceLearnedResidual(position, table));
+  return actual;
+}
+
 function expectFaintedDrainerIgnored(
   mana: number,
   manaAt: Coordinates,
@@ -192,7 +231,76 @@ function expectFaintedDrainerIgnored(
   expect(evaluate(withAwakeWhite, controlWeights)).not.toBe(withoutWhiteValue);
 }
 
+describe("evaluation weight profiles", () => {
+  it("keeps the normalized Normal override isolated from the defaults", () => {
+    expect(NORMAL_WEIGHTS).not.toBe(DEFAULT_WEIGHTS);
+    expect(NORMAL_WEIGHTS).toEqual({
+      ...DEFAULT_WEIGHTS,
+      threatMoverScaleSpare: 35,
+    });
+    expect(NORMAL_WEIGHTS.threatMoverScaleSpare).toBe(35);
+    expect(DEFAULT_WEIGHTS.threatMoverScaleSpare).toBe(25);
+    expect(Object.isFrozen(NORMAL_WEIGHTS)).toBe(true);
+    expect(memoizedNormalizedEvalWeights(NORMAL_WEIGHTS)).toBe(NORMAL_WEIGHTS);
+  });
+
+  it("keeps the learned Pro model isolated behind its weight identity", () => {
+    expect(LEARNED_PRO_WEIGHTS).not.toBe(DEFAULT_WEIGHTS);
+    expect(LEARNED_PRO_WEIGHTS).toEqual(DEFAULT_WEIGHTS);
+    expect(Object.isFrozen(LEARNED_PRO_WEIGHTS)).toBe(true);
+    expect(memoizedNormalizedEvalWeights(LEARNED_PRO_WEIGHTS)).toBe(
+      LEARNED_PRO_WEIGHTS,
+    );
+    expect(createEvalTables(DEFAULT_WEIGHTS).learnedPro).toBeUndefined();
+    expect(createEvalTables(NORMAL_WEIGHTS).learnedPro).toBeUndefined();
+    expect(
+      createEvalTables(normalizeEvalWeights({ ...LEARNED_PRO_WEIGHTS })).learnedPro,
+    ).toBeUndefined();
+
+    const table = createEvalTables(LEARNED_PRO_WEIGHTS).learnedPro;
+    expect(table).toBeDefined();
+    if (table === undefined) throw new Error("learned Pro table missing");
+    expect(table.length).toBe(5 * 5 * BOARD_CELLS);
+    expect(LEARNED_PRO_RESIDUAL_SCALE).toBe(0.5);
+    expect(LEARNED_PRO_MODEL_SHA256).toBe(
+      "95ac611d89e4c668a1f69043e18d4b30c1da403a639ba96c0921c104638ac564",
+    );
+    expect(LEARNED_PRO_MODEL_FILE_SHA256).toBe(
+      "64e7236d7d22c93dc5d7cbbc79874875b10e0109793d45d71a924dff49990f0f",
+    );
+    const bytes = new Uint8Array(table.buffer, table.byteOffset, table.byteLength);
+    expect(createHash("sha256").update(bytes).digest("hex")).toBe(
+      LEARNED_PRO_TABLE_SHA256,
+    );
+    const maximum = Math.max(...Array.from(table, Math.abs));
+    expect(maximum).toBe(512);
+    expect(10 * maximum * LEARNED_PRO_RESIDUAL_SCALE).toBe(2_560);
+  });
+});
+
 describe("fast position evaluation", () => {
+  it("scores every learned phase after aggregate summation and rotates antisymmetrically", () => {
+    for (let phase = 0; phase < TARGET_SCORE; phase += 1) {
+      const position = makePosition(
+        [
+          [2, 3, mon(KIND_DEMON, 0)],
+          [4, 9, mon(KIND_MYSTIC, 1)],
+        ],
+        { whiteScore: phase, blackScore: 0 },
+      );
+      const rotated = makePosition(
+        [
+          [8, 7, mon(KIND_DEMON, 1)],
+          [6, 1, mon(KIND_MYSTIC, 0)],
+        ],
+        { whiteScore: 0, blackScore: phase },
+      );
+      expect(learnedResidual(rotated), `phase ${phase}`).toBe(
+        -learnedResidual(position),
+      );
+    }
+  });
+
   it("matches canonical mana scoring for every mana and player", () => {
     const cases = [
       [regularMana(Color.White), MANA_WHITE, [1, 2]],

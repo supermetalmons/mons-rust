@@ -294,7 +294,7 @@ export async function assertPackageConsumer({
     );
     assert.equal(
       browserDataset.suggestion,
-      "l10,5;l9,4",
+      "l10,5;l9,5",
       "browser Pro suggestion diverged from the current opening decision",
     );
     assert.equal(
@@ -341,7 +341,7 @@ export async function assertPackageConsumer({
     );
     assert.equal(
       workerMessage?.suggestion,
-      "l10,5;l9,4",
+      "l10,5;l9,5",
       "worker Pro suggestion diverged from the current opening decision",
     );
     assert.equal(

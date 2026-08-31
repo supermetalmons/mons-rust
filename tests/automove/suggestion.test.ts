@@ -2,6 +2,11 @@ import { describe, expect, it, vi } from "vitest";
 
 import { FAST_WORKSPACE_ALLOCATION_FAILED } from "../../src/automove/allocation.js";
 import { moveToInputs } from "../../src/automove/bridge.js";
+import {
+  DEFAULT_WEIGHTS,
+  LEARNED_PRO_WEIGHTS,
+  NORMAL_WEIGHTS,
+} from "../../src/automove/evaluation-weights.js";
 import { FastSearcher } from "../../src/automove/search.js";
 import {
   deterministicLegalFallbackInputs,
@@ -59,13 +64,18 @@ describe("packed automove suggestion", () => {
         expectLegalSourcePure(new MonsGame(true, GameVariant.Classic), preference);
       }
       expect(search.mock.calls.map(([limits]) => limits.maxNodes)).toEqual([
-        38_400, 184_000, 2_000_000,
+        39_936, 184_000, 2_000_000,
       ]);
       expect(
         search.mock.results.map((result) =>
           result.type === "return" ? result.value.nodes : undefined,
         ),
-      ).toEqual([38_400, 184_000, 2_000_000]);
+      ).toEqual([39_936, 184_000, 2_000_000]);
+      expect(search.mock.calls.map(([, , weights]) => weights)).toEqual([
+        DEFAULT_WEIGHTS,
+        NORMAL_WEIGHTS,
+        LEARNED_PRO_WEIGHTS,
+      ]);
     } finally {
       search.mockRestore();
     }
@@ -78,7 +88,7 @@ describe("packed automove suggestion", () => {
       const inputs = (["fast", "normal", "pro"] as const).map((preference) =>
         expectLegalSourcePure(new MonsGame(true, GameVariant.Classic), preference),
       );
-      expect(inputs).toEqual(["l10,5;l9,4", "l10,5;l9,4", "l10,5;l9,4"]);
+      expect(inputs).toEqual(["l10,5;l9,4", "l10,5;l9,4", "l10,5;l9,5"]);
       expect(search).toHaveBeenCalledTimes(3);
       expect(new Set(search.mock.instances).size).toBe(3);
     } finally {
